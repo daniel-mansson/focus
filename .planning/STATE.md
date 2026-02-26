@@ -10,28 +10,28 @@ See: .planning/PROJECT.md (updated 2026-02-26)
 ## Current Position
 
 Phase: 1 of 3 (Win32 Foundation)
-Plan: 1 of 5 in current phase
+Plan: 2 of 5 in current phase
 Status: In progress
-Last activity: 2026-02-27 — Plan 01-01 complete
+Last activity: 2026-02-27 — Plan 01-02 complete
 
-Progress: [█░░░░░░░░░] 7%
+Progress: [██░░░░░░░░] 13%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 1
-- Average duration: 7 min
-- Total execution time: 7 min
+- Total plans completed: 2
+- Average duration: 5 min
+- Total execution time: 10 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 01-win32-foundation | 1 | 7 min | 7 min |
+| 01-win32-foundation | 2 | 10 min | 5 min |
 
 **Recent Trend:**
-- Last 5 plans: 7 min
-- Trend: Baseline established
+- Last 5 plans: 7 min, 3 min
+- Trend: Fast execution
 
 *Updated after each plan completion*
 
@@ -51,6 +51,9 @@ Recent decisions affecting current work:
 - 01-01: Use GetWindowLong in NativeMethods.txt (not GetWindowLongPtr) — CsWin32 generates 64-bit safe version from GetWindowLong
 - 01-01: EmitCompilerGeneratedFiles=true in csproj — enables CsWin32 generated source inspection in obj/generated/
 - 01-01: SupportedOSPlatform("windows5.0") on MonitorHelper — correct minimum version for CA1416 suppression
+- 01-02: MemoryMarshal.AsBytes + CreateSpan to pass structs as Span<byte> to DwmGetWindowAttribute — avoids unsafe fixed pointer syntax
+- 01-02: OperatingSystem.IsWindowsVersionAtLeast(6,0,6000) guard in Program.cs — suppresses CA1416 for top-level statement lambda where [SupportedOSPlatform] cannot be used
+- 01-02: Pre-allocate stackalloc buffers before enumeration loop — required to suppress CA2014 warnings
 
 ### Pending Todos
 
@@ -64,5 +67,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-27
-Stopped at: Completed 01-win32-foundation/01-01-PLAN.md (project scaffold + data models)
+Stopped at: Completed 01-win32-foundation/01-02-PLAN.md (window enumeration pipeline + --debug enumerate command)
 Resume file: None

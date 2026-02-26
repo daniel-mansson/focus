@@ -9,12 +9,12 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Window Enumeration & Filtering
 
-- [ ] **ENUM-01**: Tool enumerates all top-level windows via EnumWindows
-- [ ] **ENUM-02**: Tool filters out hidden windows (IsWindowVisible check)
-- [ ] **ENUM-03**: Tool filters out cloaked windows (DWMWA_CLOAKED check)
-- [ ] **ENUM-04**: Tool filters out minimized windows (IsIconic check)
+- [x] **ENUM-01**: Tool enumerates all top-level windows via EnumWindows
+- [x] **ENUM-02**: Tool filters out hidden windows (IsWindowVisible check)
+- [x] **ENUM-03**: Tool filters out cloaked windows (DWMWA_CLOAKED check)
+- [x] **ENUM-04**: Tool filters out minimized windows (IsIconic check)
 - [x] **ENUM-05**: Tool gets accurate visible bounds via DWMWA_EXTENDED_FRAME_BOUNDS
-- [ ] **ENUM-06**: Tool uses UWP-safe window filtering (Alt+Tab algorithm)
+- [x] **ENUM-06**: Tool uses UWP-safe window filtering (Alt+Tab algorithm)
 - [ ] **ENUM-07**: Tool supports user-configurable exclude list by process name with regex/wildcard patterns
 
 ### Directional Navigation
@@ -49,7 +49,7 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Debug & Testing
 
-- [ ] **DBG-01**: User can run `--debug enumerate` to list all detected windows with their properties (hwnd, title, bounds, cloaked status)
+- [x] **DBG-01**: User can run `--debug enumerate` to list all detected windows with their properties (hwnd, title, bounds, cloaked status)
 - [ ] **DBG-02**: User can run `--debug score <direction>` to show all candidates with their scores without switching focus
 - [ ] **DBG-03**: User can run `--debug config` to show resolved config (defaults + file + overrides)
 
@@ -94,12 +94,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ENUM-01 | Phase 1 | Pending |
-| ENUM-02 | Phase 1 | Pending |
-| ENUM-03 | Phase 1 | Pending |
-| ENUM-04 | Phase 1 | Pending |
+| ENUM-01 | Phase 1 | Complete |
+| ENUM-02 | Phase 1 | Complete |
+| ENUM-03 | Phase 1 | Complete |
+| ENUM-04 | Phase 1 | Complete |
 | ENUM-05 | Phase 1 | Complete |
-| ENUM-06 | Phase 1 | Pending |
+| ENUM-06 | Phase 1 | Complete |
 | ENUM-07 | Phase 3 | Pending |
 | NAV-01 | Phase 2 | Pending |
 | NAV-02 | Phase 2 | Pending |
@@ -119,7 +119,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | OUT-01 | Phase 3 | Pending |
 | OUT-02 | Phase 2 | Pending |
 | OUT-03 | Phase 3 | Pending |
-| DBG-01 | Phase 1 | Pending |
+| DBG-01 | Phase 1 | Complete |
 | DBG-02 | Phase 3 | Pending |
 | DBG-03 | Phase 3 | Pending |
 
@@ -130,4 +130,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-02-26*
-*Last updated: 2026-02-26 after roadmap creation*
+*Last updated: 2026-02-27 after plan 01-02 completion (ENUM-01 through ENUM-06, DBG-01 marked complete)*

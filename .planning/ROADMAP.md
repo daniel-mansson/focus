@@ -27,9 +27,9 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. Windows on mixed-DPI monitors have accurate physical pixel bounds (not DPI-scaled logical coordinates)
   3. UWP/Store apps (Calculator, Settings, Microsoft Store) appear as single entries without duplicate HWNDs
   4. Cloaked windows (windows on other virtual desktops) are excluded from the list
-**Plans:** 1/2 plans executed
-- [ ] 01-01-PLAN.md — Project scaffold, CsWin32/DPI manifest, WindowInfo record, MonitorHelper
-- [ ] 01-02-PLAN.md — Window enumeration pipeline (Alt+Tab filter, UWP dedup) and debug enumerate CLI command
+**Plans:** 2/2 plans executed
+- [x] 01-01-PLAN.md — Project scaffold, CsWin32/DPI manifest, WindowInfo record, MonitorHelper
+- [x] 01-02-PLAN.md — Window enumeration pipeline (Alt+Tab filter, UWP dedup) and debug enumerate CLI command
 
 ### Phase 2: Navigation Pipeline
 **Goal**: A working focus switcher — invoke `focus <direction>` from AutoHotkey and the correct window receives focus, with proper exit codes
@@ -61,6 +61,6 @@ Phases execute in numeric order: 1 → 2 → 3
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Win32 Foundation | 1/2 | In Progress|  |
+| 1. Win32 Foundation | 2/2 | Complete | 2026-02-27 |
 | 2. Navigation Pipeline | 0/? | Not started | - |
 | 3. Config, Strategies & Complete CLI | 0/? | Not started | - |
