@@ -94,40 +94,40 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ENUM-01 | — | Pending |
-| ENUM-02 | — | Pending |
-| ENUM-03 | — | Pending |
-| ENUM-04 | — | Pending |
-| ENUM-05 | — | Pending |
-| ENUM-06 | — | Pending |
-| ENUM-07 | — | Pending |
-| NAV-01 | — | Pending |
-| NAV-02 | — | Pending |
-| NAV-03 | — | Pending |
-| NAV-04 | — | Pending |
-| NAV-05 | — | Pending |
-| NAV-06 | — | Pending |
-| NAV-07 | — | Pending |
-| NAV-08 | — | Pending |
-| NAV-09 | — | Pending |
-| FOCUS-01 | — | Pending |
-| FOCUS-02 | — | Pending |
-| CFG-01 | — | Pending |
-| CFG-02 | — | Pending |
-| CFG-03 | — | Pending |
-| CFG-04 | — | Pending |
-| OUT-01 | — | Pending |
-| OUT-02 | — | Pending |
-| OUT-03 | — | Pending |
-| DBG-01 | — | Pending |
-| DBG-02 | — | Pending |
-| DBG-03 | — | Pending |
+| ENUM-01 | Phase 1 | Pending |
+| ENUM-02 | Phase 1 | Pending |
+| ENUM-03 | Phase 1 | Pending |
+| ENUM-04 | Phase 1 | Pending |
+| ENUM-05 | Phase 1 | Pending |
+| ENUM-06 | Phase 1 | Pending |
+| ENUM-07 | Phase 3 | Pending |
+| NAV-01 | Phase 2 | Pending |
+| NAV-02 | Phase 2 | Pending |
+| NAV-03 | Phase 2 | Pending |
+| NAV-04 | Phase 2 | Pending |
+| NAV-05 | Phase 2 | Pending |
+| NAV-06 | Phase 1 | Pending |
+| NAV-07 | Phase 2 | Pending |
+| NAV-08 | Phase 3 | Pending |
+| NAV-09 | Phase 3 | Pending |
+| FOCUS-01 | Phase 2 | Pending |
+| FOCUS-02 | Phase 3 | Pending |
+| CFG-01 | Phase 3 | Pending |
+| CFG-02 | Phase 3 | Pending |
+| CFG-03 | Phase 3 | Pending |
+| CFG-04 | Phase 3 | Pending |
+| OUT-01 | Phase 3 | Pending |
+| OUT-02 | Phase 2 | Pending |
+| OUT-03 | Phase 3 | Pending |
+| DBG-01 | Phase 1 | Pending |
+| DBG-02 | Phase 3 | Pending |
+| DBG-03 | Phase 3 | Pending |
 
 **Coverage:**
 - v1 requirements: 28 total
-- Mapped to phases: 0
-- Unmapped: 28 ⚠️
+- Mapped to phases: 28
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-02-26*
-*Last updated: 2026-02-26 after initial definition*
+*Last updated: 2026-02-26 after roadmap creation*
