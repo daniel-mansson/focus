@@ -13,7 +13,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **ENUM-02**: Tool filters out hidden windows (IsWindowVisible check)
 - [ ] **ENUM-03**: Tool filters out cloaked windows (DWMWA_CLOAKED check)
 - [ ] **ENUM-04**: Tool filters out minimized windows (IsIconic check)
-- [ ] **ENUM-05**: Tool gets accurate visible bounds via DWMWA_EXTENDED_FRAME_BOUNDS
+- [x] **ENUM-05**: Tool gets accurate visible bounds via DWMWA_EXTENDED_FRAME_BOUNDS
 - [ ] **ENUM-06**: Tool uses UWP-safe window filtering (Alt+Tab algorithm)
 - [ ] **ENUM-07**: Tool supports user-configurable exclude list by process name with regex/wildcard patterns
 
@@ -24,7 +24,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **NAV-03**: User can navigate focus up
 - [ ] **NAV-04**: User can navigate focus down
 - [ ] **NAV-05**: Navigation works across multiple monitors via virtual screen coordinates
-- [ ] **NAV-06**: Tool uses DPI-aware coordinates (PerMonitorV2 manifest)
+- [x] **NAV-06**: Tool uses DPI-aware coordinates (PerMonitorV2 manifest)
 - [ ] **NAV-07**: Tool supports "balanced" weighting strategy
 - [ ] **NAV-08**: Tool supports "strong-axis-bias" weighting strategy
 - [ ] **NAV-09**: Tool supports "closest-in-direction" weighting strategy
@@ -98,7 +98,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ENUM-02 | Phase 1 | Pending |
 | ENUM-03 | Phase 1 | Pending |
 | ENUM-04 | Phase 1 | Pending |
-| ENUM-05 | Phase 1 | Pending |
+| ENUM-05 | Phase 1 | Complete |
 | ENUM-06 | Phase 1 | Pending |
 | ENUM-07 | Phase 3 | Pending |
 | NAV-01 | Phase 2 | Pending |
@@ -106,7 +106,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | NAV-03 | Phase 2 | Pending |
 | NAV-04 | Phase 2 | Pending |
 | NAV-05 | Phase 2 | Pending |
-| NAV-06 | Phase 1 | Pending |
+| NAV-06 | Phase 1 | Complete |
 | NAV-07 | Phase 2 | Pending |
 | NAV-08 | Phase 3 | Pending |
 | NAV-09 | Phase 3 | Pending |
