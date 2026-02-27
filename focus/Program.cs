@@ -6,46 +6,91 @@ var debugOption = new Option<string?>("--debug")
     Description = "Debug mode: enumerate | score | config"
 };
 
+var directionArgument = new Argument<string?>("direction")
+{
+    Description = "Direction to navigate: left | right | up | down",
+    Arity = ArgumentArity.ZeroOrOne  // optional so --debug still works without direction
+};
+
 var rootCommand = new RootCommand("focus — directional window focus navigator");
 rootCommand.Options.Add(debugOption);
+rootCommand.Arguments.Add(directionArgument);
 
 rootCommand.SetAction(parseResult =>
 {
     var debugValue = parseResult.GetValue(debugOption);
-    if (string.IsNullOrEmpty(debugValue))
+    var directionValue = parseResult.GetValue(directionArgument);
+
+    if (!string.IsNullOrEmpty(debugValue))
     {
-        Console.WriteLine("No command specified. Use --help for usage.");
-        return 1;
+        if (debugValue == "enumerate")
+        {
+            if (!OperatingSystem.IsWindowsVersionAtLeast(6, 0, 6000))
+            {
+                Console.Error.WriteLine("Error: This tool requires Windows Vista or later.");
+                return 2;
+            }
+            try
+            {
+                var enumerator = new WindowEnumerator();
+                var (windows, filteredUwpCount) = enumerator.GetNavigableWindows();
+
+                if (windows.Count == 0)
+                {
+                    Console.WriteLine("No navigable windows found.");
+                    return 0;
+                }
+
+                PrintWindowTable(windows, filteredUwpCount);
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Error enumerating windows: {ex.Message}");
+                return 2;
+            }
+        }
+        Console.Error.WriteLine($"Unknown --debug value: {debugValue}");
+        return 2;
     }
-    if (debugValue == "enumerate")
+
+    if (!string.IsNullOrEmpty(directionValue))
     {
+        // Parse direction first (no platform dependency)
+        var direction = DirectionParser.Parse(directionValue);
+        if (direction is null)
+        {
+            Console.Error.WriteLine($"Error: Unknown direction '{directionValue}'. Use: left, right, up, down");
+            return 2;
+        }
+
         if (!OperatingSystem.IsWindowsVersionAtLeast(6, 0, 6000))
         {
             Console.Error.WriteLine("Error: This tool requires Windows Vista or later.");
             return 2;
         }
+
         try
         {
+            // Enumerate windows (Phase 1 pipeline)
             var enumerator = new WindowEnumerator();
-            var (windows, filteredUwpCount) = enumerator.GetNavigableWindows();
+            var (windows, _) = enumerator.GetNavigableWindows();
 
-            if (windows.Count == 0)
-            {
-                Console.WriteLine("No navigable windows found.");
-                return 0;
-            }
+            // Score and rank candidates (Plan 02-01)
+            var ranked = NavigationService.GetRankedCandidates(windows, direction.Value);
 
-            PrintWindowTable(windows, filteredUwpCount);
-            return 0;
+            // Activate best candidate (Plan 02-02) — silent on success (exit code only)
+            return FocusActivator.ActivateBestCandidate(ranked);
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"Error enumerating windows: {ex.Message}");
+            Console.Error.WriteLine($"Error: {ex.Message}");
             return 2;
         }
     }
-    Console.Error.WriteLine($"Unknown --debug value: {debugValue}");
-    return 2;
+
+    Console.WriteLine("No command specified. Use --help for usage.");
+    return 1;
 });
 
 return rootCommand.Parse(args).Invoke();
