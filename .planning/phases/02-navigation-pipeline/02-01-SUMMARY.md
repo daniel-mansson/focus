@@ -148,3 +148,12 @@ None — no external service configuration required.
 ---
 *Phase: 02-navigation-pipeline*
 *Completed: 2026-02-27*
+
+## Self-Check: PASSED
+
+- FOUND: focus/Windows/Direction.cs
+- FOUND: focus/Windows/NavigationService.cs
+- FOUND: focus/Windows/MonitorHelper.cs
+- FOUND: .planning/phases/02-navigation-pipeline/02-01-SUMMARY.md
+- FOUND commit: 9a9969e (Task 1)
+- FOUND commit: 47acb9d (Task 2)
