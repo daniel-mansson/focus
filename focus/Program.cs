@@ -6,6 +6,11 @@ var debugOption = new Option<string?>("--debug")
     Description = "Debug mode: enumerate | score | config"
 };
 
+var verboseOption = new Option<bool>("--verbose", "-v")
+{
+    Description = "Show navigation details (origin, candidates, scores)"
+};
+
 var directionArgument = new Argument<string?>("direction")
 {
     Description = "Direction to navigate: left | right | up | down",
@@ -14,12 +19,14 @@ var directionArgument = new Argument<string?>("direction")
 
 var rootCommand = new RootCommand("focus — directional window focus navigator");
 rootCommand.Options.Add(debugOption);
+rootCommand.Options.Add(verboseOption);
 rootCommand.Arguments.Add(directionArgument);
 
 rootCommand.SetAction(parseResult =>
 {
     var debugValue = parseResult.GetValue(debugOption);
     var directionValue = parseResult.GetValue(directionArgument);
+    var verbose = parseResult.GetValue(verboseOption);
 
     if (!string.IsNullOrEmpty(debugValue))
     {
@@ -76,11 +83,27 @@ rootCommand.SetAction(parseResult =>
             var enumerator = new WindowEnumerator();
             var (windows, _) = enumerator.GetNavigableWindows();
 
-            // Score and rank candidates (Plan 02-01)
-            var ranked = NavigationService.GetRankedCandidates(windows, direction.Value);
+            if (verbose)
+                Console.Error.WriteLine($"[focus] enumerated: {windows.Count} windows");
 
-            // Activate best candidate (Plan 02-02) — silent on success (exit code only)
-            return FocusActivator.ActivateBestCandidate(ranked);
+            // Score and rank candidates (Plan 02-01)
+            var ranked = NavigationService.GetRankedCandidates(
+                windows, direction.Value, out var fgHwnd, out var originX, out var originY);
+
+            if (verbose)
+            {
+                Console.Error.WriteLine($"[focus] origin: 0x{fgHwnd:X8} center=({originX:F0}, {originY:F0})");
+                Console.Error.WriteLine($"[focus] direction: {directionValue}");
+                Console.Error.WriteLine($"[focus] candidates: {ranked.Count} in direction");
+                for (int i = 0; i < ranked.Count; i++)
+                {
+                    var (w, score) = ranked[i];
+                    Console.Error.WriteLine($"[focus]   #{i + 1}  score={score:F1}  \"{Truncate(w.Title, 40)}\"  ({w.Left},{w.Top},{w.Right},{w.Bottom})");
+                }
+            }
+
+            // Activate best candidate — verbose logs each attempt
+            return FocusActivator.ActivateBestCandidate(ranked, verbose);
         }
         catch (Exception ex)
         {

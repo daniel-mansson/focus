@@ -20,13 +20,25 @@ internal static class NavigationService
     /// </summary>
     public static unsafe List<(WindowInfo Window, double Score)> GetRankedCandidates(
         List<WindowInfo> allWindows,
-        Direction direction)
+        Direction direction) =>
+        GetRankedCandidates(allWindows, direction, out _, out _, out _);
+
+    public static unsafe List<(WindowInfo Window, double Score)> GetRankedCandidates(
+        List<WindowInfo> allWindows,
+        Direction direction,
+        out nint foregroundHwnd,
+        out double originX,
+        out double originY)
     {
         // Get current foreground HWND as nint (0 = no foreground window / desktop focused)
         var fgHwnd = (nint)(IntPtr)PInvoke.GetForegroundWindow();
+        foregroundHwnd = fgHwnd;
 
         // Determine scoring origin from foreground window bounds or primary monitor center
-        var (originX, originY) = GetOriginPoint(fgHwnd);
+        (originX, originY) = GetOriginPoint(fgHwnd);
+
+        // Local copies for lambda capture (out params can't be used in lambdas)
+        double ox = originX, oy = originY;
 
         var result = new List<(WindowInfo Window, double Score)>();
 
@@ -36,7 +48,7 @@ internal static class NavigationService
             if (window.Hwnd == fgHwnd)
                 continue;
 
-            double score = ScoreCandidate(originX, originY, window, direction);
+            double score = ScoreCandidate(ox, oy, window, direction);
             if (score < double.MaxValue)
                 result.Add((window, score));
         }
@@ -49,15 +61,15 @@ internal static class NavigationService
             if (Math.Abs(a.Score - b.Score) < 1e-6)
             {
                 // Tie-breaking: prefer smaller secondary distance (more aligned with movement axis)
-                double secA = GetSecondaryDistance(originX, originY, a.Window, direction);
-                double secB = GetSecondaryDistance(originX, originY, b.Window, direction);
+                double secA = GetSecondaryDistance(ox, oy, a.Window, direction);
+                double secB = GetSecondaryDistance(ox, oy, b.Window, direction);
                 int secCmp = secA.CompareTo(secB);
                 if (secCmp != 0)
                     return secCmp;
 
                 // Still tied: prefer smaller primary distance (closer)
-                double priA = GetPrimaryDistance(originX, originY, a.Window, direction);
-                double priB = GetPrimaryDistance(originX, originY, b.Window, direction);
+                double priA = GetPrimaryDistance(ox, oy, a.Window, direction);
+                double priB = GetPrimaryDistance(ox, oy, b.Window, direction);
                 return priA.CompareTo(priB);
             }
             return cmp;

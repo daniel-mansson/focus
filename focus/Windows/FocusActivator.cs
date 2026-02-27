@@ -63,18 +63,24 @@ internal static class FocusActivator
     /// 1 = no candidates exist in this direction,
     /// 2 = candidates existed but all activation attempts failed.
     /// </returns>
-    public static int ActivateBestCandidate(List<(WindowInfo Window, double Score)> rankedCandidates)
+    public static int ActivateBestCandidate(List<(WindowInfo Window, double Score)> rankedCandidates, bool verbose = false)
     {
         if (rankedCandidates.Count == 0)
             return 1; // exit code: no candidates in this direction
 
         foreach (var (window, _) in rankedCandidates)
         {
-            if (TryActivateWindow(window.Hwnd))
+            bool ok = TryActivateWindow(window.Hwnd);
+            if (verbose)
+                Console.Error.WriteLine($"[focus] activating: 0x{window.Hwnd:X8} \"{Truncate(window.Title, 40)}\" -> {(ok ? "ok" : "failed")}");
+            if (ok)
                 return 0; // exit code: success
             // Activation failed (likely elevated window) — silently try next candidate
         }
 
         return 2; // exit code: candidates existed but none could be activated
     }
+
+    private static string Truncate(string value, int maxLen) =>
+        value.Length <= maxLen ? value : value[..(maxLen - 3)] + "...";
 }
