@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: unknown
-last_updated: "2026-02-26T23:40:26.724Z"
+status: in_progress
+last_updated: "2026-02-27T21:59:32Z"
 progress:
-  total_phases: 1
+  total_phases: 3
   completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
+  total_plans: 5
+  completed_plans: 3
 ---
 
 # Project State
@@ -18,32 +18,33 @@ progress:
 See: .planning/PROJECT.md (updated 2026-02-26)
 
 **Core value:** Given a direction, reliably switch focus to the most intuitive window in that direction — fast enough for hotkey use, accurate enough to feel natural.
-**Current focus:** Phase 1 — Win32 Foundation
+**Current focus:** Phase 2 — Navigation Pipeline
 
 ## Current Position
 
-Phase: 1 of 3 (Win32 Foundation)
-Plan: 2 of 5 in current phase
+Phase: 2 of 3 (Navigation Pipeline)
+Plan: 1 of 2 in current phase
 Status: In progress
-Last activity: 2026-02-27 — Plan 01-02 complete
+Last activity: 2026-02-27 — Plan 02-01 complete
 
-Progress: [██░░░░░░░░] 13%
+Progress: [███░░░░░░░] 20%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 2
-- Average duration: 5 min
-- Total execution time: 10 min
+- Total plans completed: 3
+- Average duration: 4 min
+- Total execution time: 12 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-win32-foundation | 2 | 10 min | 5 min |
+| 02-navigation-pipeline | 1 | 2 min | 2 min |
 
 **Recent Trend:**
-- Last 5 plans: 7 min, 3 min
+- Last 5 plans: 7 min, 3 min, 2 min
 - Trend: Fast execution
 
 *Updated after each plan completion*
@@ -67,6 +68,10 @@ Recent decisions affecting current work:
 - 01-02: MemoryMarshal.AsBytes + CreateSpan to pass structs as Span<byte> to DwmGetWindowAttribute — avoids unsafe fixed pointer syntax
 - 01-02: OperatingSystem.IsWindowsVersionAtLeast(6,0,6000) guard in Program.cs — suppresses CA1416 for top-level statement lambda where [SupportedOSPlatform] cannot be used
 - 01-02: Pre-allocate stackalloc buffers before enumeration loop — required to suppress CA2014 warnings
+- 02-01: SupportedOSPlatform windows6.0.6000 on NavigationService (not windows5.0) — DwmGetWindowAttribute requires Vista+; matches WindowEnumerator pattern
+- 02-01: Scoring weights primaryWeight=1.0, secondaryWeight=2.0 — Claude's discretion (NAV-07); 2.0 secondary makes alignment matter without dominating
+- 02-01: Strict directional filter (<, >, not <=, >=) — windows at exact origin line are ambiguous, excluded
+- 02-01: CsWin32 INPUT wVk is VIRTUAL_KEY enum (not ushort) — use VIRTUAL_KEY.VK_MENU; SendInput uses ReadOnlySpan<INPUT> overload
 
 ### Pending Todos
 
@@ -80,5 +85,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-27
-Stopped at: Completed 01-win32-foundation/01-02-PLAN.md (window enumeration pipeline + --debug enumerate command)
+Stopped at: Completed 02-navigation-pipeline/02-01-PLAN.md (Direction enum, NavigationService scoring engine, MonitorHelper.GetPrimaryMonitorCenter)
 Resume file: None

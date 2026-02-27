@@ -19,13 +19,13 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Directional Navigation
 
-- [ ] **NAV-01**: User can navigate focus left
-- [ ] **NAV-02**: User can navigate focus right
-- [ ] **NAV-03**: User can navigate focus up
-- [ ] **NAV-04**: User can navigate focus down
-- [ ] **NAV-05**: Navigation works across multiple monitors via virtual screen coordinates
+- [x] **NAV-01**: User can navigate focus left
+- [x] **NAV-02**: User can navigate focus right
+- [x] **NAV-03**: User can navigate focus up
+- [x] **NAV-04**: User can navigate focus down
+- [x] **NAV-05**: Navigation works across multiple monitors via virtual screen coordinates
 - [x] **NAV-06**: Tool uses DPI-aware coordinates (PerMonitorV2 manifest)
-- [ ] **NAV-07**: Tool supports "balanced" weighting strategy
+- [x] **NAV-07**: Tool supports "balanced" weighting strategy
 - [ ] **NAV-08**: Tool supports "strong-axis-bias" weighting strategy
 - [ ] **NAV-09**: Tool supports "closest-in-direction" weighting strategy
 
@@ -101,13 +101,13 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ENUM-05 | Phase 1 | Complete |
 | ENUM-06 | Phase 1 | Complete |
 | ENUM-07 | Phase 3 | Pending |
-| NAV-01 | Phase 2 | Pending |
-| NAV-02 | Phase 2 | Pending |
-| NAV-03 | Phase 2 | Pending |
-| NAV-04 | Phase 2 | Pending |
-| NAV-05 | Phase 2 | Pending |
+| NAV-01 | Phase 2 | Complete |
+| NAV-02 | Phase 2 | Complete |
+| NAV-03 | Phase 2 | Complete |
+| NAV-04 | Phase 2 | Complete |
+| NAV-05 | Phase 2 | Complete |
 | NAV-06 | Phase 1 | Complete |
-| NAV-07 | Phase 2 | Pending |
+| NAV-07 | Phase 2 | Complete |
 | NAV-08 | Phase 3 | Pending |
 | NAV-09 | Phase 3 | Pending |
 | FOCUS-01 | Phase 2 | Pending |
