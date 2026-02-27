@@ -31,7 +31,7 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Focus Activation
 
-- [ ] **FOCUS-01**: Tool switches focus using SetForegroundWindow with SendInput ALT bypass
+- [x] **FOCUS-01**: Tool switches focus using SetForegroundWindow with SendInput ALT bypass
 - [ ] **FOCUS-02**: Tool supports configurable wrap-around behavior (wrap / no-op / beep)
 
 ### Configuration & CLI
@@ -44,7 +44,7 @@ Requirements for initial release. Each maps to roadmap phases.
 ### Output & Integration
 
 - [ ] **OUT-01**: Tool is silent by default (no output on success)
-- [ ] **OUT-02**: Tool returns meaningful exit codes (0=switched, 1=no candidate, 2=error)
+- [x] **OUT-02**: Tool returns meaningful exit codes (0=switched, 1=no candidate, 2=error)
 - [ ] **OUT-03**: User can enable verbose/debug output showing scored candidates via --verbose flag
 
 ### Debug & Testing
@@ -110,14 +110,14 @@ Which phases cover which requirements. Updated during roadmap creation.
 | NAV-07 | Phase 2 | Complete |
 | NAV-08 | Phase 3 | Pending |
 | NAV-09 | Phase 3 | Pending |
-| FOCUS-01 | Phase 2 | Pending |
+| FOCUS-01 | Phase 2 | Complete |
 | FOCUS-02 | Phase 3 | Pending |
 | CFG-01 | Phase 3 | Pending |
 | CFG-02 | Phase 3 | Pending |
 | CFG-03 | Phase 3 | Pending |
 | CFG-04 | Phase 3 | Pending |
 | OUT-01 | Phase 3 | Pending |
-| OUT-02 | Phase 2 | Pending |
+| OUT-02 | Phase 2 | Complete |
 | OUT-03 | Phase 3 | Pending |
 | DBG-01 | Phase 1 | Complete |
 | DBG-02 | Phase 3 | Pending |
@@ -130,4 +130,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-02-26*
-*Last updated: 2026-02-27 after plan 01-02 completion (ENUM-01 through ENUM-06, DBG-01 marked complete)*
+*Last updated: 2026-02-27 after plan 02-02 completion (FOCUS-01, OUT-02 marked complete)*

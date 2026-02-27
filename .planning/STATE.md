@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in_progress
-last_updated: "2026-02-27T21:59:32Z"
+last_updated: "2026-02-27T22:06:00Z"
 progress:
   total_phases: 3
   completed_phases: 1
   total_plans: 5
-  completed_plans: 3
+  completed_plans: 4
 ---
 
 # Project State
@@ -23,28 +23,28 @@ See: .planning/PROJECT.md (updated 2026-02-26)
 ## Current Position
 
 Phase: 2 of 3 (Navigation Pipeline)
-Plan: 1 of 2 in current phase
+Plan: 2 of 2 in current phase (COMPLETE)
 Status: In progress
-Last activity: 2026-02-27 — Plan 02-01 complete
+Last activity: 2026-02-27 — Plan 02-02 complete
 
-Progress: [███░░░░░░░] 20%
+Progress: [████░░░░░░] 30%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3
-- Average duration: 4 min
-- Total execution time: 12 min
+- Total plans completed: 4
+- Average duration: 3.5 min
+- Total execution time: 14 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-win32-foundation | 2 | 10 min | 5 min |
-| 02-navigation-pipeline | 1 | 2 min | 2 min |
+| 02-navigation-pipeline | 2 | 4 min | 2 min |
 
 **Recent Trend:**
-- Last 5 plans: 7 min, 3 min, 2 min
+- Last 5 plans: 7 min, 3 min, 2 min, 2 min
 - Trend: Fast execution
 
 *Updated after each plan completion*
@@ -72,6 +72,8 @@ Recent decisions affecting current work:
 - 02-01: Scoring weights primaryWeight=1.0, secondaryWeight=2.0 — Claude's discretion (NAV-07); 2.0 secondary makes alignment matter without dominating
 - 02-01: Strict directional filter (<, >, not <=, >=) — windows at exact origin line are ambiguous, excluded
 - 02-01: CsWin32 INPUT wVk is VIRTUAL_KEY enum (not ushort) — use VIRTUAL_KEY.VK_MENU; SendInput uses ReadOnlySpan<INPUT> overload
+- 02-02: Inline navigation code in SetAction lambda (not static method) — CA1416 analyzer does not recognize [SupportedOSPlatform] on static local functions in top-level statements
+- 02-02: FocusActivator.ActivateBestCandidate fallthrough: silently skip elevated windows (false from SetForegroundWindow) and try next candidate
 
 ### Pending Todos
 
@@ -85,5 +87,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-27
-Stopped at: Completed 02-navigation-pipeline/02-01-PLAN.md (Direction enum, NavigationService scoring engine, MonitorHelper.GetPrimaryMonitorCenter)
+Stopped at: Completed 02-navigation-pipeline/02-02-PLAN.md (FocusActivator SendInput ALT bypass, Program.cs direction CLI wiring, end-to-end navigation pipeline)
 Resume file: None

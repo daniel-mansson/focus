@@ -40,9 +40,9 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. Focus switching works across multiple monitors using virtual screen coordinates — windows on secondary monitors are reachable
   3. Exit code is 0 when a window is found and activated, 1 when no candidate exists in the given direction, and 2 on error
   4. Focus activation succeeds when invoked from AutoHotkey (not just from a terminal) — SetForegroundWindow restriction is bypassed correctly
-**Plans:** 1/2 plans executed
-- [ ] 02-01-PLAN.md — Direction enum, NavigationService scoring engine, MonitorHelper primary monitor fallback, NativeMethods.txt additions
-- [ ] 02-02-PLAN.md — FocusActivator (SendInput ALT bypass + SetForegroundWindow), Program.cs direction argument wiring, exit codes
+**Plans:** 2/2 plans executed
+- [x] 02-01-PLAN.md — Direction enum, NavigationService scoring engine, MonitorHelper primary monitor fallback, NativeMethods.txt additions
+- [x] 02-02-PLAN.md — FocusActivator (SendInput ALT bypass + SetForegroundWindow), Program.cs direction argument wiring, exit codes
 
 ### Phase 3: Config, Strategies & Complete CLI
 **Goal**: A fully-featured v1 tool — all three weighting strategies selectable, JSON config for persistent settings, all CLI flags working, exclude list, and the complete debug surface
@@ -64,5 +64,5 @@ Phases execute in numeric order: 1 → 2 → 3
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Win32 Foundation | 2/2 | Complete | 2026-02-27 |
-| 2. Navigation Pipeline | 1/2 | In Progress|  |
+| 2. Navigation Pipeline | 2/2 | Complete | 2026-02-27 |
 | 3. Config, Strategies & Complete CLI | 0/? | Not started | - |
