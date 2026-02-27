@@ -16,3 +16,7 @@ MonitorFromWindow
 GetMonitorInfo
 GetClassNameW
 EnumChildWindows
+SetForegroundWindow
+GetForegroundWindow
+SendInput
+MonitorFromPoint
