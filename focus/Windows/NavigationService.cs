@@ -74,6 +74,7 @@ internal static class NavigationService
             Strategy.StrongAxisBias     => ScoreStrongAxisBias,
             Strategy.ClosestInDirection => ScoreClosestInDirection,
             Strategy.EdgeMatching       => ScoreEdgeMatching,
+            Strategy.EdgeProximity      => ScoreEdgeProximity,
             _                           => ScoreCandidate
         };
 
@@ -366,6 +367,79 @@ internal static class NavigationService
                                 : double.MaxValue,
             Direction.Down  => candidate.Top > fgTop
                                 ? (double)(candidate.Top - fgTop)
+                                : double.MaxValue,
+            _               => double.MaxValue
+        };
+    }
+
+    /// <summary>
+    /// Scores a candidate window using near-edge-to-near-edge comparison on the movement axis.
+    /// Ignores the perpendicular axis entirely — this is a 1D strategy.
+    ///
+    /// Near-edge concept: for each direction, the "near edge" is the edge of the window that faces
+    /// the direction of movement. This is compared to the same edge of the foreground window:
+    ///   Left:  compare left edges   — candidates whose left edge is left of the foreground's left edge
+    ///   Right: compare right edges  — candidates whose right edge is right of the foreground's right edge
+    ///   Up:    compare top edges    — candidates whose top edge is above the foreground's top edge
+    ///   Down:  compare bottom edges — candidates whose bottom edge is below the foreground's bottom edge
+    ///
+    /// This differs from EdgeMatching, which uses the FAR edge of the foreground window (e.g., for a
+    /// leftward move, EdgeMatching compares the foreground's right edge to the candidate's right edge;
+    /// EdgeProximity compares the foreground's left edge to the candidate's left edge).
+    ///
+    /// Score = distance between the matching near edges (lower = closer = better).
+    /// Falls back to nearest-edge Balanced logic if foreground bounds cannot be retrieved.
+    /// </summary>
+    internal static unsafe double ScoreEdgeProximity(
+        double originX, double originY,
+        WindowInfo candidate,
+        Direction direction)
+    {
+        // Populate the foreground bounds cache on first call per navigation cycle
+        if (_fgBoundsCache.Hwnd == 0)
+        {
+            var fgHwnd = PInvoke.GetForegroundWindow();
+            if (fgHwnd != default)
+            {
+                RECT boundsRect = default;
+                var boundsBytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref boundsRect, 1));
+                var hr = PInvoke.DwmGetWindowAttribute(
+                    fgHwnd,
+                    DWMWINDOWATTRIBUTE.DWMWA_EXTENDED_FRAME_BOUNDS,
+                    boundsBytes);
+
+                if (hr.Succeeded && (boundsRect.right - boundsRect.left) > 0)
+                {
+                    _fgBoundsCache = ((nint)(IntPtr)(void*)fgHwnd,
+                        boundsRect.left, boundsRect.top, boundsRect.right, boundsRect.bottom);
+                }
+            }
+        }
+
+        // If foreground bounds retrieval failed, fall back to Balanced (nearest-edge) logic
+        if (_fgBoundsCache.Hwnd == 0)
+            return ScoreCandidate(originX, originY, candidate, direction);
+
+        int fgLeft   = _fgBoundsCache.Left;
+        int fgTop    = _fgBoundsCache.Top;
+        int fgRight  = _fgBoundsCache.Right;
+        int fgBottom = _fgBoundsCache.Bottom;
+
+        // Near-edge comparison: compare the near-facing edge of both windows.
+        // Strictly in direction (< not <=), perpendicular axis completely ignored.
+        return direction switch
+        {
+            Direction.Left  => candidate.Left < fgLeft
+                                ? (double)(fgLeft - candidate.Left)
+                                : double.MaxValue,
+            Direction.Right => candidate.Right > fgRight
+                                ? (double)(candidate.Right - fgRight)
+                                : double.MaxValue,
+            Direction.Up    => candidate.Top < fgTop
+                                ? (double)(fgTop - candidate.Top)
+                                : double.MaxValue,
+            Direction.Down  => candidate.Bottom > fgBottom
+                                ? (double)(candidate.Bottom - fgBottom)
                                 : double.MaxValue,
             _               => double.MaxValue
         };

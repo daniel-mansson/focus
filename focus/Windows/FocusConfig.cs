@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 
 namespace Focus.Windows;
 
-internal enum Strategy { Balanced, StrongAxisBias, ClosestInDirection, EdgeMatching }
+internal enum Strategy { Balanced, StrongAxisBias, ClosestInDirection, EdgeMatching, EdgeProximity }
 internal enum WrapBehavior { NoOp, Wrap, Beep }
 
 internal class FocusConfig
