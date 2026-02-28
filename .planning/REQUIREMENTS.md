@@ -171,30 +171,30 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DAEMON-01 | — | Pending |
-| DAEMON-02 | — | Pending |
-| DAEMON-03 | — | Pending |
-| DAEMON-04 | — | Pending |
-| DAEMON-05 | — | Pending |
-| DAEMON-06 | — | Pending |
-| OVERLAY-01 | — | Pending |
-| OVERLAY-02 | — | Pending |
-| OVERLAY-03 | — | Pending |
-| OVERLAY-04 | — | Pending |
-| OVERLAY-05 | — | Pending |
-| RENDER-01 | — | Pending |
-| RENDER-02 | — | Pending |
-| RENDER-03 | — | Pending |
-| CFG-05 | — | Pending |
-| CFG-06 | — | Pending |
-| CFG-07 | — | Pending |
+| DAEMON-01 | Phase 4 | Pending |
+| DAEMON-02 | Phase 4 | Pending |
+| DAEMON-03 | Phase 6 | Pending |
+| DAEMON-04 | Phase 4 | Pending |
+| DAEMON-05 | Phase 4 | Pending |
+| DAEMON-06 | Phase 4 | Pending |
+| OVERLAY-01 | Phase 6 | Pending |
+| OVERLAY-02 | Phase 5 | Pending |
+| OVERLAY-03 | Phase 6 | Pending |
+| OVERLAY-04 | Phase 6 | Pending |
+| OVERLAY-05 | Phase 6 | Pending |
+| RENDER-01 | Phase 5 | Pending |
+| RENDER-02 | Phase 5 | Pending |
+| RENDER-03 | Phase 5 | Pending |
+| CFG-05 | Phase 5 | Pending |
+| CFG-06 | Phase 6 | Pending |
+| CFG-07 | Phase 5 | Pending |
 
 **Coverage:**
 - v1 requirements: 28 total — all complete ✓
 - v2.0 requirements: 17 total
-- Mapped to phases: 0
-- Unmapped: 17 ⚠️
+- Mapped to phases: 17 ✓
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-02-26*
-*Last updated: 2026-03-01 after milestone v2.0 requirements definition*
+*Last updated: 2026-03-01 after milestone v2.0 roadmap creation (phases 4-6)*
