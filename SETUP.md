@@ -200,11 +200,11 @@ For most users that expands to something like `C:\Users\YourName\AppData\Roaming
 
 | Field | Type | Values | Default | Description |
 |---|---|---|---|---|
-| `strategy` | string | `balanced`, `strongAxisBias`, `closestInDirection` | `balanced` | Default scoring strategy for direction navigation |
+| `strategy` | string | `balanced`, `strongAxisBias`, `closestInDirection`, `edgeMatching` | `balanced` | Default scoring strategy for direction navigation |
 | `wrap` | string | `noOp`, `wrap`, `beep` | `noOp` | Behavior when no window is found in the requested direction |
 | `exclude` | array | glob patterns | `[]` | Process names to exclude from window enumeration |
 
-Note: JSON field values use camelCase (e.g., `strongAxisBias`, `closestInDirection`, `noOp`). CLI flags use kebab-case (e.g., `--strategy strong-axis-bias`).
+Note: JSON field values use camelCase (e.g., `strongAxisBias`, `closestInDirection`, `edgeMatching`, `noOp`). CLI flags use kebab-case (e.g., `--strategy strong-axis-bias`, `--strategy edge-matching`).
 
 **Wrap behavior:**
 
@@ -263,7 +263,7 @@ focus <direction> [options]
 
 | Flag | Values / Syntax | Description |
 |---|---|---|
-| `--strategy <name>` | `balanced`, `strong-axis-bias`, `closest-in-direction` | Override the scoring strategy for this invocation |
+| `--strategy <name>` | `balanced`, `strong-axis-bias`, `closest-in-direction`, `edge-matching` | Override the scoring strategy for this invocation |
 | `--wrap <behavior>` | `no-op`, `wrap`, `beep` | Override wrap-around behavior for this invocation |
 | `--exclude <patterns>` | One or more glob patterns | Replace the exclude list for this invocation (does not merge with config) |
 | `--verbose`, `-v` | — | Print navigation details (origin window, candidates, scores) to stderr |
