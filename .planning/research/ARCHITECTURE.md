@@ -1,10 +1,14 @@
 # Architecture Research
 
-**Domain:** Win32 Window Management CLI Tool — Directional Focus Navigation
-**Researched:** 2026-02-26
-**Confidence:** HIGH (Win32 API documentation is official and current; component patterns verified across multiple sources)
+**Domain:** Win32 Window Management — CLI + Daemon with Keyboard Hook and Overlay Rendering
+**Researched:** 2026-02-28
+**Confidence:** HIGH (Win32 API documentation verified from official sources; keyboard hook and layered window APIs have remained stable since Windows 2000/Vista; overlay pattern verified against multiple sources)
 
-## Standard Architecture
+---
+
+## Part 1: Existing Architecture (v1.0 — Stateless CLI)
+
+This section documents the architecture that already exists and must not break.
 
 ### System Overview
 
@@ -27,352 +31,643 @@
 ├─────────────────────────────────────────────────────────────────┤
 │                    Candidate Scoring Layer                        │
 │   Current window center → direction filter → scoring algorithm   │
-│   Balanced | StrongAxisBias | ClosestInDirection strategies       │
+│   Balanced | StrongAxisBias | ClosestInDirection | EdgeMatching  │
+│   | EdgeProximity | AxisOnly strategies                          │
 ├─────────────────────────────────────────────────────────────────┤
 │                    Focus Activation Layer                         │
 │   SendInput(VK_MENU press) → SetForegroundWindow(hwnd)           │
 │   SendInput(VK_MENU release)                                     │
 ├─────────────────────────────────────────────────────────────────┤
 │                    Win32 Native Interop Layer                     │
-│   P/Invoke declarations (user32.dll, dwmapi.dll)                 │
-│   Typed structs: RECT, INPUT, KEYBDINPUT                         │
+│   P/Invoke via CsWin32 (NativeMethods.txt source-generated)     │
+│   user32.dll, dwmapi.dll, kernel32.dll                          │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### Component Responsibilities
+### Existing Component Responsibilities
 
-| Component | Responsibility | Typical Implementation |
-|-----------|----------------|------------------------|
-| Entry Point | Parse CLI args, load config, resolve overrides, call pipeline, set exit code | `Program.cs` with `System.CommandLine` or manual arg parsing |
-| Config Loader | Read/deserialize JSON config, apply defaults, surface validation errors | `Config.cs` + `System.Text.Json` |
-| Window Enumerator | Call `EnumWindows`, collect HWND list of all top-level windows | `WindowEnumerator.cs` with `GCHandle`-pinned callback |
-| Window Filter | Apply visibility, cloaking, minimized, tool-window, and exclude-list checks | `WindowFilter.cs` with predicate chain |
-| Geometry Resolver | Call `DwmGetWindowAttribute(DWMWA_EXTENDED_FRAME_BOUNDS)` to get true visible RECT for each window | `WindowGeometry.cs` |
-| Candidate Scorer | Accept direction + current window center + candidate list; compute score per strategy; return best match | `CandidateScorer.cs` with strategy pattern |
-| Focus Activator | Simulate Alt keypress via `SendInput`, call `SetForegroundWindow`, release Alt | `FocusActivator.cs` |
-| Native Interop | All P/Invoke extern declarations, Win32 structs, constants | `NativeMethods.cs` (or CsWin32 generated) |
-| Logger | Conditional debug output: window list, scores, chosen target, API call results | `Logger.cs` with verbosity flag |
-| Exit Code Reporter | Map result (switched / no candidate / error) to exit codes 0/1/2 | Inline in `Program.cs` |
+| Component | File | Responsibility |
+|-----------|------|----------------|
+| Entry Point | `Program.cs` | Parse CLI args with System.CommandLine, load config, orchestrate pipeline, set exit code |
+| Config | `Windows/FocusConfig.cs` | JSON load/default/write; Strategy and WrapBehavior enums |
+| Window Enumerator | `Windows/WindowEnumerator.cs` | EnumWindows callback → Alt+Tab filter → UWP dedup → WindowInfo list |
+| Exclude Filter | `Windows/ExcludeFilter.cs` | Apply user exclude list (glob patterns) to window list |
+| Navigation Service | `Windows/NavigationService.cs` | Static scoring engine; 6 strategies; GetRankedCandidates → sorted (Window, Score) list |
+| Focus Activator | `Windows/FocusActivator.cs` | SendInput(Alt) + SetForegroundWindow + wrap-around logic |
+| Window Info | `Windows/WindowInfo.cs` | Immutable record: HWND, ProcessName, Title, bounds (L/T/R/B), MonitorIndex |
+| Monitor Helper | `Windows/MonitorHelper.cs` | EnumDisplayMonitors, MonitorFromWindow, primary monitor center fallback |
+| Direction | `Windows/Direction.cs` | Direction enum + DirectionParser |
 
-## Recommended Project Structure
+**Key design facts:**
+- `NavigationService` is a `static class` with static methods — no instance, no state between calls.
+- `WindowEnumerator` is an instance class (stateless; instantiated fresh per invocation).
+- `FocusActivator` is a `static class`.
+- The whole pipeline runs once and the process exits.
+- `Program.cs` uses top-level statements — no explicit `Main()` method.
+- CsWin32 generates all Win32 P/Invoke declarations from `NativeMethods.txt`.
+
+---
+
+## Part 2: v2.0 Target Architecture — Daemon + Overlay
+
+### What Changes Fundamentally
+
+The daemon mode introduces three things that do not exist in the stateless CLI:
+
+1. **A persistent process with a Win32 message loop** — the process does not exit after one action; it runs indefinitely, pumping messages.
+2. **A system-wide low-level keyboard hook (WH_KEYBOARD_LL)** — the hook fires on every keypress system-wide and must respond within ~1 second or Windows silently removes it (Windows 10 1709+ hard cap).
+3. **Overlay windows** — one per direction, positioned over target windows, rendered as transparent colored borders using layered windows.
+
+These three additions interact with each other and with the existing components in specific, constrained ways.
+
+### v2.0 System Overview
 
 ```
-WindowFocusNavigation/
-├── WindowFocusNavigation.csproj   # .NET 8, OutputType=Exe, nullable enabled
-├── NativeMethods.txt              # CsWin32: declare APIs needed (optional)
-├── Program.cs                     # Entry point: parse args, orchestrate, exit code
-├── Config/
-│   ├── AppConfig.cs               # Config model (strategy, wrap, excludes)
-│   └── ConfigLoader.cs            # JSON load/default/merge with CLI overrides
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                              Program.cs (CLI entry)                           │
+│  "focus <direction>" → stateless pipeline (unchanged v1.0 path)              │
+│  "focus daemon"      → DaemonHost.Run() → blocks on message loop             │
+└──────────────────────────────┬───────────────────────────────────────────────┘
+                               │ daemon path
+                               v
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                              DaemonHost                                       │
+│  Owns: message loop thread, hook lifecycle, overlay manager lifecycle        │
+│  Win32: SetWindowsHookEx(WH_KEYBOARD_LL) → message loop → UnhookWindowsHookEx│
+│  Ctrl+C / SIGTERM → cleanup → exit                                           │
+└──────────┬───────────────────────────────┬───────────────────────────────────┘
+           │ hook fires on keypress        │ CAPSLOCK state change
+           v                               v
+┌──────────────────────┐        ┌────────────────────────────────────────────┐
+│  KeyboardHookHandler  │        │              OverlayManager                │
+│                       │        │                                            │
+│  KBDLLHOOKSTRUCT:     │        │  Owns 4 overlay windows (one per dir)     │
+│  vkCode = VK_CAPITAL  │        │  Show: enumerate windows, score all dirs,  │
+│  flags bit 7 = 0/1   │        │       position overlays, make visible       │
+│  (pressed/released)   │        │  Hide: move off-screen or destroy HWNDs   │
+│                       │        │  Update: re-score on foreground change     │
+│  Injects:             │------->│                                            │
+│  CapsLockDown event   │        │  Uses: WindowEnumerator (unchanged)        │
+│  CapsLockUp event     │        │        NavigationService (unchanged)       │
+└──────────────────────┘        │        FocusConfig (unchanged)             │
+                                 └──────────────┬─────────────────────────────┘
+                                                │ positions + paints
+                                                v
+                            ┌───────────────────────────────────────┐
+                            │         OverlayRenderer (per window)   │
+                            │                                        │
+                            │  IOverlayRenderer interface           │
+                            │  DefaultBorderRenderer (colored rect) │
+                            │  Per-strategy custom renderers         │
+                            │                                        │
+                            │  Win32: CreateWindowEx(WS_EX_LAYERED  │
+                            │        | WS_EX_TOOLWINDOW | WS_EX_    │
+                            │        TOPMOST | WS_EX_TRANSPARENT)   │
+                            │        UpdateLayeredWindow(hWnd, ...)  │
+                            └───────────────────────────────────────┘
+```
+
+---
+
+## Part 3: Component Analysis — New vs Modified vs Unchanged
+
+### Unchanged Components (zero modification required)
+
+| Component | Why Unchanged |
+|-----------|---------------|
+| `WindowEnumerator` | Stateless. Daemon calls it the same way as CLI — fresh enumeration on demand. |
+| `NavigationService` | Static, pure logic. Daemon calls `GetRankedCandidates` for all 4 directions. |
+| `FocusActivator` | Not used by daemon directly — AHK still sends `focus <direction>` for actual navigation. |
+| `MonitorHelper` | Utility functions, no state. |
+| `ExcludeFilter` | Pure filtering logic, no state. |
+| `WindowInfo` | Immutable record, no change needed. |
+| `Direction` | Enum, no change needed. |
+
+### Modified Components (extension, not replacement)
+
+**`FocusConfig` — extend to add overlay configuration**
+
+New fields needed:
+- `OverlayColors`: per-direction color strings (ARGB hex or named colors), e.g. `{ "left": "#FF4444FF", "right": "#FF44FF44", "up": "#FFFFFF44", "down": "#FFFF8844" }`
+- `OverlayBorderWidth`: integer pixel width of border, default 4
+- `OverlayOpacity`: 0-255 alpha for border, default 200
+
+These fields must have defaults so existing config files without them continue to work (JSON deserialization already ignores missing fields).
+
+**`Program.cs` — add `daemon` subcommand**
+
+The existing top-level statements handle `focus <direction>` and `focus --debug`. A `daemon` subcommand must be added to System.CommandLine that calls `DaemonHost.Run()` instead of the stateless pipeline.
+
+System.CommandLine supports subcommands via `Command` class — this is additive, the existing root command handler is not modified.
+
+### New Components
+
+**`DaemonHost`** — process lifecycle manager
+
+Responsibilities:
+- Install WH_KEYBOARD_LL hook via `SetWindowsHookEx`
+- Run a Win32 message loop (`GetMessage` / `DispatchMessage`) on a dedicated STA thread
+- Respond to CAPSLOCK key events from `KeyboardHookHandler`
+- Manage `OverlayManager` lifecycle (create on startup, show/hide per hook events)
+- Handle process shutdown: `Console.CancelKeyPress` + hook cleanup via `UnhookWindowsHookEx`
+
+Critical constraint: **The hook-owning thread must run a message loop.** The hook callback is invoked via a message sent to the thread that installed the hook. A console app has no message loop by default; DaemonHost must create one explicitly.
+
+```csharp
+// Pseudocode — DaemonHost message loop on dedicated thread
+Thread hookThread = new Thread(() =>
+{
+    _hookHandle = PInvoke.SetWindowsHookEx(
+        WINDOWS_HOOK_ID.WH_KEYBOARD_LL,
+        _hookCallback,
+        default,   // current module (LL hooks don't use hInstance)
+        0);        // thread ID 0 = global hook
+
+    MSG msg = default;
+    while (PInvoke.GetMessage(out msg, default, 0, 0))
+    {
+        PInvoke.TranslateMessage(ref msg);
+        PInvoke.DispatchMessage(ref msg);
+    }
+
+    PInvoke.UnhookWindowsHookEx(_hookHandle);
+});
+hookThread.SetApartmentState(ApartmentState.STA);
+hookThread.IsBackground = false;
+hookThread.Start();
+```
+
+**`KeyboardHookHandler`** — KBDLLHOOKSTRUCT decoder
+
+Responsibilities:
+- Decode `KBDLLHOOKSTRUCT` from the `lParam` pointer in the hook callback
+- Detect CAPSLOCK pressed (`vkCode == VK_CAPITAL`, flags bit 7 == 0 → key down)
+- Detect CAPSLOCK released (`vkCode == VK_CAPITAL`, flags bit 7 == 1 → key up = `LLKHF_UP`)
+- Pass CAPSLOCK state change events to `OverlayManager`
+- Call `CallNextHookEx` — always, to not break other hooks
+- Return in under 1 second — never block; delegate work to OverlayManager immediately
+
+CAPSLOCK detection specifics:
+- `wParam` (message) = `WM_KEYDOWN` (0x0100) when pressed, `WM_KEYUP` (0x0101) when released
+- `KBDLLHOOKSTRUCT.vkCode` = `VK_CAPITAL` (0x14)
+- `KBDLLHOOKSTRUCT.flags` bit 7 (`LLKHF_UP`, value 0x80) is set when key is released
+- WM_KEYDOWN also fires for key-repeat when held; use state tracking to avoid re-triggering show on auto-repeat
+
+**`OverlayManager`** — overlay lifecycle coordinator
+
+Responsibilities:
+- On `CapsLockDown`: enumerate windows, call `NavigationService.GetRankedCandidates` for all 4 directions, position and show 4 overlay windows (one per direction, over the top-ranked candidate in each direction)
+- On `CapsLockUp`: hide/destroy overlay windows
+- On foreground window change (optional): re-score and update overlays while CAPSLOCK is held
+- Exclude own overlay windows from enumeration (WindowEnumerator already excludes WS_EX_TOOLWINDOW windows by Alt+Tab filter logic — overlays will carry WS_EX_TOOLWINDOW)
+- Hold references to 4 `OverlayWindow` instances (or null if no candidate in that direction)
+
+Key design: overlays are pre-created at daemon startup (or lazily on first CAPSLOCK) and reused across CAPSLOCK events. Destroy + recreate on each CAPSLOCK is expensive; prefer hide (move off-screen or `ShowWindow(SW_HIDE)`) / show (`ShowWindow(SW_SHOWNOACTIVATE)`) instead.
+
+**`OverlayWindow`** — single layered window
+
+Responsibilities:
+- Own one `HWND` created with `CreateWindowEx(WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_TRANSPARENT, ...)`
+- Expose `Position(RECT targetBounds, Direction dir, uint color, int borderWidth)` — moves and repaints
+- Expose `Show()` / `Hide()` — `SetWindowPos` with `HWND_TOPMOST` or `ShowWindow`
+- Delegate rendering to `IOverlayRenderer`
+- Manage GDI DIB section for `UpdateLayeredWindow` — the bitmap that defines the window's visual
+
+Window class registration: the overlay window requires a `WNDCLASS` registration. Use a distinctive class name (e.g. `"FocusOverlay"`) so `WindowEnumerator` can identify and skip these windows in addition to WS_EX_TOOLWINDOW filtering.
+
+**`IOverlayRenderer`** — rendering abstraction
+
+```csharp
+internal interface IOverlayRenderer
+{
+    // Draw into provided DIB section DC, sized to match the target window bounds.
+    // Returns true if content changed and UpdateLayeredWindow should be called.
+    void Render(
+        HDC hdc,
+        int width,
+        int height,
+        Direction direction,
+        OverlayRenderContext context);
+}
+
+internal record OverlayRenderContext(
+    uint BorderColor,    // ARGB
+    int BorderWidth,
+    Strategy ActiveStrategy,
+    double Score,
+    WindowInfo Target);
+```
+
+**`DefaultBorderRenderer`** — colored rectangle border
+
+- Renders a solid-color rectangular border (top/left/right/bottom strips, leaving center transparent/alpha=0)
+- Uses GDI `FillRect` calls into the DIB section's HDC
+- Per-pixel alpha: the DIB section must be a 32bpp ARGB bitmap with pre-multiplied alpha channels
+- `UpdateLayeredWindow` is called with `ULW_ALPHA` flag
+
+Per-direction colors come from `FocusConfig.OverlayColors`.
+
+---
+
+## Part 4: Win32 Technical Constraints
+
+### WH_KEYBOARD_LL Constraints (HIGH confidence — official docs)
+
+- The hook callback is called **in the context of the thread that installed the hook**, via a Windows message sent to that thread. The thread **must have a running message loop** (`GetMessage`/`DispatchMessage`).
+- The callback must complete within `LowLevelHooksTimeout` registry value (default: 1 second; max Windows 10 1709+ allows is 1 second). If it times out, Windows silently removes the hook with no notification.
+- `WH_KEYBOARD_LL` is **not injected** into other processes — it runs in the installing process's context. This is the only global hook type usable in .NET without a separate native DLL.
+- Do not make blocking calls (file I/O, Thread.Sleep, slow Win32 calls) inside the hook callback. Use `Post`/`Queue` patterns to defer work.
+- Sources: [LowLevelKeyboardProc — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/winmsg/lowlevelkeyboardproc), [Hooks Overview — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/winmsg/about-hooks)
+
+### Layered Window Constraints (HIGH confidence — official docs)
+
+- Create with `CreateWindowEx` using style `WS_EX_LAYERED`. Also add `WS_EX_TOOLWINDOW` (excluded from Alt+Tab, and from existing WindowEnumerator's filter), `WS_EX_TOPMOST` (renders above target windows), `WS_EX_TRANSPARENT` (clicks pass through to windows beneath).
+- After creation, call `UpdateLayeredWindow` (or `SetLayeredWindowAttributes`) before the window becomes visible. Calling neither means the window stays invisible even after `ShowWindow`.
+- Use `UpdateLayeredWindow` with `ULW_ALPHA` for per-pixel transparency (colored border + fully transparent center). This gives correct alpha compositing. Do **not** mix `SetLayeredWindowAttributes` and `UpdateLayeredWindow` on the same window.
+- The source bitmap must be a 32bpp DIB section with **pre-multiplied alpha** (each RGB channel multiplied by alpha/255 before passing to `UpdateLayeredWindow`). Failure to pre-multiply causes incorrect compositing with DWM.
+- `UpdateLayeredWindow` replaces WM_PAINT entirely — do not handle WM_PAINT for layered windows that use this function.
+- Window must be top-level (not a child HWND) for `WS_EX_LAYERED` on Windows 7 and earlier; Windows 8+ supports it for child windows too. Use top-level for broadest compatibility.
+- Sources: [UpdateLayeredWindow — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-updatelayeredwindow), [Window Features — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/winmsg/window-features), [SetLayeredWindowAttributes — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setlayeredwindowattributes)
+
+### CAPSLOCK Held-State Detection (HIGH confidence — official docs)
+
+In the WH_KEYBOARD_LL callback:
+- `wParam` = `WM_KEYDOWN` (0x0100): key pressed (also fires for auto-repeat while held)
+- `wParam` = `WM_KEYUP` (0x0101): key released
+- `((KBDLLHOOKSTRUCT*)lParam)->vkCode` = `VK_CAPITAL` (0x14) for CAPSLOCK
+- `((KBDLLHOOKSTRUCT*)lParam)->flags` bit 7 (`LLKHF_UP` = 0x80): set = key up; clear = key down
+- To distinguish first press from auto-repeat on `WM_KEYDOWN`: track a boolean `_capsLockHeld` field; set it on first WM_KEYDOWN, ignore subsequent WM_KEYDOWN until WM_KEYUP.
+- Source: [KBDLLHOOKSTRUCT — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-kbdllhookstruct)
+
+### Overlay Window Exclusion from Navigation (HIGH confidence — existing code)
+
+The existing `WindowEnumerator` already excludes windows with `WS_EX_TOOLWINDOW` flag (step h in the Alt+Tab filter). Overlay windows created with `WS_EX_TOOLWINDOW` will be automatically excluded from all window enumeration — no changes needed to `WindowEnumerator`.
+
+Secondary defensive measure: check window class name == `"FocusOverlay"` in the enumerator (or add to the exclude list) in case the WS_EX_TOOLWINDOW check is bypassed by future code paths.
+
+---
+
+## Part 5: Data Flow — Daemon Mode
+
+### CAPSLOCK Press → Overlay Show
+
+```
+[User presses CAPSLOCK]
+    |
+    v
+[OS delivers WM_KEYDOWN to hook thread message queue]
+    |
+    v
+[KeyboardHookHandler.HookCallback(nCode, wParam, lParam)]
+    |  vkCode == VK_CAPITAL, flags & LLKHF_UP == 0 (key down), not already held
+    |  → sets _capsLockHeld = true
+    |  → PostMessage to DaemonHost or directly call OverlayManager.ShowAsync()
+    |  → CallNextHookEx (always)
+    v
+[OverlayManager.Show()]
+    |
+    v
+[WindowEnumerator.GetNavigableWindows()]  ← unchanged, same as CLI path
+    |
+    v
+[ExcludeFilter.Apply(windows, config.Exclude)]  ← unchanged
+    |
+    v
+[NavigationService.GetRankedCandidates(filtered, Direction.Left,  strategy)]
+[NavigationService.GetRankedCandidates(filtered, Direction.Right, strategy)]
+[NavigationService.GetRankedCandidates(filtered, Direction.Up,    strategy)]
+[NavigationService.GetRankedCandidates(filtered, Direction.Down,  strategy)]
+    |  4 ranked candidate lists (may be empty if no candidate in a direction)
+    v
+[OverlayWindow[Left].Position(leftCandidate.Bounds, config.OverlayColors.Left)]
+[OverlayWindow[Right].Position(rightCandidate.Bounds, config.OverlayColors.Right)]
+[OverlayWindow[Up].Position(upCandidate.Bounds, config.OverlayColors.Up)]
+[OverlayWindow[Down].Position(downCandidate.Bounds, config.OverlayColors.Down)]
+    |
+    v
+[OverlayWindow.Render() → IOverlayRenderer.Render(hdc, ...) → UpdateLayeredWindow]
+    |
+    v
+[OverlayWindow.Show() → SetWindowPos(HWND_TOPMOST, SWP_SHOWWINDOW | SWP_NOACTIVATE)]
+    |
+    v
+[Overlay borders visible on screen]
+```
+
+### CAPSLOCK Release → Overlay Hide
+
+```
+[User releases CAPSLOCK]
+    |
+    v
+[KeyboardHookHandler.HookCallback: WM_KEYUP, vkCode == VK_CAPITAL]
+    |  → sets _capsLockHeld = false
+    |  → signals OverlayManager.Hide()
+    |  → CallNextHookEx
+    v
+[OverlayManager.Hide() → foreach OverlayWindow: SetWindowPos(SWP_HIDEWINDOW)]
+    |
+    v
+[Overlays hidden; windows beneath visible normally]
+```
+
+### Config Resolution (daemon startup)
+
+```
+[FocusConfig.Load()]  ← unchanged config loading
+    |  reads existing strategy, wrap, exclude
+    |  reads NEW: overlayColors, borderWidth, opacity (with defaults if absent)
+    v
+[DaemonHost holds reference to loaded config]
+    |  config re-loaded on SIGHUP or "focus daemon --reload" (future, not v2.0)
+    v
+[OverlayManager and renderers use config values directly]
+```
+
+---
+
+## Part 6: Project Structure — New Files
+
+The existing `focus/Windows/` directory structure is preserved. New daemon/overlay files are added alongside:
+
+```
+focus/
+├── Program.cs                     # MODIFIED: adds "daemon" subcommand
 ├── Windows/
-│   ├── WindowEnumerator.cs        # EnumWindows callback, returns List<HWND>
-│   ├── WindowFilter.cs            # Predicate chain: visible, not cloaked, not minimized, not tool window, not excluded
-│   ├── WindowGeometry.cs          # DwmGetWindowAttribute EXTENDED_FRAME_BOUNDS per HWND
-│   └── WindowInfo.cs              # Record: HWND, Title, ProcessName, Rect, Center
-├── Scoring/
-│   ├── IScorer.cs                 # Interface: Score(WindowInfo from, WindowInfo candidate, Direction dir) → double
-│   ├── BalancedScorer.cs          # Balanced distance + alignment scoring
-│   ├── StrongAxisBiasScorer.cs    # Heavy axis-direction weighting
-│   ├── ClosestInDirectionScorer.cs # Pure nearest-in-cone
-│   └── ScorerFactory.cs           # Maps config strategy enum → IScorer
-├── Focus/
-│   └── FocusActivator.cs          # SendInput(Alt) + SetForegroundWindow
-├── Native/
-│   └── NativeMethods.cs           # P/Invoke: EnumWindows, DwmGetWindowAttribute, SetForegroundWindow, SendInput, GetForegroundWindow, IsWindowVisible, IsIconic, GetWindowLongPtr
-└── Diagnostics/
-    └── Logger.cs                  # Conditional verbose output to stderr
+│   ├── Direction.cs               # unchanged
+│   ├── ExcludeFilter.cs           # unchanged
+│   ├── FocusActivator.cs          # unchanged
+│   ├── FocusConfig.cs             # MODIFIED: add overlay color/width/opacity fields
+│   ├── MonitorHelper.cs           # unchanged
+│   ├── NavigationService.cs       # unchanged
+│   ├── WindowEnumerator.cs        # unchanged (WS_EX_TOOLWINDOW filter already excludes overlays)
+│   ├── WindowInfo.cs              # unchanged
+│   └── [existing files...]
+├── Daemon/
+│   ├── DaemonHost.cs              # NEW: message loop, hook lifecycle, Ctrl+C cleanup
+│   └── KeyboardHookHandler.cs     # NEW: KBDLLHOOKSTRUCT decode, CAPSLOCK state tracking
+├── Overlay/
+│   ├── OverlayManager.cs          # NEW: coordinates 4 overlay windows, calls NavigationService
+│   ├── OverlayWindow.cs           # NEW: owns one HWND; CreateWindowEx, UpdateLayeredWindow
+│   ├── IOverlayRenderer.cs        # NEW: rendering interface
+│   └── DefaultBorderRenderer.cs   # NEW: colored border with pre-multiplied alpha GDI bitmap
 ```
 
-### Structure Rationale
+**Rationale for `Daemon/` and `Overlay/` as separate folders from `Windows/`:**
+- `Windows/` contains the existing window management components that work in both CLI and daemon modes.
+- `Daemon/` is daemon-lifecycle specific — not needed by the stateless CLI path.
+- `Overlay/` is overlay-rendering specific — contains GDI/layered-window code not needed by CLI.
+- This separation keeps the existing `Windows/` folder completely untouched for all non-daemon files.
 
-- **Config/:** Isolated so config loading and validation can be tested independently of Win32 calls.
-- **Windows/:** Groups all window data acquisition — enumeration, filtering, geometry — as a pure data pipeline. No focus side effects here.
-- **Scoring/:** Strategy pattern means new scoring approaches can be added without touching the pipeline. Each scorer is independently testable with mock `WindowInfo` records.
-- **Focus/:** Single responsibility — the only component that mutates system state. Isolated makes it easy to stub in tests and reason about side effects.
-- **Native/:** All P/Invoke in one file. Keeps the rest of the codebase clean of `DllImport`/`LibraryImport` attributes and Win32 types. Mirror the pattern from CsWin32 or Vanara.
-- **Diagnostics/:** Separated so verbose logging can be stripped or redirected without affecting core logic.
+---
 
-## Architectural Patterns
+## Part 7: Architectural Patterns for v2.0
 
-### Pattern 1: Sequential Pipeline with Early Exit
+### Pattern 1: Dedicated Hook Thread with Message Loop
 
-**What:** The execution pipeline is a linear sequence of stages: enumerate → filter → resolve geometry → score → activate. Each stage operates on the output of the previous. The pipeline exits early with a specific exit code if a stage produces an empty result (e.g., no candidates after filtering).
+**What:** Install WH_KEYBOARD_LL and run `GetMessage`/`DispatchMessage` on a single dedicated thread. This thread does nothing else — all work triggered by hook events is dispatched to other components.
 
-**When to use:** This tool is stateless and invoked per-keypress. The pipeline runs once and terminates. No concurrency, no state to manage between calls.
+**When to use:** Required. WH_KEYBOARD_LL callbacks are delivered as messages to the installing thread's queue. Without a message loop on that thread, callbacks never fire.
 
-**Trade-offs:** Simple to reason about and test. Debuggable by logging inputs/outputs at each stage boundary. No flexibility needed beyond what the pipeline provides.
+**Trade-offs:** The hook thread must stay responsive. All work (enumerate windows, score, create DIBs) happens on a different thread or is fast enough to complete within the 1-second timeout.
 
-**Example:**
 ```csharp
-// Program.cs orchestration
-var config = ConfigLoader.Load(configPath, args);
-var allWindows = WindowEnumerator.GetTopLevel();
-var visible = WindowFilter.Apply(allWindows, config.ExcludeList);
-var withGeometry = WindowGeometry.Resolve(visible);
-
-var current = withGeometry.FirstOrDefault(w => w.Hwnd == GetForegroundWindow());
-if (current is null) return ExitCode.Error;
-
-var scorer = ScorerFactory.Create(config.Strategy);
-var best = scorer.FindBest(current, withGeometry, direction);
-if (best is null) return HandleNone(config.WrapBehavior);
-
-FocusActivator.Activate(best.Hwnd);
-return ExitCode.Switched;
-```
-
-### Pattern 2: Strategy Pattern for Scoring
-
-**What:** Each scoring algorithm implements a common interface (`IScorer`). The factory selects the concrete implementation at runtime based on config or CLI flag. All scorers receive the same inputs: the current window's `WindowInfo`, the candidate list, and the direction enum.
-
-**When to use:** Multiple weighting strategies are a first-class project requirement. Strategy pattern avoids a large if/switch block and makes adding a new algorithm a matter of adding one new class.
-
-**Trade-offs:** Minor overhead of interface dispatch. Worth it for the testability and extensibility gain.
-
-**Example:**
-```csharp
-public interface IScorer
+// DaemonHost.cs
+private void RunMessageLoop()
 {
-    WindowInfo? FindBest(WindowInfo current, IEnumerable<WindowInfo> candidates, Direction direction);
-}
+    // Install hook on THIS thread
+    _hookHandle = PInvoke.SetWindowsHookEx(
+        WINDOWS_HOOK_ID.WH_KEYBOARD_LL,
+        _hookCallback,
+        default,
+        0);
 
-// Caller:
-var scorer = ScorerFactory.Create(config.Strategy); // returns BalancedScorer, etc.
-var target = scorer.FindBest(currentWindow, candidates, direction);
-```
-
-### Pattern 3: Direction Filter Before Scoring
-
-**What:** Before running the scoring algorithm, filter candidates to only those in the general half-plane of the requested direction. For "right", keep only windows whose center X > current center X. This eliminates clearly-wrong candidates before computing scores.
-
-**When to use:** Always. Without a direction pre-filter, windows behind the current window will contaminate scores and can produce nonsensical selections.
-
-**Trade-offs:** None — this is pure correctness, not a design tradeoff. Direction filter must account for edge cases where windows partially overlap (center-point comparison is sufficient for this).
-
-**Example:**
-```csharp
-// Direction filter before scoring
-IEnumerable<WindowInfo> FilterByDirection(WindowInfo current, IEnumerable<WindowInfo> all, Direction dir)
-{
-    return dir switch
+    MSG msg = default;
+    while (PInvoke.GetMessage(out msg, default, 0, 0))
     {
-        Direction.Right => all.Where(w => w.Center.X > current.Center.X),
-        Direction.Left  => all.Where(w => w.Center.X < current.Center.X),
-        Direction.Down  => all.Where(w => w.Center.Y > current.Center.Y),
-        Direction.Up    => all.Where(w => w.Center.Y < current.Center.Y),
-        _ => throw new ArgumentOutOfRangeException()
-    };
+        PInvoke.TranslateMessage(ref msg);
+        PInvoke.DispatchMessage(ref msg);
+    }
+
+    PInvoke.UnhookWindowsHookEx(_hookHandle);
 }
 ```
 
-### Pattern 4: Scoring Formula — Axis Distance + Perpendicular Penalty
+### Pattern 2: Pre-multiplied Alpha DIB for Layered Window
 
-**What:** The canonical formula for directional window scoring uses two components:
-- **Primary axis distance** (D_primary): distance along the direction of travel (e.g., delta-X for "right")
-- **Perpendicular offset** (D_perp): distance off the movement axis (e.g., delta-Y for "right")
-- **Score** = D_primary + (weight * D_perp)
+**What:** Create a 32bpp DIB section, draw into it via GDI, pre-multiply RGB by alpha, then pass to `UpdateLayeredWindow`.
 
-Lower score = better candidate. The weight multiplier controls how much off-axis displacement is penalized relative to axial distance:
-- Balanced: weight ≈ 1.0 (equal penalty for off-axis drift)
-- Strong axis bias: weight ≈ 3.0-5.0 (heavily penalize off-axis windows)
-- Closest in direction: weight ≈ 0.0 (ignore perpendicular, pure nearest)
+**When to use:** Required for correct per-pixel transparency. Using `SetLayeredWindowAttributes` with a color key is simpler but produces aliased edges and cannot do partial transparency.
 
-**When to use:** This formula is the established pattern used by i3wm, Hyprland, and Awesome WM for floating-window directional focus. All three strategies are variants of this formula with different weight multipliers, not fundamentally different algorithms.
+**Trade-offs:** More complex GDI setup. Once understood, re-usable across render calls by just updating the bitmap pixels.
 
-**Example:**
 ```csharp
-// Balanced scorer
-public WindowInfo? FindBest(WindowInfo current, IEnumerable<WindowInfo> candidates, Direction dir)
+// OverlayWindow.cs — bitmap setup
+private HDC CreateAlphaDC(int width, int height, out IntPtr bits)
 {
-    var filtered = FilterByDirection(current, candidates, dir);
-    return filtered
-        .Select(c => (window: c, score: ComputeScore(current, c, dir, perpWeight: 1.0)))
-        .MinBy(x => x.score)
-        .window;
+    var bmi = new BITMAPINFO();
+    bmi.bmiHeader.biSize = (uint)Marshal.SizeOf<BITMAPINFOHEADER>();
+    bmi.bmiHeader.biWidth = width;
+    bmi.bmiHeader.biHeight = -height; // top-down
+    bmi.bmiHeader.biPlanes = 1;
+    bmi.bmiHeader.biBitCount = 32;
+    bmi.bmiHeader.biCompression = BI_RGB;
+    // bits = pointer to BGRA pixel data
+    _hBitmap = PInvoke.CreateDIBSection(_screenDC, ref bmi, DIB_USAGE.DIB_RGB_COLORS,
+        out bits, default, 0);
+    _memDC = PInvoke.CreateCompatibleDC(_screenDC);
+    PInvoke.SelectObject(_memDC, _hBitmap);
+    return _memDC;
 }
 
-double ComputeScore(WindowInfo from, WindowInfo to, Direction dir, double perpWeight)
+// Pre-multiply RGB channels by alpha before calling UpdateLayeredWindow
+private unsafe void PreMultiplyAlpha(byte* pixels, int count)
 {
-    var (dx, dy) = (to.Center.X - from.Center.X, to.Center.Y - from.Center.Y);
-    return dir switch
+    for (int i = 0; i < count; i += 4)
     {
-        Direction.Right => dx + perpWeight * Math.Abs(dy),
-        Direction.Left  => -dx + perpWeight * Math.Abs(dy),
-        Direction.Down  => dy + perpWeight * Math.Abs(dx),
-        Direction.Up    => -dy + perpWeight * Math.Abs(dx),
-        _ => double.MaxValue
-    };
+        byte a = pixels[i + 3];
+        pixels[i]     = (byte)(pixels[i]     * a / 255); // B
+        pixels[i + 1] = (byte)(pixels[i + 1] * a / 255); // G
+        pixels[i + 2] = (byte)(pixels[i + 2] * a / 255); // R
+    }
 }
 ```
 
-## Data Flow
+### Pattern 3: Overlay Windows Are Pre-Created, Not On-Demand
 
-### Request Flow (Single Invocation)
+**What:** Create the 4 overlay HWNDs at daemon startup (or first CAPSLOCK press). On subsequent CAPSLOCK presses, reposition and repaint the existing windows rather than creating new ones.
 
-```
-[AutoHotkey hotkey fires: "focus.exe right"]
-    |
-    v
-[Program.cs: parse "right" → Direction.Right]
-    |
-    v
-[ConfigLoader: load ~/.config/windowfocus/config.json → AppConfig]
-    |  (CLI flags override config fields)
-    v
-[WindowEnumerator: EnumWindows callback → List<HWND>]
-    |  (~50-200 HWNDs typically)
-    v
-[WindowFilter: IsWindowVisible + DWMWA_CLOAKED + IsIconic + style check + exclude list]
-    |  (reduces to ~5-20 real app windows)
-    v
-[WindowGeometry: DwmGetWindowAttribute(DWMWA_EXTENDED_FRAME_BOUNDS) per HWND]
-    |  (returns List<WindowInfo> with Rect and Center)
-    v
-[Identify current: GetForegroundWindow() → match in WindowInfo list]
-    |
-    v
-[Direction filter: keep only windows whose center is in requested direction]
-    |
-    v
-[IScorer.FindBest: compute score per candidate, return minimum]
-    |
-    ├── no candidates → WrapBehavior: no-op (exit 1) / wrap / beep
-    |
-    v
-[FocusActivator: SendInput(VK_MENU down) → SetForegroundWindow(hwnd) → SendInput(VK_MENU up)]
-    |
-    v
-[Exit 0 — success]
+**When to use:** For responsive overlay show times. `CreateWindowEx` + DIB setup + `RegisterClass` takes tens of milliseconds. CAPSLOCK → overlay-visible latency should be imperceptible (<50ms target).
+
+**Trade-offs:** Holds 4 HWNDs and 4 GDI bitmaps in memory always. Resource cost is negligible (4 small windows). The alternative — create/destroy per CAPSLOCK press — produces perceptible lag and GDI resource churn.
+
+### Pattern 4: IOverlayRenderer Interface for Extensibility
+
+**What:** Define `IOverlayRenderer` with a single `Render(HDC hdc, int w, int h, Direction dir, OverlayRenderContext ctx)` method. `DefaultBorderRenderer` implements colored border. Future per-strategy renderers can show score numbers, highlight edge matching, etc.
+
+**When to use:** When the rendering logic is expected to vary per strategy. This matches the existing `Strategy` enum pattern in `NavigationService`.
+
+**Trade-offs:** One extra indirection. Worth it given the explicit design goal of "pluggable overlay renderer" in the project requirements.
+
+```csharp
+internal interface IOverlayRenderer
+{
+    void Render(HDC hdc, int width, int height, Direction direction, OverlayRenderContext ctx);
+}
+
+// Registered per strategy (or default used for all):
+internal static class RendererRegistry
+{
+    private static readonly Dictionary<Strategy, IOverlayRenderer> _renderers = new();
+    private static readonly IOverlayRenderer _default = new DefaultBorderRenderer();
+
+    public static void Register(Strategy strategy, IOverlayRenderer renderer)
+        => _renderers[strategy] = renderer;
+
+    public static IOverlayRenderer Get(Strategy strategy)
+        => _renderers.TryGetValue(strategy, out var r) ? r : _default;
+}
 ```
 
-### Config Resolution Flow
+---
+
+## Part 8: Integration Points
+
+### What Existing Components the Daemon Calls
+
+| Existing Component | How Daemon Uses It | Integration Point |
+|--------------------|--------------------|-------------------|
+| `FocusConfig.Load()` | Called once at daemon startup to read config (including new overlay fields) | `DaemonHost` loads config, passes to `OverlayManager` |
+| `WindowEnumerator.GetNavigableWindows()` | Called on every CAPSLOCK press to get fresh window list | `OverlayManager.Show()` instantiates and calls |
+| `ExcludeFilter.Apply()` | Applied to enumerated windows same as CLI path | `OverlayManager.Show()` calls after enumeration |
+| `NavigationService.GetRankedCandidates()` | Called 4 times (once per direction) on every CAPSLOCK press | `OverlayManager.Show()` calls, takes first result per direction |
+| `Direction` enum | Used for all overlay positioning and rendering | Unchanged |
+| `WindowInfo` | The target data for positioning overlays | Unchanged record structure |
+
+### What the Daemon Does NOT Use from Existing Components
+
+| Existing Component | Why Not Used by Daemon |
+|--------------------|-----------------------|
+| `FocusActivator` | Daemon does not activate windows — AHK still handles `focus <direction>` for that |
+| `System.CommandLine` root command handler | Daemon is a new subcommand; the existing handler is the CLI path |
+
+### New Win32 APIs Required
+
+These must be added to `NativeMethods.txt` (CsWin32 source generator):
 
 ```
-[Default AppConfig values (hardcoded)]
-    |
-    v
-[JSON config file values override defaults]
-    |
-    v
-[CLI flag values override config values]
-    |
-    v
-[Resolved AppConfig consumed by pipeline]
+SetWindowsHookEx
+UnhookWindowsHookEx
+CallNextHookEx
+GetMessage
+TranslateMessage
+DispatchMessage
+PostQuitMessage
+CreateWindowEx      (or CreateWindowExW)
+RegisterClassEx     (or RegisterClassExW)
+DefWindowProc
+ShowWindow
+SetWindowPos
+CreateCompatibleDC
+CreateDIBSection
+SelectObject
+DeleteObject
+DeleteDC
+UpdateLayeredWindow
+GetDC
+ReleaseDC
 ```
 
-### Key Data Flows
+Existing entries in `NativeMethods.txt` that are already present and still needed: `SetForegroundWindow`, `GetForegroundWindow`, `SendInput`, `EnumWindows`, `IsWindowVisible`, `IsIconic`, `GetWindowLong`, `GetAncestor`, `GetLastActivePopup`, `DwmGetWindowAttribute`, `GetWindowThreadProcessId`, `OpenProcess`, `QueryFullProcessImageName`, `CloseHandle`, `GetWindowTextW`, `EnumDisplayMonitors`, `MonitorFromWindow`, `GetMonitorInfo`, `GetClassNameW`, `EnumChildWindows`, `MonitorFromPoint`, `MessageBeep`.
 
-1. **HWND list → WindowInfo records:** Enumeration produces raw HWNDs. Filtering culls them. Geometry resolution converts each surviving HWND into a typed `WindowInfo` record with process name, title, bounds RECT, and computed center Point. All downstream components work with `WindowInfo`, never raw HWNDs except at the activation step.
+---
 
-2. **Scoring is read-only:** The scoring layer only reads `WindowInfo` data. It produces a `WindowInfo?` (the best candidate, or null). No Win32 calls in the scoring layer — this keeps it testable without mocking P/Invoke.
+## Part 9: Build Order
 
-3. **Win32 calls are boundary-contained:** Only `WindowEnumerator`, `WindowFilter`, `WindowGeometry`, and `FocusActivator` make Win32 calls. All through `NativeMethods.cs`. Everything between enumeration and activation is pure C# logic.
+Build order is dictated by the dependency graph. Items later in the list depend on items earlier.
 
-## Scaling Considerations
+1. **`FocusConfig` modifications** — Add overlay color/width/opacity fields with defaults. No other v2.0 code can be tested until config loading provides these values. Also: regression-test that existing config files without these fields still load correctly.
 
-This tool is a stateless single-process CLI with a ~100ms time budget. "Scaling" means performance across different Windows environments, not user load.
+2. **`Program.cs` `daemon` subcommand stub** — Add the `daemon` command to System.CommandLine with a placeholder that prints "daemon mode not yet implemented". This ensures the CLI parsing change is isolated and doesn't break existing commands.
 
-| Scale Concern | Current Scope | Mitigation |
-|---------------|---------------|------------|
-| Window count | Typical desktop: 50-200 HWNDs from EnumWindows | No issue — O(n) pipeline on small n completes in <5ms |
-| DwmGetWindowAttribute cost | One call per visible window (~5-20 after filtering) | Call only after filtering, not for all 200 HWNDs |
-| Config file I/O | JSON read on every invocation (no persistent process) | File is small; System.Text.Json is fast; acceptable |
-| Startup cost | .NET 8 process startup ~50-80ms typically | Use PublishSingleFile + ReadyToRun or NativeAOT to reduce; still within 100ms budget |
-| Large exclude lists | Linear scan per window | List is user-defined and small; no optimization needed |
+3. **`DaemonHost` + `KeyboardHookHandler`** — Build the message loop and hook infrastructure. Test independently: run daemon, verify hook fires and CAPSLOCK presses/releases are logged. No overlay code yet. Validate that hook fires, hook is cleaned up on exit, and timeout never occurs (hook callback returns immediately).
 
-## Anti-Patterns
+4. **`OverlayWindow`** — Build the HWND creation + GDI DIB + `UpdateLayeredWindow` pipeline. Test with a hardcoded color and size. Verify: window appears correctly positioned, is excluded from Alt+Tab and window enumeration, clicks pass through, window is topmost.
 
-### Anti-Pattern 1: GetWindowRect Instead of DwmGetWindowAttribute
+5. **`IOverlayRenderer` + `DefaultBorderRenderer`** — Build the renderer interface and default colored-border implementation. Wire into `OverlayWindow`. Test: correct border color, correct border width, center is transparent.
 
-**What people do:** Use `GetWindowRect()` to get window bounds for geometry calculations.
+6. **`OverlayManager`** — Wire together: call `WindowEnumerator`, `ExcludeFilter`, `NavigationService` 4x, position `OverlayWindow` instances, show/hide lifecycle. Test: CAPSLOCK press shows overlays on correct target windows, CAPSLOCK release hides them.
 
-**Why it's wrong:** On Windows 10+, `GetWindowRect()` returns an oversized RECT that includes invisible DWM shadow borders (typically 7-8px on each side). This makes windows appear to overlap when they don't visually, and shifts center-point calculations outward, producing wrong directional selections for windows close to each other.
+7. **`RendererRegistry` / per-strategy renderers** — Optional extensions. Default renderer used for all strategies initially; per-strategy renderers registered as needed.
 
-**Do this instead:** Use `DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, ...)` which returns the true visible bounds the user sees. This is the documented, correct API for visible window dimensions on Windows 10+.
+8. **Full integration** — Connect `DaemonHost` → `KeyboardHookHandler` → `OverlayManager` end-to-end. Test: multiple CAPSLOCK cycles, foreground window changes while held, no candidate in a direction (overlay absent for that direction).
 
-### Anti-Pattern 2: IsWindowVisible Alone for Filtering
+---
 
-**What people do:** Filter candidate windows using only `IsWindowVisible()`.
+## Part 10: Anti-Patterns
 
-**Why it's wrong:** Windows 10+ "cloaks" windows that are on non-active virtual desktops. Cloaked windows still return `true` from `IsWindowVisible()` because they have `WS_VISIBLE` style set. Including them produces attempts to focus windows the user can't see.
+### Anti-Pattern 1: Blocking Inside the Hook Callback
 
-**Do this instead:** Check both `IsWindowVisible()` AND `DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, ...)`. Skip any window where the cloaked value is non-zero.
+**What people do:** Call `WindowEnumerator.GetNavigableWindows()` directly inside the WH_KEYBOARD_LL callback.
 
-### Anti-Pattern 3: SetForegroundWindow Without Alt Bypass
+**Why it's wrong:** Window enumeration involves multiple Win32 calls (EnumWindows iterates all HWNDs, DwmGetWindowAttribute called per window). This can take 5-30ms on a busy desktop. The hook timeout is 1 second but doing I/O in the callback is fragile. Worse: on Windows 10 1709+, if hook processing exceeds 1 second Windows silently removes the hook.
 
-**What people do:** Call `SetForegroundWindow(hwnd)` directly from a background process.
+**Do this instead:** In the hook callback, only update a state variable and post a message (or invoke an async method) to have the work done on a different thread or on the next message loop cycle. The callback itself returns in microseconds.
 
-**Why it's wrong:** Windows restricts which processes can take foreground focus. A process invoked via AutoHotkey is not the foreground process and does not hold recent input events. `SetForegroundWindow()` will silently fail — it returns FALSE and Windows instead flashes the taskbar button.
+### Anti-Pattern 2: Mixing SetLayeredWindowAttributes and UpdateLayeredWindow
 
-**Do this instead:** Simulate an Alt keypress with `SendInput()` before calling `SetForegroundWindow()`. Windows grants foreground permission when it detects an Alt key event, because Alt is part of the Alt+Tab focus-switch UI flow. Release Alt afterward. This is a documented, reliable workaround — not a hack.
+**What people do:** Call `SetLayeredWindowAttributes` to set initial transparency, then switch to `UpdateLayeredWindow` for updates.
 
-### Anti-Pattern 4: Scoring All Windows in All Directions
+**Why it's wrong:** Microsoft explicitly states these two APIs must not be mixed on the same window. The behavior is undefined and varies by Windows version.
 
-**What people do:** Run the scoring algorithm against all enumerated windows and pick the "best" globally.
+**Do this instead:** Choose one approach at window creation time. For per-pixel alpha borders with transparent centers, use `UpdateLayeredWindow` exclusively throughout the overlay window's lifetime.
 
-**Why it's wrong:** Without a direction pre-filter (keeping only windows whose center is in the requested direction), a window directly behind the current window can outcompete a correct candidate. Also, a window far away on the perpendicular axis can score better than one that is genuinely "to the right" because the perpendicular penalty doesn't overcome the primary-axis advantage of windows that are almost on-axis behind.
+### Anti-Pattern 3: Forgetting Alpha Pre-multiplication
 
-**Do this instead:** Always apply a half-plane direction filter before scoring. Only score windows whose center point is strictly in the requested direction from the current window's center. Score to find the best among valid candidates.
+**What people do:** Fill the DIB with ARGB values like 0x80FF0000 (50% transparent red) and pass directly to `UpdateLayeredWindow`.
 
-### Anti-Pattern 5: Monolithic P/Invoke-and-Logic File
+**Why it's wrong:** `UpdateLayeredWindow` with `ULW_ALPHA` requires **pre-multiplied alpha** — each RGB channel must be multiplied by alpha/255 before passing the bitmap. Failing to do this causes incorrect compositing: colors appear washed out or wrong against the desktop.
 
-**What people do:** Put window enumeration, filtering, geometry, scoring, and P/Invoke declarations all in one large file or class.
+**Do this instead:** After filling the DIB, iterate all pixels and pre-multiply: `R' = R * A / 255`, `G' = G * A / 255`, `B' = B * A / 255`. Or write pre-multiplied values directly.
 
-**Why it's wrong:** Makes the scoring logic untestable (P/Invoke calls prevent unit testing without running on Windows with real windows), makes the filter logic hard to reason about, and couples the scoring algorithm to the Win32 surface.
+### Anti-Pattern 4: Creating Overlay Windows on a Thread Without a Message Pump
 
-**Do this instead:** Keep `NativeMethods.cs` as a pure declaration file with no logic. Separate enumeration, filtering, geometry, and scoring into distinct classes. The scorer takes only `WindowInfo` records (plain data), making it fully testable with in-memory test data.
+**What people do:** Create the 4 overlay HWNDs on a background Task or ThreadPool thread, then show them from another thread.
 
-## Integration Points
+**Why it's wrong:** Win32 windows belong to the thread that created them. Messages for those windows (WM_PAINT, WM_NCHITTEST, WM_MOVE, etc.) are delivered to the creating thread's message queue. If that thread has no message loop, the windows become unresponsive and can hang the entire session.
 
-### External Services
+**Do this instead:** Create overlay windows on the same thread that runs the message loop (the hook thread). `DaemonHost`'s message loop thread is the correct place for all HWND creation.
 
-| Service | Integration Pattern | Notes |
-|---------|---------------------|-------|
-| Windows Win32 API (user32.dll) | P/Invoke via `DllImport` / `LibraryImport` | EnumWindows, IsWindowVisible, IsIconic, GetWindowLongPtr, GetForegroundWindow, SetForegroundWindow, SendInput |
-| Windows DWM API (dwmapi.dll) | P/Invoke via `DllImport` / `LibraryImport` | DwmGetWindowAttribute with DWMWA_EXTENDED_FRAME_BOUNDS (visible bounds) and DWMWA_CLOAKED (filter virtual desktop windows) |
-| JSON config file | `System.Text.Json` deserialization | Path: `%APPDATA%\windowfocusnav\config.json` or adjacent to exe. File is optional — defaults apply if absent. |
-| AutoHotkey (invoker) | AutoHotkey spawns the process, passes direction as CLI arg, reads exit code | No IPC needed — tool is stateless, invoked per-call. Exit codes: 0=switched, 1=no candidate, 2=error. |
+### Anti-Pattern 5: Making Overlay Windows Appear in Navigation Candidates
 
-### Internal Boundaries
+**What people do:** Create overlay windows without `WS_EX_TOOLWINDOW`, causing them to appear in the Alt+Tab list and in `WindowEnumerator`'s results.
 
-| Boundary | Communication | Notes |
-|----------|---------------|-------|
-| Config → Pipeline | `AppConfig` record passed to pipeline entry | Resolved once at startup; immutable during execution |
-| WindowEnumerator → WindowFilter | `List<nint>` (HWND list) | Raw HWNDs, no title/geometry yet |
-| WindowFilter → WindowGeometry | `List<nint>` (filtered HWND list) | Only surviving HWNDs get geometry calls — saves Win32 round-trips |
-| WindowGeometry → Scorer | `List<WindowInfo>` (typed records with Rect + Center) | No Win32 types cross this boundary; Scorer is pure logic |
-| Scorer → FocusActivator | Single `nint` HWND of the winning window | Scorer returns `WindowInfo?`, entry point extracts HWND |
-| Logger → All Components | Logger instance passed at construction or via static verbosity flag | Writes to stderr to keep stdout clean; gated on `--verbose` flag |
+**Why it's wrong:** The daemon would try to draw overlays over its own overlays, creating recursive positioning. The overlays would also appear as navigation candidates.
 
-## Build Order Implications
+**Do this instead:** Always create overlay windows with `WS_EX_TOOLWINDOW`. The existing `WindowEnumerator` Alt+Tab filter already excludes toolwindows. Register them with a distinctive class name as a secondary exclusion safety.
 
-The component dependency graph dictates this build order for phased development:
+### Anti-Pattern 6: Re-rendering the Full DIB on Every CAPSLOCK Cycle Without Reuse
 
-1. **Native/NativeMethods.cs first** — Every other component depends on P/Invoke declarations. Establish struct types (RECT, INPUT), constants (DWMWA_EXTENDED_FRAME_BOUNDS, DWMWA_CLOAKED), and extern signatures before writing components that call them.
+**What people do:** Allocate a new `HBITMAP` and `HDC` on every CAPSLOCK press.
 
-2. **Windows/ layer second** — Enumeration, filtering, geometry, and the `WindowInfo` record can be built and manually smoke-tested end-to-end before any scoring exists. Dump the list of discovered windows to validate filtering logic.
+**Why it's wrong:** GDI object allocation is a system resource. 4 windows × multiple CAPSLOCK presses = GDI handle leaks if old resources are not freed. Also, allocation time adds to CAPSLOCK-to-visible latency.
 
-3. **Scoring/ layer third** — Scorers depend only on `WindowInfo` and the `Direction` enum. Build and unit-test scorers with in-memory test data (no Win32 needed). This is where the core UX algorithm lives — iterate here.
+**Do this instead:** Allocate the DIB section once per `OverlayWindow` at creation. On each CAPSLOCK press, resize the DIB if the target window size changed (resize requires deallocation + reallocation), or reuse the existing bitmap and overwrite its pixels.
 
-4. **Focus/ layer fourth** — `FocusActivator` depends on a winning HWND. Build after scoring is validated. Test manually (not unit-testable without real windows).
-
-5. **Config/ and CLI layer fifth** — Wire up JSON config loading and CLI arg parsing last, once the pipeline is working. Config layer depends on knowing which settings the pipeline consumes.
-
-6. **Diagnostics/ throughout** — Logger can be a stub early and fleshed out in parallel. Verbose window enumeration output is essential for debugging filtering and scoring.
+---
 
 ## Sources
 
-- [EnumWindows — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-enumwindows) — HIGH confidence, official API documentation
-- [DwmGetWindowAttribute — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/api/dwmapi/nf-dwmapi-dwmgetwindowattribute) — HIGH confidence, official API documentation
-- [SetForegroundWindow — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setforegroundwindow) — HIGH confidence, official API documentation with restriction conditions documented
-- [SetForegroundWindow bypass via Alt key (gist)](https://gist.github.com/Aetopia/1581b40f00cc0cadc93a0e8ccb65dc8c) — MEDIUM confidence, verified against SetForegroundWindow official docs which confirm Alt key grants permission
-- [Window cloaking — The Old New Thing (Raymond Chen)](https://devblogs.microsoft.com/oldnewthing/20200302-00/?p=103507) — HIGH confidence, official Microsoft blog post
-- [DWMWINDOWATTRIBUTE enumeration — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/api/dwmapi/ne-dwmapi-dwmwindowattribute) — HIGH confidence, official API documentation
-- [Positioning Objects on Multiple Display Monitors — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/gdi/positioning-objects-on-multiple-display-monitors) — HIGH confidence, official documentation; confirms virtual screen coordinate approach
-- [CsWin32 — Microsoft GitHub](https://github.com/microsoft/CsWin32) — MEDIUM confidence, actively maintained Microsoft tool for P/Invoke source generation
-- [GlazeWM — GitHub](https://github.com/glzr-io/glazewm) — LOW confidence (architecture not inspected in detail), confirms directional focus navigation pattern on Windows
-- [Komorebi — GitHub](https://github.com/LGUG2Z/komorebi) — LOW confidence (architecture overview only), confirms event-based window management pattern and komorebic CLI pattern
+- [LowLevelKeyboardProc — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/winmsg/lowlevelkeyboardproc) — HIGH confidence, official API documentation (updated 2025-07)
+- [KBDLLHOOKSTRUCT — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-kbdllhookstruct) — HIGH confidence, official API documentation
+- [Hooks Overview — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/winmsg/about-hooks) — HIGH confidence, official documentation on hook types and thread requirements
+- [UpdateLayeredWindow — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-updatelayeredwindow) — HIGH confidence, official API documentation
+- [SetLayeredWindowAttributes — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setlayeredwindowattributes) — HIGH confidence, official API documentation
+- [Window Features (Layered Windows) — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/winmsg/window-features) — HIGH confidence, official documentation on layered window patterns
+- [Extended Window Styles — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/winmsg/extended-window-styles) — HIGH confidence, official WS_EX_TOOLWINDOW/WS_EX_LAYERED/WS_EX_TRANSPARENT/WS_EX_TOPMOST documentation
+- [Using Messages and Message Queues — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/winmsg/using-messages-and-message-queues) — HIGH confidence, official documentation on message loop structure
+- [CsWin32 — Microsoft GitHub](https://github.com/microsoft/CsWin32) — MEDIUM confidence, P/Invoke source generator used by project
 
 ---
-*Architecture research for: Win32 directional window focus navigation CLI tool*
-*Researched: 2026-02-26*
+*Architecture research for: Win32 directional window focus navigation — daemon + overlay preview mode*
+*Researched: 2026-02-28*

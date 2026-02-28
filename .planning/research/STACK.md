@@ -1,185 +1,344 @@
 # Stack Research
 
-**Domain:** Windows CLI tool with Win32 API interop (window management / directional focus navigation)
-**Researched:** 2026-02-26
-**Confidence:** HIGH
+**Domain:** Windows background daemon with keyboard hook and transparent overlay rendering
+**Researched:** 2026-02-28
+**Confidence:** HIGH (keyboard hook: MEDIUM for CsWin32 interop specifics; overlay rendering: HIGH for Win32 pattern)
 
-## Recommended Stack
+---
+
+## Scope of This Document
+
+This document covers **additions and changes** required for v2.0 only. The v1.0 stack (CsWin32 0.3.269, System.CommandLine 2.0.3, .NET 8 runtime, System.Text.Json) is validated and unchanged. Every recommendation below integrates with the existing CsWin32 P/Invoke setup. No third-party native dependencies are introduced.
+
+Note: The project csproj currently targets `net8.0`. The milestone context mentions .NET 10 as a target framework. The daemon changes do not require a framework upgrade — both .NET 8 and .NET 10 support everything described here. Framework upgrade is a separate decision.
+
+---
+
+## New APIs Required
+
+### Keyboard Hook Subsystem
+
+| Win32 API | NativeMethods.txt Entry | Purpose |
+|-----------|------------------------|---------|
+| `SetWindowsHookExW` | `SetWindowsHookEx` | Install global WH_KEYBOARD_LL hook |
+| `UnhookWindowsHookEx` | `UnhookWindowsHookEx` | Remove hook on daemon exit |
+| `CallNextHookEx` | `CallNextHookEx` | Chain hook — mandatory to avoid breaking other apps |
+| `GetMessage` | `GetMessage` | Block-wait for messages on the hook thread (the message pump) |
+| `TranslateMessage` | `TranslateMessage` | Standard message loop plumbing |
+| `DispatchMessage` | `DispatchMessage` | Dispatch to window proc (needed even for hook-only loops) |
+| `PostThreadMessage` | `PostThreadMessage` | Signal the hook thread to shut down cleanly (WM_QUIT) |
+
+`KBDLLHOOKSTRUCT` is generated automatically when `SetWindowsHookEx` is requested. Key fields:
+- `vkCode` — check against `VK_CAPITAL` (0x14) for CAPSLOCK
+- `flags` bit 7 (`LLKHF_UP`) — 0 = key pressed, 1 = key released
+- `flags` bit 4 (`LLKHF_INJECTED`) — filter out injected keystrokes to avoid loops
+
+**Critical architecture constraint:** WH_KEYBOARD_LL is global-only (cannot scope to a thread). The callback fires on the **thread that called SetWindowsHookEx**, and that thread must run a Win32 message loop (`GetMessage` / `DispatchMessage`). This is not optional — without a message pump, hook callbacks are never invoked. See message loop pattern below.
+
+### Overlay Window Subsystem
+
+| Win32 API | NativeMethods.txt Entry | Purpose |
+|-----------|------------------------|---------|
+| `RegisterClassExW` | `RegisterClassEx` | Register the overlay window class |
+| `CreateWindowExW` | `CreateWindowEx` | Create layered overlay window per direction |
+| `DestroyWindow` | `DestroyWindow` | Tear down overlays on CAPSLOCK release |
+| `SetWindowPos` | `SetWindowPos` | Position/size overlay over target window; use `SWP_NOACTIVATE` always |
+| `ShowWindow` | `ShowWindow` | Show/hide overlays |
+| `GetDC` | `GetDC` | Get screen DC for UpdateLayeredWindow |
+| `ReleaseDC` | `ReleaseDC` | Release screen DC |
+| `CreateCompatibleDC` | `CreateCompatibleDC` | Create memory DC for bitmap rendering |
+| `DeleteDC` | `DeleteDC` | Clean up memory DC |
+| `CreateDIBSection` | `CreateDIBSection` | Allocate 32-bit ARGB bitmap for per-pixel alpha |
+| `SelectObject` | `SelectObject` | Select bitmap into memory DC |
+| `DeleteObject` | `DeleteObject` | Free GDI objects |
+| `UpdateLayeredWindow` | `UpdateLayeredWindow` | Composite per-pixel-alpha bitmap onto screen |
+| `DefWindowProcW` | `DefWindowProc` | Default window message handler |
+| `GetModuleHandleW` | `GetModuleHandle` | Get HINSTANCE for RegisterClassEx / CreateWindowEx |
+
+**Window style combination for overlay windows (use on CreateWindowEx):**
+
+```
+WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE
+```
+
+- `WS_EX_LAYERED` — required for UpdateLayeredWindow; enables per-pixel alpha
+- `WS_EX_TRANSPARENT` — click-through (mouse events fall through to windows beneath)
+- `WS_EX_TOPMOST` — always above application windows
+- `WS_EX_TOOLWINDOW` — excluded from Alt+Tab switcher AND from EnumWindows navigation filtering (already checked by existing `WindowEnumerator`)
+- `WS_EX_NOACTIVATE` — prevents overlay from stealing keyboard focus from the active window
+
+The existing `WindowEnumerator` already filters `WS_EX_TOOLWINDOW` windows from navigation candidates. No changes needed there — overlay windows will be naturally excluded.
+
+---
+
+## Recommended Stack Additions
+
+### Core Technologies (New for v2.0)
+
+| Technology | Version | Purpose | Why Recommended |
+|------------|---------|---------|-----------------|
+| Win32 `WH_KEYBOARD_LL` via CsWin32 | — (Win32 built-in) | Global low-level keyboard hook for CAPSLOCK detection | The only Win32 mechanism to intercept keyboard events globally without a foreground window. Works in .NET via P/Invoke when the hook thread runs a message loop. No library required — CsWin32 generates the bindings. |
+| Win32 layered windows (`WS_EX_LAYERED` + `UpdateLayeredWindow`) via CsWin32 | — (Win32 built-in) | Transparent per-pixel-alpha overlay windows | The correct Win32 primitive for always-on-top transparent overlays. Per-pixel alpha via UpdateLayeredWindow allows precise colored borders with transparency everywhere else. Zero framework overhead. Already in the project's Win32 P/Invoke pattern. |
+| Win32 GDI (`CreateDIBSection`, `SelectObject`) via CsWin32 | — (Win32 built-in) | Draw colored borders into the layered window bitmap | GDI DIB sections provide direct 32-bit ARGB pixel buffer access. Draw borders by filling RECT regions in the pixel buffer directly (4 thin rectangles per overlay = top/bottom/left/right border bands). Faster than GDI+ for simple filled rectangles. |
+
+### Supporting Libraries (New for v2.0)
+
+None. All new capabilities are Win32 APIs accessible via the existing CsWin32 setup. No additional NuGet packages are required.
+
+The NativeMethods.txt file needs the new API entries listed above. CsWin32 generates everything from it.
+
+### Development Tools (No Changes)
+
+No new tooling required. Existing .NET 8 SDK + CsWin32 0.3.269 setup handles all new APIs.
+
+---
+
+## Architecture Pattern: Daemon Message Loop
+
+The daemon subcommand (`focus daemon`) must dedicate one thread to the Win32 message pump. This thread owns the keyboard hook and processes overlay window messages.
+
+**Reason:** WH_KEYBOARD_LL callbacks fire on the thread that called SetWindowsHookEx, dispatched through that thread's message queue. Without GetMessage running, callbacks never arrive. The 1-second hook timeout (Windows 10 1709+) means a slow callback will be bypassed by the OS — the hook thread must return from callbacks immediately.
+
+**Pattern (no WinForms, no WPF):**
+
+```csharp
+// Daemon startup — run on dedicated STA thread
+[STAThread]
+static void RunDaemonThread()
+{
+    // 1. Install keyboard hook (hmod = null for LL hooks from same process)
+    var hookHandle = PInvoke.SetWindowsHookEx(
+        WINDOWS_HOOK_ID.WH_KEYBOARD_LL,
+        KeyboardHookProc,   // managed delegate — pin with GCHandle or keep field reference
+        new HINSTANCE(0),   // null hmod is correct for WH_KEYBOARD_LL in-process
+        0                   // dwThreadId = 0 means global
+    );
+
+    // 2. Pump messages until PostThreadMessage(WM_QUIT) is called
+    MSG msg;
+    while (PInvoke.GetMessage(out msg, new HWND(0), 0, 0))
+    {
+        PInvoke.TranslateMessage(msg);
+        PInvoke.DispatchMessage(msg);
+    }
+
+    // 3. Cleanup
+    PInvoke.UnhookWindowsHookEx(hookHandle);
+}
+
+// Hook callback — called on the message-pump thread
+static LRESULT KeyboardHookProc(int nCode, WPARAM wParam, LPARAM lParam)
+{
+    if (nCode >= 0)
+    {
+        var kbStruct = Marshal.PtrToStructure<KBDLLHOOKSTRUCT>(lParam);
+        bool isKeyUp = (kbStruct.flags & 0x80) != 0;  // LLKHF_UP = bit 7
+
+        if (kbStruct.vkCode == 0x14)  // VK_CAPITAL
+        {
+            // Signal overlay manager — use thread-safe channel, not direct rendering here
+            // Return immediately to stay under the 1-second hook timeout
+        }
+    }
+    return PInvoke.CallNextHookEx(new HHOOK(0), nCode, wParam, lParam);
+}
+```
+
+**Critical delegate lifetime:** The managed delegate passed to `SetWindowsHookEx` must not be garbage collected. Store it in a static field or as an instance field on a long-lived object. Assign to a local variable only is not safe — GC can collect between the call and the first callback.
+
+```csharp
+// Safe: keep delegate alive in a field, not a local
+private static HOOKPROC _hookProcDelegate = KeyboardHookProc;
+// Then pass _hookProcDelegate to SetWindowsHookEx
+```
+
+**Shutdown:** Call `PostThreadMessage(hookThreadId, WM_QUIT, 0, 0)` from the main thread to exit the message loop cleanly. `GetMessage` returns 0 on WM_QUIT, breaking the loop.
+
+---
+
+## Architecture Pattern: Overlay Rendering
+
+Each directional overlay is a separate topmost layered window positioned exactly over the target window's DwmGetWindowAttribute bounds. Render colored borders using a 32-bit ARGB DIB section.
+
+**Border drawing approach — direct pixel writes into DIB buffer:**
+
+```csharp
+// Create 32-bit ARGB bitmap matching target window size
+BITMAPINFO bmi = new();
+bmi.bmiHeader.biSize = (uint)sizeof(BITMAPINFOHEADER);
+bmi.bmiHeader.biWidth = width;
+bmi.bmiHeader.biHeight = -height;  // top-down
+bmi.bmiHeader.biPlanes = 1;
+bmi.bmiHeader.biBitCount = 32;
+bmi.bmiHeader.biCompression = (uint)BI_COMPRESSION.BI_RGB;
+
+var hBitmap = PInvoke.CreateDIBSection(hdc, bmi, DIB_USAGE.DIB_RGB_COLORS, out var bits, null, 0);
+
+// Fill border bands directly in pixel buffer (premultiplied ARGB)
+// Example: top border, borderThickness rows
+uint color = PremultiplyAlpha(r, g, b, alpha);
+for (int y = 0; y < borderThickness; y++)
+    for (int x = 0; x < width; x++)
+        ((uint*)bits)[y * width + x] = color;
+// Repeat for bottom, left, right bands; leave interior = 0 (fully transparent)
+
+// Composite onto screen via UpdateLayeredWindow
+var blend = new BLENDFUNCTION { BlendOp = 0, SourceConstantAlpha = 255, AlphaFormat = 1 }; // AC_SRC_ALPHA
+PInvoke.UpdateLayeredWindow(overlayHwnd, screenDC, &dstPoint, &size, memDC, &srcPoint, 0, &blend, 2); // ULW_ALPHA
+```
+
+**Premultiplied alpha is required by UpdateLayeredWindow.** Pixels that are `(r, g, b, a)` must be stored as `(r*a/255, g*a/255, b*a/255, a)`.
+
+**Interior pixels must be zero (fully transparent).** A zero ARGB value (0x00000000) in the DIB = completely invisible. This achieves the colored border + transparent interior effect without any window region clipping.
+
+---
+
+## CsWin32 Integration Notes
+
+### NativeMethods.txt Additions (append to existing file)
+
+```
+SetWindowsHookEx
+UnhookWindowsHookEx
+CallNextHookEx
+GetMessage
+TranslateMessage
+DispatchMessage
+PostThreadMessage
+RegisterClassEx
+CreateWindowEx
+DestroyWindow
+SetWindowPos
+ShowWindow
+GetDC
+ReleaseDC
+CreateCompatibleDC
+DeleteDC
+CreateDIBSection
+SelectObject
+DeleteObject
+UpdateLayeredWindow
+DefWindowProc
+GetModuleHandle
+PostQuitMessage
+```
+
+### Known CsWin32 Friction Points
+
+**SetWindowsHookEx hmod parameter:** For WH_KEYBOARD_LL with in-process callbacks and `dwThreadId = 0`, `hmod` must technically be non-null per MSDN (an error "may occur" when null). In practice, most implementations pass null successfully. The correct safe approach for CsWin32:
+
+```csharp
+// Option A: Use null (works in practice for WH_KEYBOARD_LL)
+new HINSTANCE(0)
+
+// Option B: Use current module handle (fully correct per MSDN)
+var hInstance = new HINSTANCE(Marshal.GetHINSTANCE(typeof(DaemonRunner).Module));
+```
+
+Use Option B (MEDIUM confidence Option A works; HIGH confidence Option B is correct).
+
+**RegisterClassEx HINSTANCE:** Must use `Marshal.GetHINSTANCE(typeof(YourType).Module)` — passing `new HINSTANCE(0)` to RegisterClassEx causes error 87 (The parameter is incorrect). This is a known friction point documented in CsWin32 Discussion #750.
+
+**HOOKPROC delegate type:** CsWin32 generates a `HOOKPROC` delegate type. The managed callback signature must match. Keep a static reference to avoid GC collection.
+
+**GetMessage null HWND:** Pass `new HWND(0)` not `HWND.Null` to receive all messages on the thread (including WM_QUIT from PostThreadMessage).
+
+---
+
+## Recommended Stack (Complete — v1.0 + v2.0)
 
 ### Core Technologies
 
 | Technology | Version | Purpose | Why Recommended |
 |------------|---------|---------|-----------------|
-| .NET 8 LTS | 8.0 (LTS) | Runtime and SDK | LTS with security support through Nov 2026. Best P/Invoke story in .NET, strong AOT support, fast startup. Project constraint already established. |
-| C# 12 | Ships with .NET 8 SDK | Language | Latest stable language features with .NET 8. Primary pattern matching, records, and `partial` methods needed for source generators all GA. |
-| `System.CommandLine` | 2.0.3 | CLI argument parsing, help text, exit codes | Stable (non-preview) as of Feb 2026. Trim-friendly and AOT-capable by design. Used by the .NET CLI itself, PowerShell, and Azure SDK. Zero ceremony for simple `direction` argument + flag overrides. |
-| `Microsoft.Windows.CsWin32` | 0.3.269 | Win32 P/Invoke source generation | Microsoft-maintained source generator that produces correct, AOT-compatible P/Invoke declarations for EnumWindows, GetWindowRect, DwmGetWindowAttribute, SetForegroundWindow, keybd_event. Eliminates hand-written P/Invoke error surface. Replaces the deprecated `dotnet/pinvoke` NuGet assemblies. |
-| `System.Text.Json` | Built into .NET 8 | JSON config file read/write | Ships with .NET 8, no extra dependency. AOT-compatible with source generation. Substantially faster than Newtonsoft.Json. Sufficient for simple config object (strategy, wrap, exclude list). |
+| .NET 8 LTS | 8.0 | Runtime | Validated. No change. .NET 10 upgrade is optional — no new daemon/overlay APIs require it. |
+| C# 12 | Ships with .NET 8 | Language | Validated. No change. |
+| `System.CommandLine` | 2.0.3 | CLI parsing | Validated. `focus daemon` is a new subcommand — System.CommandLine handles it naturally. |
+| `Microsoft.Windows.CsWin32` | 0.3.269 | Win32 P/Invoke source generation | Validated. Add new API names to NativeMethods.txt. No version change needed — 0.3.269 (Jan 2026) supports all required APIs. |
+| `System.Text.Json` | Built into .NET 8 | Config (colors, border thickness) | Validated. Per-direction color config entries extend the existing JSON config POCO. |
+| Win32 GDI + layered windows | — (User32.dll, Gdi32.dll) | Overlay rendering | New for v2.0. Accessed via CsWin32-generated P/Invoke. No third-party library. |
+| Win32 `WH_KEYBOARD_LL` | — (User32.dll) | Global keyboard hook | New for v2.0. Accessed via CsWin32-generated P/Invoke. Requires dedicated thread with message pump. |
 
 ### Supporting Libraries
 
 | Library | Version | Purpose | When to Use |
 |---------|---------|---------|-------------|
-| `Microsoft.Windows.SDK.Win32Metadata` | Latest (transitive via CsWin32) | Win32 API metadata feed for CsWin32 | Pulled automatically as CsWin32 dependency; never reference directly |
-| `System.Text.Json` source gen context | Built-in code pattern | AOT-safe JSON serialization | Required if publishing as Native AOT — add `[JsonSerializable]` context class over config POCO |
+| None new | — | — | All new v2.0 capabilities come from Win32 system DLLs. CsWin32 generates the bindings at build time. |
 
-**No other library dependencies are needed.** The project constraint explicitly calls for minimal dependencies (Win32 API via P/Invoke only, no third-party native dependencies). All required capabilities — window enumeration, positioning, focus switching — come from Windows system DLLs accessed through CsWin32-generated code.
-
-### Development Tools
-
-| Tool | Purpose | Notes |
-|------|---------|-------|
-| .NET 8 SDK | Build, publish, test | Install via `winget install Microsoft.DotNet.SDK.8` — needed for `PublishAot` to work, requires MSVC toolchain (Visual Studio Desktop C++ workload) |
-| Visual Studio 2022 / VS Code + C# DevKit | IDE | VS 2022 required for Native AOT publish on Windows (needs Desktop C++ workload); VS Code works for dev-time. AOT publish must run in full VS/CLI environment. |
-| `dotnet publish -r win-x64 -c Release` | Produce final exe | Native AOT produces ~2–5 MB single-file exe with ~5–10ms startup vs ~150–200ms for JIT. Standard `dotnet publish --self-contained` produces ~50 MB+ self-contained but avoids AOT complexity. |
-
-## Installation
-
-```bash
-# Create new console project targeting .NET 8
-dotnet new console -n windowfocusnavigation --framework net8.0
-
-# Core CLI parsing
-dotnet add package System.CommandLine --version 2.0.3
-
-# Win32 source generator (design-time / build-time only, no runtime assembly shipped)
-dotnet add package Microsoft.Windows.CsWin32 --version 0.3.269
-
-# System.Text.Json is already in-box for .NET 8 — no add needed
-```
-
-```xml
-<!-- In .csproj — enable AOT-friendly settings -->
-<PropertyGroup>
-  <TargetFramework>net8.0</TargetFramework>
-  <RootNamespace>WindowFocusNavigation</RootNamespace>
-  <Nullable>enable</Nullable>
-  <ImplicitUsings>enable</ImplicitUsings>
-  <AllowUnsafeBlocks>true</AllowUnsafeBlocks>  <!-- Required by CsWin32 generated code -->
-  <!-- Optional: enable AOT publish path -->
-  <!-- <PublishAot>true</PublishAot> -->
-</PropertyGroup>
-
-<!-- CsWin32 is a build-time analyzer only — mark accordingly -->
-<ItemGroup>
-  <PackageReference Include="Microsoft.Windows.CsWin32" Version="0.3.269">
-    <PrivateAssets>all</PrivateAssets>
-    <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-  </PackageReference>
-  <PackageReference Include="System.CommandLine" Version="2.0.3" />
-</ItemGroup>
-```
-
-```xml
-<!-- NativeMethods.txt — tells CsWin32 which Win32 APIs to generate -->
-<!-- Create this file at project root -->
-EnumWindows
-EnumChildWindows
-GetWindowRect
-GetClientRect
-IsWindowVisible
-IsIconic
-GetForegroundWindow
-SetForegroundWindow
-keybd_event
-GetWindowThreadProcessId
-GetWindowLong
-GetWindowText
-GetWindowTextLength
-DwmGetWindowAttribute
-GetSystemMetrics
-MonitorFromWindow
-GetMonitorInfo
-```
-
-```json
-// NativeMethods.json — CsWin32 configuration for AOT mode
-{
-  "allowMarshaling": false,
-  "$schema": "https://aka.ms/CsWin32.schema.json"
-}
-```
-
-### AOT publish command (optional, for sub-10ms startup)
-
-```bash
-# Requires VS 2022 Desktop C++ workload installed
-dotnet publish -r win-x64 -c Release -p:PublishAot=true
-```
-
-### Standard self-contained publish (simpler, ~50ms startup)
-
-```bash
-dotnet publish -r win-x64 -c Release --self-contained true -p:PublishSingleFile=true
-```
+---
 
 ## Alternatives Considered
 
 | Recommended | Alternative | When to Use Alternative |
 |-------------|-------------|-------------------------|
-| `System.CommandLine 2.0.3` | `Cocona`, `Spectre.Console.Cli`, `CommandLineParser` | Cocona/Spectre for richer DX on complex CLI apps; not needed here — this tool has one argument and 3-4 flags. System.CommandLine is Microsoft's official choice and is already AOT-compatible. |
-| `CsWin32` source generator | Hand-written `[LibraryImport]` P/Invokes | Hand-writing is appropriate for 1-2 simple functions. This project needs 12+ Win32 functions including complex structs (RECT, MONITORINFO) — CsWin32 eliminates all struct mapping errors and keeps types correct. |
-| `CsWin32` source generator | `dotnet/pinvoke` NuGet packages | `dotnet/pinvoke` is deprecated as of 2023 in favor of CsWin32. The project notice explicitly directs users to CsWin32. Never use for new projects. |
-| `System.Text.Json` | `Newtonsoft.Json` | Use Newtonsoft if you need dynamic JSON (JObject), complex polymorphism, or `$type` handling. Simple config POCO with 4 fields needs none of that. System.Text.Json is AOT-safe, in-box, and 2-3x faster. |
-| Native AOT publish | Self-contained publish | Self-contained is simpler (no MSVC toolchain requirement, no trim warnings to fix). Use Native AOT only if <100ms hotkey startup is not being met by self-contained. Start with self-contained; AOT is an optimization path. |
-| .NET 8 LTS | .NET 9 or .NET 10 preview | .NET 9 is current (Nov 2024), but the project constraint specifies .NET 8 LTS. .NET 8 LTS is the correct choice for long-term stability. Can upgrade to .NET 10 LTS later. |
+| Raw Win32 layered windows via CsWin32 | WPF / WinUI 3 transparent window | Use WPF/WinUI if you need rich XAML rendering, animations, or data binding on overlays. For simple colored border rectangles with no interactivity, raw Win32 is 10x less code and avoids 40-80 MB runtime dependency. |
+| Raw Win32 layered windows via CsWin32 | WinForms transparent form | WinForms is simpler than WPF but adds the WinForms runtime (included in .NET desktop workload). Still overkill for colored border overlays. Forces `Application.Run()` message loop which conflicts with the existing CLI architecture. |
+| `WH_KEYBOARD_LL` hook | Raw Input (`RegisterRawInputDevices`) | Raw input is preferred by Microsoft for high-performance scenarios (gaming, accessibility) but is more complex and delivers keyboard events differently (WM_INPUT, not WH_KEYBOARD_LL). For a daemon that only needs CAPSLOCK down/up edge detection, WH_KEYBOARD_LL is simpler and sufficient. |
+| `WH_KEYBOARD_LL` hook | AutoHotkey managing daemon state | AHK could detect CAPSLOCK and call `focus daemon --show` / `focus daemon --hide`. Simpler to implement but requires AHK script changes and adds IPC complexity. A self-contained daemon with its own hook is cleaner. |
+| `UpdateLayeredWindow` + DIB | `SetLayeredWindowAttributes` (color key) | Color key transparency is simpler but creates a visible glitch if any window content shares the key color. Per-pixel alpha via UpdateLayeredWindow is correct and has no color collision risk. |
+| Dedicated hook thread with `GetMessage` | `Application.Run()` (WinForms message loop) | `Application.Run()` would work but requires adding the WinForms package reference to a previously WinForms-free CLI tool. A manual GetMessage loop achieves the same result with zero additional dependencies. |
 
-## What NOT to Use
+---
+
+## What NOT to Add
 
 | Avoid | Why | Use Instead |
 |-------|-----|-------------|
-| `[DllImport]` for new P/Invoke declarations | Deprecated in favor of `[LibraryImport]` for .NET 7+. `DllImport` uses runtime IL stub generation which is incompatible with Native AOT and slower due to no inlining. SYSLIB1054 analyzer warns on each use. | `[LibraryImport]` if writing P/Invokes manually, or CsWin32 to generate them |
-| `dotnet/pinvoke` NuGet packages (`PInvoke.User32`, etc.) | Officially deprecated in 2023. Project README directs all users to migrate to CsWin32. Will not receive Win32 API coverage updates. | `Microsoft.Windows.CsWin32` |
-| `Newtonsoft.Json` | Adds a third-party dependency for a task in-box .NET 8 handles. Not AOT-compatible without significant extra work. 2-3x slower than System.Text.Json for simple reads. | `System.Text.Json` with source generation |
-| `StringBuilder` in P/Invoke string parameters | Creates 4 allocations per call (documented in Microsoft interop best practices). Particularly harmful in window enumeration loops touching 20-100 windows. | `char[]` from `ArrayPool<char>`, or let CsWin32 handle it |
-| `IntPtr` for HWND/HINSTANCE/HANDLE | `IntPtr` loses type safety — a HWND and a HICON are both IntPtr but not interchangeable. Hard to track passing wrong handle type. | `HWND`, `HICON`, etc. as generated by CsWin32 (strongly-typed wrappers) |
-| `Marshal.SizeOf<T>()` for blittable structs | Reflection-based, not AOT-safe, slower. | `sizeof(T)` in unsafe context for blittable structs (RECT is blittable) |
-| `Microsoft.Win32.Registry` for config | Registry is harder to edit, version, or back up than a JSON file. Adds friction for users wanting to inspect/share their config. | JSON config file in `%APPDATA%\windowfocusnavigation\config.json` |
-| Background service / IHost / Generic Host | `Microsoft.Extensions.Hosting` adds 5-15 MB and 50-100ms startup overhead for dependency injection wiring. This is a stateless CLI tool called per-hotkey — no DI container is needed or appropriate. | Direct instantiation, static methods, or manual constructor injection |
+| WPF (`WindowsBase`, `PresentationCore`, `PresentationFramework`) | Adds ~40-80 MB runtime, requires `<UseWPF>true</UseWPF>` in csproj, and changes the application model from CLI to GUI. Complete mismatch with a CLI tool invoked per hotkey. | Raw Win32 layered windows via CsWin32 |
+| WinForms (`System.Windows.Forms`) | Forces `Application.Run()` message loop model, adds ~10 MB of framework, and conflicts with the existing stateless CLI invocation model. `Application.Run()` blocks the main thread permanently. | Manual `GetMessage` loop on dedicated thread |
+| WinUI 3 / Windows App SDK | Requires MSIX packaging or sparse manifests, adds significant deployment complexity. Complete overkill for four colored rectangles. | Raw Win32 layered windows via CsWin32 |
+| GDI+ (`System.Drawing`) | GDI+ is deprecated on non-Windows platforms and adds an interop layer over GDI with no benefit for simple filled rectangles. Direct pixel writes into the DIB section are faster and require no extra package. | Direct 32-bit pixel buffer writes into `CreateDIBSection` buffer |
+| `Microsoft.Extensions.Hosting` (Generic Host) | The daemon is a foreground console process with a message pump thread, not a Windows Service. Generic Host adds DI container startup overhead (~50-100 ms, 5-15 MB) for no benefit. | Direct field/constructor wiring between DaemonRunner, KeyboardHook, and OverlayManager |
+| `System.Windows.Forms.NotifyIcon` | Project.md explicitly excludes system tray. | — |
+| Named pipes / sockets for IPC | The daemon process handles everything itself — hook + overlays. AHK calls `focus <direction>` for navigation (stateless, separate process). No IPC is needed between them. | Direct daemon process manages its own state |
+| Thread.Sleep polling loops | Polling CAPSLOCK state with `GetKeyState` in a loop is unreliable (missed edges) and burns CPU. | Event-driven WH_KEYBOARD_LL hook with zero polling |
+
+---
 
 ## Stack Patterns by Variant
 
-**If targeting Native AOT for sub-10ms startup:**
-- Add `<CsWin32RunAsBuildTask>true</CsWin32RunAsBuildTask>` to csproj
-- Add `"allowMarshaling": false` to `NativeMethods.json`
-- Add `[JsonSerializable(typeof(AppConfig))]` JsonSerializerContext for System.Text.Json
-- Add `<AllowUnsafeBlocks>true</AllowUnsafeBlocks>` (required by CsWin32 unsafe overloads)
-- Requires Visual Studio 2022 + Desktop C++ workload on build machine
-- Run `dotnet publish -r win-x64 -c Release -p:PublishAot=true`
+**If targeting .NET 8 (current, validated):**
+- All v2.0 features work as described. No changes to csproj.
+- `net8.0` target framework, CsWin32 0.3.269, all Win32 APIs available.
 
-**If targeting standard self-contained (simpler build, ~50ms startup — well within the 100ms target):**
-- Skip CsWin32RunAsBuildTask and allowMarshaling settings
-- Run `dotnet publish -r win-x64 -c Release --self-contained true -p:PublishSingleFile=true`
-- Produces a single .exe that requires no .NET runtime installed
-- Startup is ~40-80ms, comfortably under the 100ms hotkey budget
-- **Recommended starting point** — optimize to AOT only if profiling shows startup is too slow
+**If upgrading to .NET 10 (optional):**
+- Change `<TargetFramework>` to `net10.0`.
+- CsWin32 0.3.269 supports .NET Standard 1.0+, compatible with any .NET version.
+- No daemon/overlay API differences between .NET 8 and .NET 10 for Win32 P/Invoke.
+- Potential benefit: .NET 10 performance improvements to Marshal and P/Invoke infrastructure.
+- Risk: System.CommandLine 2.0.3 compatibility with .NET 10 should be verified.
 
-**If starting with framework-dependent (for development iteration speed):**
-- Run `dotnet run -- left` during development
-- No publish step needed
-- Assumes .NET 8 runtime is installed (developer machine always has it)
-- JIT startup ~150-200ms — fine for testing, exceeds production budget
+**If adding more than 4 overlay directions (e.g., diagonal):**
+- Pattern scales — one overlay window per direction, all using same CreateWindowEx + UpdateLayeredWindow approach.
+- Performance: each layered window is tiny (covers only the target window). 4-8 windows is negligible.
+
+---
 
 ## Version Compatibility
 
 | Package | Compatible With | Notes |
 |---------|-----------------|-------|
-| `System.CommandLine 2.0.3` | .NET 8.0, .NET Standard 2.0 | Stable release Feb 2026. AOT-capable. Backwards compatible from beta5 with migration guide needed if coming from 2.0.0-beta4 or earlier. |
-| `Microsoft.Windows.CsWin32 0.3.269` | .NET 8+, C# 12, Roslyn source generators | Released Jan 2026. Requires `<AllowUnsafeBlocks>true</AllowUnsafeBlocks>`. AOT mode requires `CsWin32RunAsBuildTask=true` and `allowMarshaling: false`. |
-| `System.Text.Json` (in-box) | .NET 8.0 | No additional package needed. Source generation for AOT requires `[JsonSerializable]` + `JsonSerializerContext` subclass. |
-| .NET 8 SDK | Windows x64, Arm64 | Native AOT targets win-x64 and win-arm64. Win32 window APIs are x64/x86 compatible; no ARM-specific considerations for user32/dwmapi. |
+| `Microsoft.Windows.CsWin32 0.3.269` | .NET 8, .NET 10, C# 12/13 | All v2.0 Win32 APIs (SetWindowsHookEx, UpdateLayeredWindow, CreateDIBSection, RegisterClassEx) are in Win32Metadata. Add to NativeMethods.txt — no version upgrade needed. |
+| Win32 `WH_KEYBOARD_LL` | Windows 2000+ | Available on all supported Windows versions. 1-second hook timeout enforced since Windows 10 1709 — callback must return fast. |
+| Win32 layered windows (`WS_EX_LAYERED`) | Windows 2000+ for top-level; Windows 8+ for child windows | All overlays are top-level — no child window restriction applies. |
+| Win32 `UpdateLayeredWindow` | Windows 2000+ (Windows 8.1+ API set) | Available on all relevant Windows 10/11 versions. |
+| `System.CommandLine 2.0.3` | .NET 8, .NET 10 | Validated for .NET 8. .NET 10 compatibility: the package targets netstandard2.0 so it is compatible, but verify against .NET 10 RTM if upgrading. |
+
+---
 
 ## Sources
 
-- [System.CommandLine overview — Microsoft Learn](https://learn.microsoft.com/en-us/dotnet/standard/commandline/) — current status, AOT compatibility, NuGet package details (updated 2025-10-21)
-- [Microsoft.Windows.CsWin32 GitHub](https://github.com/microsoft/CsWin32) — version 0.3.269, AOT support, NativeMethods.json config
-- [CsWin32 AOT support discussion #1169](https://github.com/microsoft/CsWin32/discussions/1169) — AOT configuration requirements, `CsWin32RunAsBuildTask`, `allowMarshaling` — MEDIUM confidence (GitHub discussion, not official docs)
-- [Native AOT deployment overview — Microsoft Learn](https://learn.microsoft.com/en-us/dotnet/core/deploying/native-aot/) — startup time benchmarks, P/Invoke compatibility, platform support (updated 2026-01-08)
-- [Native interoperability best practices — Microsoft Learn](https://learn.microsoft.com/en-us/dotnet/standard/native-interop/best-practices) — LibraryImport vs DllImport, SafeHandle, blittable types (updated 2026-01-08)
-- [P/Invoke source generation — Microsoft Learn](https://learn.microsoft.com/en-us/dotnet/standard/native-interop/pinvoke-source-generation) — LibraryImport source generator details
-- [NuGet: System.CommandLine 2.0.3](https://www.nuget.org/packages/System.CommandLine) — stable release 2026-02-10, 70M total downloads
-- [NuGet: Microsoft.Windows.CsWin32 0.3.269](https://www.nuget.org/packages/Microsoft.Windows.CsWin32) — released 2026-01-16, stable
+- [SetWindowsHookExA — Microsoft Learn (Win32 API docs)](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setwindowshookexa) — WH_KEYBOARD_LL value (13), hmod null rules, global-only scope, architecture matching requirements — HIGH confidence
+- [KBDLLHOOKSTRUCT — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-kbdllhookstruct) — vkCode, flags bit layout (bit 7 = LLKHF_UP for key release) — HIGH confidence
+- [UpdateLayeredWindow — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-updatelayeredwindow) — ULW_ALPHA, BLENDFUNCTION, premultiplied alpha requirement — HIGH confidence
+- [SetLayeredWindowAttributes — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setlayeredwindowattributes) — WS_EX_LAYERED creation requirement — HIGH confidence
+- [CsWin32 Issue #245 — SetWindowsHookEx difficulty](https://github.com/microsoft/CsWin32/issues/245) — message loop requirement confirmed by maintainer, closed as completed — MEDIUM confidence (issue, not official docs)
+- [CsWin32 Discussion #248 — SetWindowsHookEx](https://github.com/microsoft/CsWin32/discussions/248) — message pump architecture guidance, delegate lifetime — MEDIUM confidence (community discussion)
+- [CsWin32 Discussion #750 — RegisterClassEx error 87](https://github.com/microsoft/CsWin32/discussions/750) — HINSTANCE must use Marshal.GetHINSTANCE, not zero — MEDIUM confidence (community confirmed fix)
+- [Microsoft.Windows.CsWin32 on NuGet](https://www.nuget.org/packages/Microsoft.Windows.CsWin32) — version 0.3.269 is current stable (Jan 16 2026) — HIGH confidence
+- [LowLevelKeyboardProc callback — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/winmsg/lowlevelkeyboardproc) — callback invocation model, nCode values — HIGH confidence
+- [Extended Window Styles — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/winmsg/extended-window-styles) — WS_EX_TOOLWINDOW, WS_EX_NOACTIVATE, WS_EX_LAYERED, WS_EX_TRANSPARENT definitions — HIGH confidence
 
 ---
-*Stack research for: Windows directional window focus navigation CLI tool*
-*Researched: 2026-02-26*
+*Stack research for: Window focus navigation v2.0 — daemon mode with keyboard hook and transparent overlay rendering*
+*Researched: 2026-02-28*
