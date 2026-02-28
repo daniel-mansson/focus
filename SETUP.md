@@ -200,11 +200,11 @@ For most users that expands to something like `C:\Users\YourName\AppData\Roaming
 
 | Field | Type | Values | Default | Description |
 |---|---|---|---|---|
-| `strategy` | string | `balanced`, `strongAxisBias`, `closestInDirection`, `edgeMatching`, `edgeProximity` | `balanced` | Default scoring strategy for direction navigation |
+| `strategy` | string | `balanced`, `strongAxisBias`, `closestInDirection`, `edgeMatching`, `edgeProximity`, `axisOnly` | `balanced` | Default scoring strategy for direction navigation |
 | `wrap` | string | `noOp`, `wrap`, `beep` | `noOp` | Behavior when no window is found in the requested direction |
 | `exclude` | array | glob patterns | `[]` | Process names to exclude from window enumeration |
 
-Note: JSON field values use camelCase (e.g., `strongAxisBias`, `closestInDirection`, `edgeMatching`, `edgeProximity`, `noOp`). CLI flags use kebab-case (e.g., `--strategy strong-axis-bias`, `--strategy edge-matching`, `--strategy edge-proximity`).
+Note: JSON field values use camelCase (e.g., `strongAxisBias`, `closestInDirection`, `edgeMatching`, `edgeProximity`, `axisOnly`, `noOp`). CLI flags use kebab-case (e.g., `--strategy strong-axis-bias`, `--strategy edge-matching`, `--strategy edge-proximity`, `--strategy axis-only`).
 
 **Wrap behavior:**
 
@@ -263,12 +263,12 @@ focus <direction> [options]
 
 | Flag | Values / Syntax | Description |
 |---|---|---|
-| `--strategy <name>` | `balanced`, `strong-axis-bias`, `closest-in-direction`, `edge-matching`, `edge-proximity` | Override the scoring strategy for this invocation |
+| `--strategy <name>` | `balanced`, `strong-axis-bias`, `closest-in-direction`, `edge-matching`, `edge-proximity`, `axis-only` | Override the scoring strategy for this invocation |
 | `--wrap <behavior>` | `no-op`, `wrap`, `beep` | Override wrap-around behavior for this invocation |
 | `--exclude <patterns>` | One or more glob patterns | Replace the exclude list for this invocation (does not merge with config) |
 | `--verbose`, `-v` | — | Print navigation details (origin window, candidates, scores) to stderr |
 | `--debug enumerate` | — | List all detected navigable windows with bounds and process info |
-| `--debug score <dir>` | `left`, `right`, `up`, `down` | Show scoring comparison across all five strategies for the given direction |
+| `--debug score <dir>` | `left`, `right`, `up`, `down` | Show scoring comparison across all six strategies for the given direction |
 | `--debug config` | — | Show the resolved configuration (config file path, strategy, wrap, exclude list) |
 | `--init-config` | — | Write a default config.json to `%APPDATA%\focus\config.json` |
 
@@ -345,13 +345,21 @@ This differs from edge-matching, which uses the far edge of the source (for a le
 
 Use this when: you want navigation that feels like "which window is closest to where I am, on this side" rather than "which window is closest to the far side of my window."
 
+**axis-only**
+
+Uses pure center-to-center 1D distance along the movement axis. For a leftward move, compares the source center X to each candidate's center X and picks the one closest to the left. The perpendicular axis (Y for left/right, X for up/down) is completely ignored — no secondary weighting, no alignment scoring, just raw 1D distance.
+
+This is the simplest strategy: whichever window's center is nearest along the movement axis wins. It does not consider window edges, sizes, or perpendicular offset.
+
+Use this when: you want the most predictable, geometry-minimal navigation — the window whose center is closest along the movement axis always wins, regardless of vertical or horizontal offset.
+
 **Comparing strategies on your current layout:**
 
 ```
 focus --debug score right
 ```
 
-This command shows a table of all candidate windows to the right of the current window, with scores from all five strategies side by side. The active strategy is marked with an asterisk. Use this to pick the strategy that matches your intuition for a given layout.
+This command shows a table of all candidate windows to the right of the current window, with scores from all six strategies side by side. The active strategy is marked with an asterisk. Use this to pick the strategy that matches your intuition for a given layout.
 
 ---
 
