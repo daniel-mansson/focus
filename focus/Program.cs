@@ -19,7 +19,7 @@ var directionArgument = new Argument<string?>("direction")
 
 var strategyOption = new Option<string?>("--strategy")
 {
-    Description = "Scoring strategy: balanced | strong-axis-bias | closest-in-direction | edge-matching"
+    Description = "Scoring strategy: balanced | strong-axis-bias | closest-in-direction | edge-matching | edge-proximity"
 };
 
 var wrapOption = new Option<string?>("--wrap")
@@ -86,11 +86,12 @@ rootCommand.SetAction(parseResult =>
             "strong-axis-bias"      => Strategy.StrongAxisBias,
             "closest-in-direction"  => Strategy.ClosestInDirection,
             "edge-matching"         => Strategy.EdgeMatching,
+            "edge-proximity"        => Strategy.EdgeProximity,
             _                       => null
         };
         if (parsed is null)
         {
-            Console.Error.WriteLine($"Error: Unknown strategy '{strategyValue}'. Use: balanced, strong-axis-bias, closest-in-direction, edge-matching");
+            Console.Error.WriteLine($"Error: Unknown strategy '{strategyValue}'. Use: balanced, strong-axis-bias, closest-in-direction, edge-matching, edge-proximity");
             return 2;
         }
         config.Strategy = parsed.Value;
@@ -179,13 +180,14 @@ rootCommand.SetAction(parseResult =>
                 var (windows, _) = enumerator.GetNavigableWindows();
                 var filtered = ExcludeFilter.Apply(windows, config.Exclude);
 
-                // Run all four strategies for comparison
+                // Run all five strategies for comparison
                 var balanced   = NavigationService.GetRankedCandidates(filtered, scoreDirection.Value, Strategy.Balanced);
                 var strongBias = NavigationService.GetRankedCandidates(filtered, scoreDirection.Value, Strategy.StrongAxisBias);
                 var closestDir = NavigationService.GetRankedCandidates(filtered, scoreDirection.Value, Strategy.ClosestInDirection);
                 var edgeMatch  = NavigationService.GetRankedCandidates(filtered, scoreDirection.Value, Strategy.EdgeMatching);
+                var edgeProx   = NavigationService.GetRankedCandidates(filtered, scoreDirection.Value, Strategy.EdgeProximity);
 
-                PrintScoreTable(balanced, strongBias, closestDir, edgeMatch, scoreDirection.Value, config.Strategy);
+                PrintScoreTable(balanced, strongBias, closestDir, edgeMatch, edgeProx, scoreDirection.Value, config.Strategy);
                 return 0;
             }
             catch (Exception ex)
@@ -306,15 +308,17 @@ static void PrintScoreTable(
     List<(WindowInfo Window, double Score)> strongBias,
     List<(WindowInfo Window, double Score)> closestDir,
     List<(WindowInfo Window, double Score)> edgeMatch,
+    List<(WindowInfo Window, double Score)> edgeProx,
     Direction direction,
     Strategy activeStrategy)
 {
-    // Build a union set of all window HWNDs across all four lists
+    // Build a union set of all window HWNDs across all five lists
     var allHwnds = new Dictionary<nint, WindowInfo>();
     foreach (var (w, _) in balanced)   allHwnds.TryAdd(w.Hwnd, w);
     foreach (var (w, _) in strongBias) allHwnds.TryAdd(w.Hwnd, w);
     foreach (var (w, _) in closestDir) allHwnds.TryAdd(w.Hwnd, w);
     foreach (var (w, _) in edgeMatch)  allHwnds.TryAdd(w.Hwnd, w);
+    foreach (var (w, _) in edgeProx)   allHwnds.TryAdd(w.Hwnd, w);
 
     if (allHwnds.Count == 0)
     {
@@ -327,21 +331,23 @@ static void PrintScoreTable(
     var strongBiasScores = strongBias.ToDictionary(x => x.Window.Hwnd, x => x.Score);
     var closestDirScores = closestDir.ToDictionary(x => x.Window.Hwnd, x => x.Score);
     var edgeMatchScores  = edgeMatch.ToDictionary(x => x.Window.Hwnd, x => x.Score);
+    var edgeProxScores   = edgeProx.ToDictionary(x => x.Window.Hwnd, x => x.Score);
 
     // Active strategy marker columns
     string balancedHeader   = "BALANCED"    + (activeStrategy == Strategy.Balanced           ? "*" : " ");
     string strongBiasHeader = "STRONG-AXIS" + (activeStrategy == Strategy.StrongAxisBias     ? "*" : " ");
     string closestHeader    = "CLOSEST"     + (activeStrategy == Strategy.ClosestInDirection  ? "*" : " ");
     string edgeMatchHeader  = "EDGE-MATCH"  + (activeStrategy == Strategy.EdgeMatching        ? "*" : " ");
+    string edgeProxHeader   = "EDGE-PROX"   + (activeStrategy == Strategy.EdgeProximity       ? "*" : " ");
 
     const int titleWidth  = 34;
     const int scoreWidth  = 12;
 
     // Header
     Console.WriteLine(
-        $"{"WINDOW",-titleWidth} {balancedHeader,scoreWidth} {strongBiasHeader,scoreWidth} {closestHeader,scoreWidth} {edgeMatchHeader,scoreWidth}");
+        $"{"WINDOW",-titleWidth} {balancedHeader,scoreWidth} {strongBiasHeader,scoreWidth} {closestHeader,scoreWidth} {edgeMatchHeader,scoreWidth} {edgeProxHeader,scoreWidth}");
     Console.WriteLine(
-        $"{new string('-', titleWidth)} {new string('-', scoreWidth)} {new string('-', scoreWidth)} {new string('-', scoreWidth)} {new string('-', scoreWidth)}");
+        $"{new string('-', titleWidth)} {new string('-', scoreWidth)} {new string('-', scoreWidth)} {new string('-', scoreWidth)} {new string('-', scoreWidth)} {new string('-', scoreWidth)}");
 
     // Sort rows: by balanced score ascending if available, else by hwnd
     var sortedHwnds = allHwnds.Keys
@@ -358,9 +364,10 @@ static void PrintScoreTable(
         string strongBiasScore = strongBiasScores.TryGetValue(hwnd, out var sbs) ? sbs.ToString("F1") : "-";
         string closestDirScore = closestDirScores.TryGetValue(hwnd, out var cs)  ? cs.ToString("F1")  : "-";
         string edgeMatchScore  = edgeMatchScores.TryGetValue(hwnd, out var ems)  ? ems.ToString("F1") : "-";
+        string edgeProxScore   = edgeProxScores.TryGetValue(hwnd, out var eps)   ? eps.ToString("F1") : "-";
 
         Console.WriteLine(
-            $"{label,-titleWidth} {balancedScore,scoreWidth} {strongBiasScore,scoreWidth} {closestDirScore,scoreWidth} {edgeMatchScore,scoreWidth}");
+            $"{label,-titleWidth} {balancedScore,scoreWidth} {strongBiasScore,scoreWidth} {closestDirScore,scoreWidth} {edgeMatchScore,scoreWidth} {edgeProxScore,scoreWidth}");
     }
 
     Console.WriteLine();

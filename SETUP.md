@@ -200,11 +200,11 @@ For most users that expands to something like `C:\Users\YourName\AppData\Roaming
 
 | Field | Type | Values | Default | Description |
 |---|---|---|---|---|
-| `strategy` | string | `balanced`, `strongAxisBias`, `closestInDirection`, `edgeMatching` | `balanced` | Default scoring strategy for direction navigation |
+| `strategy` | string | `balanced`, `strongAxisBias`, `closestInDirection`, `edgeMatching`, `edgeProximity` | `balanced` | Default scoring strategy for direction navigation |
 | `wrap` | string | `noOp`, `wrap`, `beep` | `noOp` | Behavior when no window is found in the requested direction |
 | `exclude` | array | glob patterns | `[]` | Process names to exclude from window enumeration |
 
-Note: JSON field values use camelCase (e.g., `strongAxisBias`, `closestInDirection`, `edgeMatching`, `noOp`). CLI flags use kebab-case (e.g., `--strategy strong-axis-bias`, `--strategy edge-matching`).
+Note: JSON field values use camelCase (e.g., `strongAxisBias`, `closestInDirection`, `edgeMatching`, `edgeProximity`, `noOp`). CLI flags use kebab-case (e.g., `--strategy strong-axis-bias`, `--strategy edge-matching`, `--strategy edge-proximity`).
 
 **Wrap behavior:**
 
@@ -263,12 +263,12 @@ focus <direction> [options]
 
 | Flag | Values / Syntax | Description |
 |---|---|---|
-| `--strategy <name>` | `balanced`, `strong-axis-bias`, `closest-in-direction`, `edge-matching` | Override the scoring strategy for this invocation |
+| `--strategy <name>` | `balanced`, `strong-axis-bias`, `closest-in-direction`, `edge-matching`, `edge-proximity` | Override the scoring strategy for this invocation |
 | `--wrap <behavior>` | `no-op`, `wrap`, `beep` | Override wrap-around behavior for this invocation |
 | `--exclude <patterns>` | One or more glob patterns | Replace the exclude list for this invocation (does not merge with config) |
 | `--verbose`, `-v` | — | Print navigation details (origin window, candidates, scores) to stderr |
 | `--debug enumerate` | — | List all detected navigable windows with bounds and process info |
-| `--debug score <dir>` | `left`, `right`, `up`, `down` | Show scoring comparison across all three strategies for the given direction |
+| `--debug score <dir>` | `left`, `right`, `up`, `down` | Show scoring comparison across all five strategies for the given direction |
 | `--debug config` | — | Show the resolved configuration (config file path, strategy, wrap, exclude list) |
 | `--init-config` | — | Write a default config.json to `%APPDATA%\focus\config.json` |
 
@@ -331,13 +331,27 @@ Picks the nearest window in the general direction using center-to-center distanc
 
 Use this when: your windows are scattered and you just want the nearest one in the approximate direction.
 
+**edge-matching**
+
+Uses the far edge of the source window as a reference. For a leftward move, compares the source's right edge to each candidate's right edge; the candidate whose right edge is closest (from the left) to the source's right edge wins. Pure 1D comparison, ignoring the perpendicular axis entirely.
+
+Use this when: you want navigation based on how much a candidate window "extends" past a reference edge of the current window.
+
+**edge-proximity**
+
+Uses the near edge of both source and candidate — the edge facing the direction of movement. For a rightward move, compares source's right edge to each candidate's right edge; the candidate whose right edge extends least beyond the source's right edge wins. Pure 1D comparison, ignoring the perpendicular axis entirely.
+
+This differs from edge-matching, which uses the far edge of the source (for a leftward move, edge-matching compares source's right edge to candidate's right edge; edge-proximity compares source's left edge to candidate's left edge).
+
+Use this when: you want navigation that feels like "which window is closest to where I am, on this side" rather than "which window is closest to the far side of my window."
+
 **Comparing strategies on your current layout:**
 
 ```
 focus --debug score right
 ```
 
-This command shows a table of all candidate windows to the right of the current window, with scores from all three strategies side by side. The active strategy is marked with an asterisk. Use this to pick the strategy that matches your intuition for a given layout.
+This command shows a table of all candidate windows to the right of the current window, with scores from all five strategies side by side. The active strategy is marked with an asterisk. Use this to pick the strategy that matches your intuition for a given layout.
 
 ---
 
@@ -385,7 +399,7 @@ Try a different strategy. Run the score debug command to see how windows are ran
 focus --debug score <direction>
 ```
 
-The output shows scores for all three strategies. If a different strategy would have chosen the window you wanted, switch to it either in config.json or via `--strategy` on the relevant AHK binding.
+The output shows scores for all five strategies. If a different strategy would have chosen the window you wanted, switch to it either in config.json or via `--strategy` on the relevant AHK binding.
 
 **UWP apps (Calculator, Settings, etc.) are not detected**
 
