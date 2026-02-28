@@ -71,10 +71,11 @@ Plans:
   2. Pressing and holding CAPSLOCK prints a debug log line; releasing CAPSLOCK prints another — hook fires under fullscreen app focus and continues firing after 2+ minutes idle
   3. AHK-synthesized key events (LLKHF_INJECTED) do not trigger CAPSLOCK hold detection — the overlay does not flicker when AHK fires `focus <direction>`
   4. Pressing Ctrl+C or terminating the process destroys all resources and unhooks the keyboard hook — no orphaned hooks remain after exit
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 04-01: TBD
+- [ ] 04-01-PLAN.md — Project setup (csproj WinForms, NativeMethods.txt), KeyEvent record, KeyboardHookHandler (WH_KEYBOARD_LL + CAPSLOCK suppression + LLKHF_INJECTED filter), CapsLockMonitor (Channel consumer + state machine), DaemonMutex (single-instance replace)
+- [ ] 04-02-PLAN.md — TrayIcon (DaemonApplicationContext + NotifyIcon + wake recovery), DaemonCommand orchestrator (lifecycle management), Program.cs daemon subcommand wiring, manual verification
 
 #### Phase 5: Overlay Windows
 **Goal**: Users can see correctly rendered colored border overlays appear on screen — transparent, click-through, absent from Alt+Tab, and visually correct — positioned at a hardcoded test rectangle before navigation is wired
@@ -115,6 +116,6 @@ Phases execute in numeric order: 4 → 5 → 6
 | 1. Win32 Foundation | v1.0 | 2/2 | Complete | 2026-02-27 |
 | 2. Navigation Pipeline | v1.0 | 2/2 | Complete | 2026-02-27 |
 | 3. Config, Strategies & Complete CLI | v1.0 | 2/2 | Complete | 2026-02-28 |
-| 4. Daemon Core | v2.0 | 0/? | Not started | - |
+| 4. Daemon Core | v2.0 | 0/2 | Not started | - |
 | 5. Overlay Windows | v2.0 | 0/? | Not started | - |
 | 6. Navigation Integration | v2.0 | 0/? | Not started | - |
