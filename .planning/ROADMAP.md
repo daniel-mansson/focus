@@ -12,9 +12,9 @@ Three phases deliver a complete directional window focus navigator for Windows. 
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Win32 Foundation** - Project scaffold, CsWin32 interop, window enumeration and filtering pipeline, DPI awareness manifest, enumerate debug command
-- [ ] **Phase 2: Navigation Pipeline** - All four directions, geometry resolution, balanced scoring, focus activation, multi-monitor support, exit codes
-- [ ] **Phase 3: Config, Strategies & Complete CLI** - JSON config, CLI argument parsing and overrides, all three weighting strategies, wrap-around behavior, exclude list, output behavior, score and config debug commands
+- [x] **Phase 1: Win32 Foundation** - Project scaffold, CsWin32 interop, window enumeration and filtering pipeline, DPI awareness manifest, enumerate debug command
+- [x] **Phase 2: Navigation Pipeline** - All four directions, geometry resolution, balanced scoring, focus activation, multi-monitor support, exit codes
+- [x] **Phase 3: Config, Strategies & Complete CLI** - JSON config, CLI argument parsing and overrides, all three weighting strategies, wrap-around behavior, exclude list, output behavior, score and config debug commands
 
 ## Phase Details
 
@@ -54,10 +54,10 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. The tool is completely silent on a successful focus switch; running with `--verbose` shows scored candidates to stderr
   4. Apps listed in the config exclude list (by process name with wildcard/regex support) are invisible to the navigator
   5. Wrap-around behavior (wrap / no-op / beep) is configurable in the JSON config and overridable via CLI flag
-**Plans:** 2 plans
+**Plans:** 2/2 plans executed
 Plans:
 - [x] 03-01-PLAN.md — Config infrastructure (FocusConfig POCO, ExcludeFilter, FileSystemGlobbing NuGet, MessageBeep) + scoring strategies (strong-axis-bias, closest-in-direction) in NavigationService
-- [ ] 03-02-PLAN.md — FocusActivator wrap-around behavior + complete CLI wiring (--strategy, --wrap, --exclude, --init-config, --debug score, --debug config, config merge)
+- [x] 03-02-PLAN.md — FocusActivator wrap-around behavior + complete CLI wiring (--strategy, --wrap, --exclude, --init-config, --debug score, --debug config, config merge)
 
 ## Progress
 
@@ -68,4 +68,4 @@ Phases execute in numeric order: 1 → 2 → 3
 |-------|----------------|--------|-----------|
 | 1. Win32 Foundation | 2/2 | Complete | 2026-02-27 |
 | 2. Navigation Pipeline | 2/2 | Complete | 2026-02-27 |
-| 3. Config, Strategies & Complete CLI | 1/2 | In progress | - |
+| 3. Config, Strategies & Complete CLI | 2/2 | Complete | 2026-02-28 |

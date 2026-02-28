@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-02-28T10:54:04Z"
+last_updated: "2026-02-28T11:01:00Z"
 progress:
   total_phases: 3
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 7
-  completed_plans: 5
+  completed_plans: 6
 ---
 
 # Project State
@@ -23,11 +23,11 @@ See: .planning/PROJECT.md (updated 2026-02-26)
 ## Current Position
 
 Phase: 3 of 3 (Config, Strategies, Complete CLI)
-Plan: 1 of 3 in current phase (COMPLETE)
-Status: In progress
-Last activity: 2026-02-28 — Plan 03-01 complete
+Plan: 2 of 3 in current phase (COMPLETE)
+Status: Complete — all plans finished
+Last activity: 2026-02-28 — Plan 03-02 complete (final plan — v1.0 feature complete)
 
-Progress: [███████░░░] 70%
+Progress: [█████████░] 86%
 
 ## Performance Metrics
 
@@ -42,10 +42,10 @@ Progress: [███████░░░] 70%
 |-------|-------|-------|----------|
 | 01-win32-foundation | 2 | 10 min | 5 min |
 | 02-navigation-pipeline | 2 | 4 min | 2 min |
-| 03-config-strategies-complete-cli | 1 | 2 min | 2 min |
+| 03-config-strategies-complete-cli | 2 | 6 min | 3 min |
 
 **Recent Trend:**
-- Last 5 plans: 7 min, 3 min, 2 min, 2 min, 2 min
+- Last 5 plans: 3 min, 2 min, 2 min, 2 min, 4 min
 - Trend: Fast execution
 
 *Updated after each plan completion*
@@ -78,6 +78,9 @@ Recent decisions affecting current work:
 - 03-01: ScoreStrongAxisBias secondaryWeight=5.0 (vs balanced 2.0) — more aggressive lane preference per NAV-08
 - 03-01: ScoreClosestInDirection uses center-to-center Euclidean distance with half-plane cone (not nearest-edge) — locked decision
 - 03-01: Existing GetRankedCandidates overloads delegate to Strategy.Balanced — zero-change backward compatibility
+- 03-02: ActivateWithWrap/HandleWrap get [SupportedOSPlatform(windows6.0.6000)] on individual methods (not class-level) — NavigationService requires Vista+; class stays at windows5.0 for TryActivateWindow/ActivateBestCandidate
+- 03-02: MessageBeep cast uses global:: alias — (global::Windows.Win32.UI.WindowsAndMessaging.MESSAGEBOX_STYLE)0xFFFFFFFF — required due to Focus.Windows namespace shadowing Windows.Win32
+- 03-02: --exclude CLI flag replaces config.Exclude entirely (not merged) — locked decision from planning
 
 ### Pending Todos
 
@@ -91,5 +94,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-28
-Stopped at: Completed 03-config-strategies-complete-cli/03-01-PLAN.md (FocusConfig POCO with Strategy/WrapBehavior enums, ExcludeFilter glob matching, 3-strategy NavigationService dispatch)
+Stopped at: Completed 03-config-strategies-complete-cli/03-02-PLAN.md (complete CLI wiring — wrap/beep/no-op, --strategy/--wrap/--exclude/--init-config, --debug score, --debug config; v1.0 feature complete)
 Resume file: None

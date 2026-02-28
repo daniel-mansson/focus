@@ -32,26 +32,26 @@ Requirements for initial release. Each maps to roadmap phases.
 ### Focus Activation
 
 - [x] **FOCUS-01**: Tool switches focus using SetForegroundWindow with SendInput ALT bypass
-- [ ] **FOCUS-02**: Tool supports configurable wrap-around behavior (wrap / no-op / beep)
+- [x] **FOCUS-02**: Tool supports configurable wrap-around behavior (wrap / no-op / beep)
 
 ### Configuration & CLI
 
 - [x] **CFG-01**: Tool reads settings from a JSON config file
-- [ ] **CFG-02**: User invokes tool with direction argument (e.g., `focus left`)
-- [ ] **CFG-03**: User can override config settings via CLI flags
+- [x] **CFG-02**: User invokes tool with direction argument (e.g., `focus left`)
+- [x] **CFG-03**: User can override config settings via CLI flags
 - [x] **CFG-04**: Config file supports strategy, wrap behavior, and exclude list settings
 
 ### Output & Integration
 
-- [ ] **OUT-01**: Tool is silent by default (no output on success)
+- [x] **OUT-01**: Tool is silent by default (no output on success)
 - [x] **OUT-02**: Tool returns meaningful exit codes (0=switched, 1=no candidate, 2=error)
-- [ ] **OUT-03**: User can enable verbose/debug output showing scored candidates via --verbose flag
+- [x] **OUT-03**: User can enable verbose/debug output showing scored candidates via --verbose flag
 
 ### Debug & Testing
 
 - [x] **DBG-01**: User can run `--debug enumerate` to list all detected windows with their properties (hwnd, title, bounds, cloaked status)
-- [ ] **DBG-02**: User can run `--debug score <direction>` to show all candidates with their scores without switching focus
-- [ ] **DBG-03**: User can run `--debug config` to show resolved config (defaults + file + overrides)
+- [x] **DBG-02**: User can run `--debug score <direction>` to show all candidates with their scores without switching focus
+- [x] **DBG-03**: User can run `--debug config` to show resolved config (defaults + file + overrides)
 
 ## v2 Requirements
 
@@ -111,17 +111,17 @@ Which phases cover which requirements. Updated during roadmap creation.
 | NAV-08 | Phase 3 | Complete |
 | NAV-09 | Phase 3 | Complete |
 | FOCUS-01 | Phase 2 | Complete |
-| FOCUS-02 | Phase 3 | Pending |
+| FOCUS-02 | Phase 3 | Complete |
 | CFG-01 | Phase 3 | Complete |
-| CFG-02 | Phase 3 | Pending |
-| CFG-03 | Phase 3 | Pending |
+| CFG-02 | Phase 3 | Complete |
+| CFG-03 | Phase 3 | Complete |
 | CFG-04 | Phase 3 | Complete |
-| OUT-01 | Phase 3 | Pending |
+| OUT-01 | Phase 3 | Complete |
 | OUT-02 | Phase 2 | Complete |
-| OUT-03 | Phase 3 | Pending |
+| OUT-03 | Phase 3 | Complete |
 | DBG-01 | Phase 1 | Complete |
-| DBG-02 | Phase 3 | Pending |
-| DBG-03 | Phase 3 | Pending |
+| DBG-02 | Phase 3 | Complete |
+| DBG-03 | Phase 3 | Complete |
 
 **Coverage:**
 - v1 requirements: 28 total
@@ -130,4 +130,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-02-26*
-*Last updated: 2026-02-27 after plan 02-02 completion (FOCUS-01, OUT-02 marked complete)*
+*Last updated: 2026-02-28 after plan 03-02 completion (CFG-02, CFG-03, FOCUS-02, OUT-01, OUT-03, DBG-02, DBG-03 marked complete — all v1 requirements complete)*
