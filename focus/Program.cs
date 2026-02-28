@@ -19,7 +19,7 @@ var directionArgument = new Argument<string?>("direction")
 
 var strategyOption = new Option<string?>("--strategy")
 {
-    Description = "Scoring strategy: balanced | strong-axis-bias | closest-in-direction"
+    Description = "Scoring strategy: balanced | strong-axis-bias | closest-in-direction | edge-matching"
 };
 
 var wrapOption = new Option<string?>("--wrap")
