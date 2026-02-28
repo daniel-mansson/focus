@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-02-28T20:46:46Z"
+last_updated: "2026-02-28T21:01:00Z"
 progress:
   total_phases: 3
   completed_phases: 3
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-02-26)
 Phase: 3 of 3 (Config, Strategies, Complete CLI)
 Plan: 2 of 3 in current phase (COMPLETE)
 Status: Complete — all plans finished
-Last activity: 2026-02-28 - Completed quick task 3: Document edge-matching strategy in --help and SETUP.md
+Last activity: 2026-02-28 - Completed quick task 4: Add EdgeProximity navigation strategy (near-edge-to-near-edge comparison)
 
 Progress: [█████████░] 86%
 
@@ -84,6 +84,9 @@ Recent decisions affecting current work:
 - quick-02: _fgBoundsCache reset at GetRankedCandidates entry — all candidates in one cycle share the same foreground snapshot
 - quick-02: ScoreEdgeMatching falls back to ScoreCandidate (Balanced) when DwmGetWindowAttribute fails — graceful degradation
 - quick-02: Edge-matching strict inequality (< not <=) — consistent with existing strategy directional filters
+- quick-04: EdgeProximity uses NEAR edge (facing direction) vs EdgeMatching FAR edge — Left compares Left edges, Right compares Right edges
+- quick-04: EdgeProximity is pure 1D, perpendicular axis ignored — same structure as EdgeMatching
+- quick-04: EdgeProximity reuses _fgBoundsCache from ScoreEdgeMatching — no additional caching infrastructure
 
 ### Pending Todos
 
@@ -101,9 +104,10 @@ None yet.
 | 1 | Create setup guide for project with AutoHotkey | 2026-02-28 | 933dc6a | [1-create-setup-guide-for-project-with-auto](./quick/1-create-setup-guide-for-project-with-auto/) |
 | 2 | Create edge-matching navigation strategy | 2026-02-28 | 9415af0 | [2-create-edge-matching-navigation-strategy](./quick/2-create-edge-matching-navigation-strategy/) |
 | 3 | Document edge-matching strategy in --help and SETUP.md | 2026-02-28 | 5381cb3 | [3-make-sure-the-edge-matching-strategy-is-](./quick/3-make-sure-the-edge-matching-strategy-is-/) |
+| 4 | Add EdgeProximity strategy (near-edge-to-near-edge comparison) | 2026-02-28 | 8c3e540 | [4-add-edge-proximity-strategy-using-near-e](./quick/4-add-edge-proximity-strategy-using-near-e/) |
 
 ## Session Continuity
 
 Last session: 2026-02-28
-Stopped at: Completed quick task 3 — edge-matching documentation (--strategy help text, SETUP.md config table, camelCase note, CLI reference table)
+Stopped at: Completed quick task 4 — EdgeProximity strategy (enum, ScoreEdgeProximity, CLI wiring, five-column debug table, SETUP.md documentation)
 Resume file: None
