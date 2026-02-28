@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-02-28T21:01:00Z"
+last_updated: "2026-02-28T21:09:54Z"
 progress:
   total_phases: 3
   completed_phases: 3
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-02-26)
 Phase: 3 of 3 (Config, Strategies, Complete CLI)
 Plan: 2 of 3 in current phase (COMPLETE)
 Status: Complete — all plans finished
-Last activity: 2026-02-28 - Completed quick task 4: Add EdgeProximity navigation strategy (near-edge-to-near-edge comparison)
+Last activity: 2026-02-28 - Completed quick task 5: Add AxisOnly navigation strategy (pure 1D center-to-center distance)
 
 Progress: [█████████░] 86%
 
@@ -87,6 +87,9 @@ Recent decisions affecting current work:
 - quick-04: EdgeProximity uses NEAR edge (facing direction) vs EdgeMatching FAR edge — Left compares Left edges, Right compares Right edges
 - quick-04: EdgeProximity is pure 1D, perpendicular axis ignored — same structure as EdgeMatching
 - quick-04: EdgeProximity reuses _fgBoundsCache from ScoreEdgeMatching — no additional caching infrastructure
+- quick-05: AxisOnly uses strict center inequality (< not <=) — consistent with all existing strategy filters
+- quick-05: ScoreAxisOnly takes origin directly (foreground window center already computed) — no _fgBoundsCache needed
+- quick-05: Score is raw 1D distance along movement axis; perpendicular axis entirely absent from calculation
 
 ### Pending Todos
 
@@ -105,9 +108,10 @@ None yet.
 | 2 | Create edge-matching navigation strategy | 2026-02-28 | 9415af0 | [2-create-edge-matching-navigation-strategy](./quick/2-create-edge-matching-navigation-strategy/) |
 | 3 | Document edge-matching strategy in --help and SETUP.md | 2026-02-28 | 5381cb3 | [3-make-sure-the-edge-matching-strategy-is-](./quick/3-make-sure-the-edge-matching-strategy-is-/) |
 | 4 | Add EdgeProximity strategy (near-edge-to-near-edge comparison) | 2026-02-28 | 8c3e540 | [4-add-edge-proximity-strategy-using-near-e](./quick/4-add-edge-proximity-strategy-using-near-e/) |
+| 5 | Add AxisOnly strategy (pure 1D center-to-center distance) | 2026-02-28 | abb5cfa | [5-add-axis-only-strategy-using-center-to-c](./quick/5-add-axis-only-strategy-using-center-to-c/) |
 
 ## Session Continuity
 
 Last session: 2026-02-28
-Stopped at: Completed quick task 4 — EdgeProximity strategy (enum, ScoreEdgeProximity, CLI wiring, five-column debug table, SETUP.md documentation)
+Stopped at: Completed quick task 5 — AxisOnly strategy (enum, ScoreAxisOnly, CLI wiring, six-column debug table, SETUP.md documentation)
 Resume file: None
