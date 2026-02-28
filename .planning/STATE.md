@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-02-28T11:06:28.725Z"
+last_updated: "2026-02-28T20:28:55Z"
 progress:
   total_phases: 3
   completed_phases: 3
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-02-26)
 Phase: 3 of 3 (Config, Strategies, Complete CLI)
 Plan: 2 of 3 in current phase (COMPLETE)
 Status: Complete — all plans finished
-Last activity: 2026-02-28 - Completed quick task 1: Create setup guide for project with AutoHotkey
+Last activity: 2026-02-28 - Completed quick task 2: Create edge-matching navigation strategy
 
 Progress: [█████████░] 86%
 
@@ -81,6 +81,9 @@ Recent decisions affecting current work:
 - 03-02: ActivateWithWrap/HandleWrap get [SupportedOSPlatform(windows6.0.6000)] on individual methods (not class-level) — NavigationService requires Vista+; class stays at windows5.0 for TryActivateWindow/ActivateBestCandidate
 - 03-02: MessageBeep cast uses global:: alias — (global::Windows.Win32.UI.WindowsAndMessaging.MESSAGEBOX_STYLE)0xFFFFFFFF — required due to Focus.Windows namespace shadowing Windows.Win32
 - 03-02: --exclude CLI flag replaces config.Exclude entirely (not merged) — locked decision from planning
+- quick-02: _fgBoundsCache reset at GetRankedCandidates entry — all candidates in one cycle share the same foreground snapshot
+- quick-02: ScoreEdgeMatching falls back to ScoreCandidate (Balanced) when DwmGetWindowAttribute fails — graceful degradation
+- quick-02: Edge-matching strict inequality (< not <=) — consistent with existing strategy directional filters
 
 ### Pending Todos
 
@@ -96,9 +99,10 @@ None yet.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 1 | Create setup guide for project with AutoHotkey | 2026-02-28 | 933dc6a | [1-create-setup-guide-for-project-with-auto](./quick/1-create-setup-guide-for-project-with-auto/) |
+| 2 | Create edge-matching navigation strategy | 2026-02-28 | 9415af0 | [2-create-edge-matching-navigation-strategy](./quick/2-create-edge-matching-navigation-strategy/) |
 
 ## Session Continuity
 
 Last session: 2026-02-28
-Stopped at: Completed 03-config-strategies-complete-cli/03-02-PLAN.md (complete CLI wiring — wrap/beep/no-op, --strategy/--wrap/--exclude/--init-config, --debug score, --debug config; v1.0 feature complete)
+Stopped at: Completed quick task 2 — edge-matching strategy (Strategy.EdgeMatching enum, ScoreEdgeMatching 1D scoring, --strategy edge-matching CLI, EDGE-MATCH debug column)
 Resume file: None
