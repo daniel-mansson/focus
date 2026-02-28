@@ -81,6 +81,63 @@ internal static class FocusActivator
         return 2; // exit code: candidates existed but none could be activated
     }
 
+    /// <summary>
+    /// Activates best candidate with wrap-around behavior when no candidates exist.
+    /// </summary>
+    [SupportedOSPlatform("windows6.0.6000")]
+    public static int ActivateWithWrap(
+        List<(WindowInfo Window, double Score)> candidates,
+        List<WindowInfo> allWindows,
+        Direction direction,
+        Strategy strategy,
+        WrapBehavior wrap,
+        bool verbose)
+    {
+        if (candidates.Count > 0)
+            return ActivateBestCandidate(candidates, verbose);
+
+        // No candidates in this direction — apply wrap behavior
+        return wrap switch
+        {
+            WrapBehavior.Wrap => HandleWrap(allWindows, direction, strategy, verbose),
+            WrapBehavior.Beep => HandleBeep(),
+            _ => 1  // NoOp: return exit code 1 (no candidates)
+        };
+    }
+
+    [SupportedOSPlatform("windows6.0.6000")]
+    private static int HandleWrap(
+        List<WindowInfo> allWindows, Direction direction, Strategy strategy, bool verbose)
+    {
+        var opposite = direction switch
+        {
+            Direction.Left  => Direction.Right,
+            Direction.Right => Direction.Left,
+            Direction.Up    => Direction.Down,
+            Direction.Down  => Direction.Up,
+            _ => direction
+        };
+
+        var wrapped = NavigationService.GetRankedCandidates(allWindows, opposite, strategy);
+        if (wrapped.Count == 0)
+            return 1; // Nothing in any direction
+
+        if (verbose)
+            Console.Error.WriteLine($"[focus] wrap: no candidates {direction}, trying {opposite} ({wrapped.Count} found)");
+
+        // Activate the LAST candidate (furthest in opposite direction = "wrap around" to the far side)
+        // Reverse the list so the furthest candidate (highest score) is tried first
+        wrapped.Reverse();
+        return ActivateBestCandidate(wrapped, verbose);
+    }
+
+    [SupportedOSPlatform("windows5.1.2600")]
+    private static int HandleBeep()
+    {
+        PInvoke.MessageBeep((global::Windows.Win32.UI.WindowsAndMessaging.MESSAGEBOX_STYLE)0xFFFFFFFF); // system default beep (0xFFFFFFFF = simple beep)
+        return 1; // still exit code 1 (no focus switch)
+    }
+
     private static string Truncate(string value, int maxLen) =>
         value.Length <= maxLen ? value : value[..(maxLen - 3)] + "...";
 }
