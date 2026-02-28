@@ -13,6 +13,10 @@ namespace Focus.Windows;
 [SupportedOSPlatform("windows6.0.6000")]
 internal static class NavigationService
 {
+    // Cache for foreground window bounds used by ScoreEdgeMatching.
+    // Populated once per GetRankedCandidates call and reset at the start of each call.
+    private static (nint Hwnd, int Left, int Top, int Right, int Bottom) _fgBoundsCache;
+
     /// <summary>
     /// Returns windows sorted by directional score (ascending — lowest = best candidate).
     /// Windows behind the origin (wrong direction) are eliminated and never appear in results.
@@ -50,6 +54,9 @@ internal static class NavigationService
         out double originX,
         out double originY)
     {
+        // Reset foreground bounds cache so ScoreEdgeMatching re-queries on each navigation cycle
+        _fgBoundsCache = default;
+
         // Get current foreground HWND as nint (0 = no foreground window / desktop focused)
         var fgHwnd = (nint)(IntPtr)PInvoke.GetForegroundWindow();
         foregroundHwnd = fgHwnd;
@@ -66,6 +73,7 @@ internal static class NavigationService
             Strategy.Balanced           => ScoreCandidate,
             Strategy.StrongAxisBias     => ScoreStrongAxisBias,
             Strategy.ClosestInDirection => ScoreClosestInDirection,
+            Strategy.EdgeMatching       => ScoreEdgeMatching,
             _                           => ScoreCandidate
         };
 
@@ -292,6 +300,75 @@ internal static class NavigationService
 
         // Score = pure Euclidean center-to-center distance
         return Math.Sqrt(dx * dx + dy * dy);
+    }
+
+    /// <summary>
+    /// Scores a candidate window using pure edge-to-edge distance on the movement axis.
+    /// Ignores the perpendicular axis entirely — this is a 1D strategy.
+    ///
+    /// Edge-matching concept: for each direction, compare the same-type edge of the candidate
+    /// to the reference edge of the foreground window:
+    ///   Left:  compare right edges  — candidates whose right edge is left of the foreground's right edge
+    ///   Right: compare left edges   — candidates whose left edge is right of the foreground's left edge
+    ///   Up:    compare bottom edges — candidates whose bottom edge is above the foreground's bottom edge
+    ///   Down:  compare top edges    — candidates whose top edge is below the foreground's top edge
+    ///
+    /// Score = absolute distance between the matching edges (lower = closer = better).
+    /// Falls back to nearest-edge Balanced logic if foreground bounds cannot be retrieved.
+    /// </summary>
+    internal static unsafe double ScoreEdgeMatching(
+        double originX, double originY,
+        WindowInfo candidate,
+        Direction direction)
+    {
+        // Populate the foreground bounds cache on first call per navigation cycle
+        if (_fgBoundsCache.Hwnd == 0)
+        {
+            var fgHwnd = PInvoke.GetForegroundWindow();
+            if (fgHwnd != default)
+            {
+                RECT boundsRect = default;
+                var boundsBytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref boundsRect, 1));
+                var hr = PInvoke.DwmGetWindowAttribute(
+                    fgHwnd,
+                    DWMWINDOWATTRIBUTE.DWMWA_EXTENDED_FRAME_BOUNDS,
+                    boundsBytes);
+
+                if (hr.Succeeded && (boundsRect.right - boundsRect.left) > 0)
+                {
+                    _fgBoundsCache = ((nint)(IntPtr)(void*)fgHwnd,
+                        boundsRect.left, boundsRect.top, boundsRect.right, boundsRect.bottom);
+                }
+            }
+        }
+
+        // If foreground bounds retrieval failed, fall back to Balanced (nearest-edge) logic
+        if (_fgBoundsCache.Hwnd == 0)
+            return ScoreCandidate(originX, originY, candidate, direction);
+
+        int fgLeft   = _fgBoundsCache.Left;
+        int fgTop    = _fgBoundsCache.Top;
+        int fgRight  = _fgBoundsCache.Right;
+        int fgBottom = _fgBoundsCache.Bottom;
+
+        // Edge-matching: compare same-type edges; return distance if strictly in direction,
+        // double.MaxValue otherwise. Perpendicular axis is completely ignored.
+        return direction switch
+        {
+            Direction.Left  => candidate.Right < fgRight
+                                ? (double)(fgRight - candidate.Right)
+                                : double.MaxValue,
+            Direction.Right => candidate.Left > fgLeft
+                                ? (double)(candidate.Left - fgLeft)
+                                : double.MaxValue,
+            Direction.Up    => candidate.Bottom < fgBottom
+                                ? (double)(fgBottom - candidate.Bottom)
+                                : double.MaxValue,
+            Direction.Down  => candidate.Top > fgTop
+                                ? (double)(candidate.Top - fgTop)
+                                : double.MaxValue,
+            _               => double.MaxValue
+        };
     }
 
     // Helper for tie-breaking: returns secondary axis distance for a candidate
