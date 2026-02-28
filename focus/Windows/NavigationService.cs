@@ -17,15 +17,35 @@ internal static class NavigationService
     /// Returns windows sorted by directional score (ascending — lowest = best candidate).
     /// Windows behind the origin (wrong direction) are eliminated and never appear in results.
     /// The currently focused window is always excluded from candidates.
+    /// Defaults to Strategy.Balanced for backward compatibility.
     /// </summary>
-    public static unsafe List<(WindowInfo Window, double Score)> GetRankedCandidates(
+    public static List<(WindowInfo Window, double Score)> GetRankedCandidates(
         List<WindowInfo> allWindows,
         Direction direction) =>
-        GetRankedCandidates(allWindows, direction, out _, out _, out _);
+        GetRankedCandidates(allWindows, direction, Strategy.Balanced, out _, out _, out _);
 
     public static unsafe List<(WindowInfo Window, double Score)> GetRankedCandidates(
         List<WindowInfo> allWindows,
         Direction direction,
+        out nint foregroundHwnd,
+        out double originX,
+        out double originY) =>
+        GetRankedCandidates(allWindows, direction, Strategy.Balanced,
+            out foregroundHwnd, out originX, out originY);
+
+    /// <summary>
+    /// Returns windows sorted by directional score using the specified strategy.
+    /// </summary>
+    public static List<(WindowInfo Window, double Score)> GetRankedCandidates(
+        List<WindowInfo> allWindows,
+        Direction direction,
+        Strategy strategy) =>
+        GetRankedCandidates(allWindows, direction, strategy, out _, out _, out _);
+
+    public static unsafe List<(WindowInfo Window, double Score)> GetRankedCandidates(
+        List<WindowInfo> allWindows,
+        Direction direction,
+        Strategy strategy,
         out nint foregroundHwnd,
         out double originX,
         out double originY)
@@ -40,6 +60,15 @@ internal static class NavigationService
         // Local copies for lambda capture (out params can't be used in lambdas)
         double ox = originX, oy = originY;
 
+        // Select scoring function based on strategy
+        Func<double, double, WindowInfo, Direction, double> scoreFn = strategy switch
+        {
+            Strategy.Balanced           => ScoreCandidate,
+            Strategy.StrongAxisBias     => ScoreStrongAxisBias,
+            Strategy.ClosestInDirection => ScoreClosestInDirection,
+            _                           => ScoreCandidate
+        };
+
         var result = new List<(WindowInfo Window, double Score)>();
 
         foreach (var window in allWindows)
@@ -48,7 +77,7 @@ internal static class NavigationService
             if (window.Hwnd == fgHwnd)
                 continue;
 
-            double score = ScoreCandidate(ox, oy, window, direction);
+            double score = scoreFn(ox, oy, window, direction);
             if (score < double.MaxValue)
                 result.Add((window, score));
         }
@@ -177,6 +206,92 @@ internal static class NavigationService
         const double secondaryWeight = 2.0;
 
         return primaryWeight * primaryDist + secondaryWeight * secondaryDist;
+    }
+
+    /// <summary>
+    /// Scores a candidate window using strong axis bias.
+    /// Same structure as ScoreCandidate but with a higher secondary weight (5.0 vs 2.0).
+    /// Higher secondary weight = more aggressive lane preference vs balanced's 2.0.
+    /// </summary>
+    internal static double ScoreStrongAxisBias(
+        double originX, double originY,
+        WindowInfo candidate,
+        Direction direction)
+    {
+        var (nearX, nearY) = NearestPoint(
+            originX, originY,
+            candidate.Left, candidate.Top, candidate.Right, candidate.Bottom);
+
+        // Directional filter: same strict inequality as ScoreCandidate
+        bool inDirection = direction switch
+        {
+            Direction.Left  => nearX < originX,
+            Direction.Right => nearX > originX,
+            Direction.Up    => nearY < originY,
+            Direction.Down  => nearY > originY,
+            _               => false
+        };
+
+        if (!inDirection)
+            return double.MaxValue; // eliminated — wrong direction
+
+        // Primary axis distance: how far in the requested direction (always positive)
+        double primaryDist = direction switch
+        {
+            Direction.Left  => originX - nearX,
+            Direction.Right => nearX - originX,
+            Direction.Up    => originY - nearY,
+            Direction.Down  => nearY - originY,
+            _               => double.MaxValue
+        };
+
+        // Secondary axis distance: perpendicular deviation (absolute value)
+        double secondaryDist = direction switch
+        {
+            Direction.Left or Direction.Right => Math.Abs(nearY - originY),
+            Direction.Up   or Direction.Down  => Math.Abs(nearX - originX),
+            _                                 => double.MaxValue
+        };
+
+        // Higher secondary weight = more aggressive lane preference vs balanced's 2.0
+        const double primaryWeight   = 1.0;
+        const double secondaryWeight = 5.0;
+
+        return primaryWeight * primaryDist + secondaryWeight * secondaryDist;
+    }
+
+    /// <summary>
+    /// Scores a candidate window using pure center-to-center Euclidean distance with a half-plane cone check.
+    /// Pure distance with wide cone (~90° half-plane) — picks nearest window center-to-center.
+    /// </summary>
+    internal static double ScoreClosestInDirection(
+        double originX, double originY,
+        WindowInfo candidate,
+        Direction direction)
+    {
+        // Compute candidate center
+        double candCx = (candidate.Left + candidate.Right) / 2.0;
+        double candCy = (candidate.Top + candidate.Bottom) / 2.0;
+
+        // Half-plane cone check on center (not nearest edge)
+        double dx = candCx - originX;
+        double dy = candCy - originY;
+
+        // Pure distance with wide cone (~90° half-plane) — picks nearest window center-to-center
+        bool inCone = direction switch
+        {
+            Direction.Left  => dx < 0,
+            Direction.Right => dx > 0,
+            Direction.Up    => dy < 0,
+            Direction.Down  => dy > 0,
+            _               => false
+        };
+
+        if (!inCone)
+            return double.MaxValue; // eliminated — not in half-plane cone
+
+        // Score = pure Euclidean center-to-center distance
+        return Math.Sqrt(dx * dx + dy * dy);
     }
 
     // Helper for tie-breaking: returns secondary axis distance for a candidate
