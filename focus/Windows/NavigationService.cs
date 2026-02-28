@@ -75,6 +75,7 @@ internal static class NavigationService
             Strategy.ClosestInDirection => ScoreClosestInDirection,
             Strategy.EdgeMatching       => ScoreEdgeMatching,
             Strategy.EdgeProximity      => ScoreEdgeProximity,
+            Strategy.AxisOnly           => ScoreAxisOnly,
             _                           => ScoreCandidate
         };
 
@@ -441,6 +442,35 @@ internal static class NavigationService
             Direction.Down  => candidate.Bottom > fgBottom
                                 ? (double)(candidate.Bottom - fgBottom)
                                 : double.MaxValue,
+            _               => double.MaxValue
+        };
+    }
+
+    /// <summary>
+    /// Scores a candidate window using pure center-to-center 1D distance along the movement axis.
+    /// Ignores the perpendicular axis entirely — Y is irrelevant for left/right, X is irrelevant for up/down.
+    ///
+    /// For LEFT:  score = originX - candidateCenterX  (candidate center must be strictly left of origin center)
+    /// For RIGHT: score = candidateCenterX - originX  (candidate center must be strictly right of origin center)
+    /// For UP:    score = originY - candidateCenterY  (candidate center must be strictly above origin center)
+    /// For DOWN:  score = candidateCenterY - originY  (candidate center must be strictly below origin center)
+    ///
+    /// No secondary axis, no edge comparison, no Euclidean distance — pure 1D.
+    /// </summary>
+    internal static double ScoreAxisOnly(
+        double originX, double originY,
+        WindowInfo candidate,
+        Direction direction)
+    {
+        double candCx = (candidate.Left + candidate.Right) / 2.0;
+        double candCy = (candidate.Top + candidate.Bottom) / 2.0;
+
+        return direction switch
+        {
+            Direction.Left  => candCx < originX ? originX - candCx : double.MaxValue,
+            Direction.Right => candCx > originX ? candCx - originX : double.MaxValue,
+            Direction.Up    => candCy < originY ? originY - candCy : double.MaxValue,
+            Direction.Down  => candCy > originY ? candCy - originY : double.MaxValue,
             _               => double.MaxValue
         };
     }
