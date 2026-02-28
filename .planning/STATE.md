@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-02-28T20:28:55Z"
+last_updated: "2026-02-28T20:46:46Z"
 progress:
   total_phases: 3
   completed_phases: 3
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-02-26)
 Phase: 3 of 3 (Config, Strategies, Complete CLI)
 Plan: 2 of 3 in current phase (COMPLETE)
 Status: Complete — all plans finished
-Last activity: 2026-02-28 - Completed quick task 2: Create edge-matching navigation strategy
+Last activity: 2026-02-28 - Completed quick task 3: Document edge-matching strategy in --help and SETUP.md
 
 Progress: [█████████░] 86%
 
@@ -100,9 +100,10 @@ None yet.
 |---|-------------|------|--------|-----------|
 | 1 | Create setup guide for project with AutoHotkey | 2026-02-28 | 933dc6a | [1-create-setup-guide-for-project-with-auto](./quick/1-create-setup-guide-for-project-with-auto/) |
 | 2 | Create edge-matching navigation strategy | 2026-02-28 | 9415af0 | [2-create-edge-matching-navigation-strategy](./quick/2-create-edge-matching-navigation-strategy/) |
+| 3 | Document edge-matching strategy in --help and SETUP.md | 2026-02-28 | 5381cb3 | [3-make-sure-the-edge-matching-strategy-is-](./quick/3-make-sure-the-edge-matching-strategy-is-/) |
 
 ## Session Continuity
 
 Last session: 2026-02-28
-Stopped at: Completed quick task 2 — edge-matching strategy (Strategy.EdgeMatching enum, ScoreEdgeMatching 1D scoring, --strategy edge-matching CLI, EDGE-MATCH debug column)
+Stopped at: Completed quick task 3 — edge-matching documentation (--strategy help text, SETUP.md config table, camelCase note, CLI reference table)
 Resume file: None
