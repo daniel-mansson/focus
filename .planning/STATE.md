@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-02-27T22:27:08.019Z"
+last_updated: "2026-02-28T10:54:04Z"
 progress:
-  total_phases: 2
+  total_phases: 3
   completed_phases: 2
-  total_plans: 4
-  completed_plans: 4
+  total_plans: 7
+  completed_plans: 5
 ---
 
 # Project State
@@ -18,16 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-02-26)
 
 **Core value:** Given a direction, reliably switch focus to the most intuitive window in that direction — fast enough for hotkey use, accurate enough to feel natural.
-**Current focus:** Phase 2 — Navigation Pipeline
+**Current focus:** Phase 3 — Config, Strategies, Complete CLI
 
 ## Current Position
 
-Phase: 2 of 3 (Navigation Pipeline)
-Plan: 2 of 2 in current phase (COMPLETE)
+Phase: 3 of 3 (Config, Strategies, Complete CLI)
+Plan: 1 of 3 in current phase (COMPLETE)
 Status: In progress
-Last activity: 2026-02-27 — Plan 02-02 complete
+Last activity: 2026-02-28 — Plan 03-01 complete
 
-Progress: [████░░░░░░] 30%
+Progress: [███████░░░] 70%
 
 ## Performance Metrics
 
@@ -42,9 +42,10 @@ Progress: [████░░░░░░] 30%
 |-------|-------|-------|----------|
 | 01-win32-foundation | 2 | 10 min | 5 min |
 | 02-navigation-pipeline | 2 | 4 min | 2 min |
+| 03-config-strategies-complete-cli | 1 | 2 min | 2 min |
 
 **Recent Trend:**
-- Last 5 plans: 7 min, 3 min, 2 min, 2 min
+- Last 5 plans: 7 min, 3 min, 2 min, 2 min, 2 min
 - Trend: Fast execution
 
 *Updated after each plan completion*
@@ -74,6 +75,9 @@ Recent decisions affecting current work:
 - 02-01: CsWin32 INPUT wVk is VIRTUAL_KEY enum (not ushort) — use VIRTUAL_KEY.VK_MENU; SendInput uses ReadOnlySpan<INPUT> overload
 - 02-02: Inline navigation code in SetAction lambda (not static method) — CA1416 analyzer does not recognize [SupportedOSPlatform] on static local functions in top-level statements
 - 02-02: FocusActivator.ActivateBestCandidate fallthrough: silently skip elevated windows (false from SetForegroundWindow) and try next candidate
+- 03-01: ScoreStrongAxisBias secondaryWeight=5.0 (vs balanced 2.0) — more aggressive lane preference per NAV-08
+- 03-01: ScoreClosestInDirection uses center-to-center Euclidean distance with half-plane cone (not nearest-edge) — locked decision
+- 03-01: Existing GetRankedCandidates overloads delegate to Strategy.Balanced — zero-change backward compatibility
 
 ### Pending Todos
 
@@ -86,6 +90,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-27
-Stopped at: Completed 02-navigation-pipeline/02-02-PLAN.md (FocusActivator SendInput ALT bypass, Program.cs direction CLI wiring, end-to-end navigation pipeline)
+Last session: 2026-02-28
+Stopped at: Completed 03-config-strategies-complete-cli/03-01-PLAN.md (FocusConfig POCO with Strategy/WrapBehavior enums, ExcludeFilter glob matching, 3-strategy NavigationService dispatch)
 Resume file: None

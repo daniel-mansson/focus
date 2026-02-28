@@ -56,7 +56,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   5. Wrap-around behavior (wrap / no-op / beep) is configurable in the JSON config and overridable via CLI flag
 **Plans:** 2 plans
 Plans:
-- [ ] 03-01-PLAN.md — Config infrastructure (FocusConfig POCO, ExcludeFilter, FileSystemGlobbing NuGet, MessageBeep) + scoring strategies (strong-axis-bias, closest-in-direction) in NavigationService
+- [x] 03-01-PLAN.md — Config infrastructure (FocusConfig POCO, ExcludeFilter, FileSystemGlobbing NuGet, MessageBeep) + scoring strategies (strong-axis-bias, closest-in-direction) in NavigationService
 - [ ] 03-02-PLAN.md — FocusActivator wrap-around behavior + complete CLI wiring (--strategy, --wrap, --exclude, --init-config, --debug score, --debug config, config merge)
 
 ## Progress
@@ -68,4 +68,4 @@ Phases execute in numeric order: 1 → 2 → 3
 |-------|----------------|--------|-----------|
 | 1. Win32 Foundation | 2/2 | Complete | 2026-02-27 |
 | 2. Navigation Pipeline | 2/2 | Complete | 2026-02-27 |
-| 3. Config, Strategies & Complete CLI | 0/2 | Not started | - |
+| 3. Config, Strategies & Complete CLI | 1/2 | In progress | - |

@@ -15,7 +15,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **ENUM-04**: Tool filters out minimized windows (IsIconic check)
 - [x] **ENUM-05**: Tool gets accurate visible bounds via DWMWA_EXTENDED_FRAME_BOUNDS
 - [x] **ENUM-06**: Tool uses UWP-safe window filtering (Alt+Tab algorithm)
-- [ ] **ENUM-07**: Tool supports user-configurable exclude list by process name with regex/wildcard patterns
+- [x] **ENUM-07**: Tool supports user-configurable exclude list by process name with regex/wildcard patterns
 
 ### Directional Navigation
 
@@ -26,8 +26,8 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **NAV-05**: Navigation works across multiple monitors via virtual screen coordinates
 - [x] **NAV-06**: Tool uses DPI-aware coordinates (PerMonitorV2 manifest)
 - [x] **NAV-07**: Tool supports "balanced" weighting strategy
-- [ ] **NAV-08**: Tool supports "strong-axis-bias" weighting strategy
-- [ ] **NAV-09**: Tool supports "closest-in-direction" weighting strategy
+- [x] **NAV-08**: Tool supports "strong-axis-bias" weighting strategy
+- [x] **NAV-09**: Tool supports "closest-in-direction" weighting strategy
 
 ### Focus Activation
 
@@ -36,10 +36,10 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Configuration & CLI
 
-- [ ] **CFG-01**: Tool reads settings from a JSON config file
+- [x] **CFG-01**: Tool reads settings from a JSON config file
 - [ ] **CFG-02**: User invokes tool with direction argument (e.g., `focus left`)
 - [ ] **CFG-03**: User can override config settings via CLI flags
-- [ ] **CFG-04**: Config file supports strategy, wrap behavior, and exclude list settings
+- [x] **CFG-04**: Config file supports strategy, wrap behavior, and exclude list settings
 
 ### Output & Integration
 
@@ -100,7 +100,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ENUM-04 | Phase 1 | Complete |
 | ENUM-05 | Phase 1 | Complete |
 | ENUM-06 | Phase 1 | Complete |
-| ENUM-07 | Phase 3 | Pending |
+| ENUM-07 | Phase 3 | Complete |
 | NAV-01 | Phase 2 | Complete |
 | NAV-02 | Phase 2 | Complete |
 | NAV-03 | Phase 2 | Complete |
@@ -108,14 +108,14 @@ Which phases cover which requirements. Updated during roadmap creation.
 | NAV-05 | Phase 2 | Complete |
 | NAV-06 | Phase 1 | Complete |
 | NAV-07 | Phase 2 | Complete |
-| NAV-08 | Phase 3 | Pending |
-| NAV-09 | Phase 3 | Pending |
+| NAV-08 | Phase 3 | Complete |
+| NAV-09 | Phase 3 | Complete |
 | FOCUS-01 | Phase 2 | Complete |
 | FOCUS-02 | Phase 3 | Pending |
-| CFG-01 | Phase 3 | Pending |
+| CFG-01 | Phase 3 | Complete |
 | CFG-02 | Phase 3 | Pending |
 | CFG-03 | Phase 3 | Pending |
-| CFG-04 | Phase 3 | Pending |
+| CFG-04 | Phase 3 | Complete |
 | OUT-01 | Phase 3 | Pending |
 | OUT-02 | Phase 2 | Complete |
 | OUT-03 | Phase 3 | Pending |
