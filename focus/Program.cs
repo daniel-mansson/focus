@@ -85,11 +85,12 @@ rootCommand.SetAction(parseResult =>
             "balanced"              => (Strategy?)Strategy.Balanced,
             "strong-axis-bias"      => Strategy.StrongAxisBias,
             "closest-in-direction"  => Strategy.ClosestInDirection,
+            "edge-matching"         => Strategy.EdgeMatching,
             _                       => null
         };
         if (parsed is null)
         {
-            Console.Error.WriteLine($"Error: Unknown strategy '{strategyValue}'. Use: balanced, strong-axis-bias, closest-in-direction");
+            Console.Error.WriteLine($"Error: Unknown strategy '{strategyValue}'. Use: balanced, strong-axis-bias, closest-in-direction, edge-matching");
             return 2;
         }
         config.Strategy = parsed.Value;
@@ -178,12 +179,13 @@ rootCommand.SetAction(parseResult =>
                 var (windows, _) = enumerator.GetNavigableWindows();
                 var filtered = ExcludeFilter.Apply(windows, config.Exclude);
 
-                // Run all three strategies for comparison
+                // Run all four strategies for comparison
                 var balanced   = NavigationService.GetRankedCandidates(filtered, scoreDirection.Value, Strategy.Balanced);
                 var strongBias = NavigationService.GetRankedCandidates(filtered, scoreDirection.Value, Strategy.StrongAxisBias);
                 var closestDir = NavigationService.GetRankedCandidates(filtered, scoreDirection.Value, Strategy.ClosestInDirection);
+                var edgeMatch  = NavigationService.GetRankedCandidates(filtered, scoreDirection.Value, Strategy.EdgeMatching);
 
-                PrintScoreTable(balanced, strongBias, closestDir, scoreDirection.Value, config.Strategy);
+                PrintScoreTable(balanced, strongBias, closestDir, edgeMatch, scoreDirection.Value, config.Strategy);
                 return 0;
             }
             catch (Exception ex)
@@ -303,14 +305,16 @@ static void PrintScoreTable(
     List<(WindowInfo Window, double Score)> balanced,
     List<(WindowInfo Window, double Score)> strongBias,
     List<(WindowInfo Window, double Score)> closestDir,
+    List<(WindowInfo Window, double Score)> edgeMatch,
     Direction direction,
     Strategy activeStrategy)
 {
-    // Build a union set of all window HWNDs across all three lists
+    // Build a union set of all window HWNDs across all four lists
     var allHwnds = new Dictionary<nint, WindowInfo>();
     foreach (var (w, _) in balanced)   allHwnds.TryAdd(w.Hwnd, w);
     foreach (var (w, _) in strongBias) allHwnds.TryAdd(w.Hwnd, w);
     foreach (var (w, _) in closestDir) allHwnds.TryAdd(w.Hwnd, w);
+    foreach (var (w, _) in edgeMatch)  allHwnds.TryAdd(w.Hwnd, w);
 
     if (allHwnds.Count == 0)
     {
@@ -322,20 +326,22 @@ static void PrintScoreTable(
     var balancedScores   = balanced.ToDictionary(x => x.Window.Hwnd, x => x.Score);
     var strongBiasScores = strongBias.ToDictionary(x => x.Window.Hwnd, x => x.Score);
     var closestDirScores = closestDir.ToDictionary(x => x.Window.Hwnd, x => x.Score);
+    var edgeMatchScores  = edgeMatch.ToDictionary(x => x.Window.Hwnd, x => x.Score);
 
     // Active strategy marker columns
-    string balancedHeader   = "BALANCED"   + (activeStrategy == Strategy.Balanced           ? "*" : " ");
-    string strongBiasHeader = "STRONG-AXIS" + (activeStrategy == Strategy.StrongAxisBias    ? "*" : " ");
-    string closestHeader    = "CLOSEST"    + (activeStrategy == Strategy.ClosestInDirection ? "*" : " ");
+    string balancedHeader   = "BALANCED"    + (activeStrategy == Strategy.Balanced           ? "*" : " ");
+    string strongBiasHeader = "STRONG-AXIS" + (activeStrategy == Strategy.StrongAxisBias     ? "*" : " ");
+    string closestHeader    = "CLOSEST"     + (activeStrategy == Strategy.ClosestInDirection  ? "*" : " ");
+    string edgeMatchHeader  = "EDGE-MATCH"  + (activeStrategy == Strategy.EdgeMatching        ? "*" : " ");
 
     const int titleWidth  = 34;
     const int scoreWidth  = 12;
 
     // Header
     Console.WriteLine(
-        $"{"WINDOW",-titleWidth} {balancedHeader,scoreWidth} {strongBiasHeader,scoreWidth} {closestHeader,scoreWidth}");
+        $"{"WINDOW",-titleWidth} {balancedHeader,scoreWidth} {strongBiasHeader,scoreWidth} {closestHeader,scoreWidth} {edgeMatchHeader,scoreWidth}");
     Console.WriteLine(
-        $"{new string('-', titleWidth)} {new string('-', scoreWidth)} {new string('-', scoreWidth)} {new string('-', scoreWidth)}");
+        $"{new string('-', titleWidth)} {new string('-', scoreWidth)} {new string('-', scoreWidth)} {new string('-', scoreWidth)} {new string('-', scoreWidth)}");
 
     // Sort rows: by balanced score ascending if available, else by hwnd
     var sortedHwnds = allHwnds.Keys
@@ -348,12 +354,13 @@ static void PrintScoreTable(
         var w = allHwnds[hwnd];
         string label = $"{Truncate(w.Title, 22)} ({Truncate(w.ProcessName, 10)})";
 
-        string balancedScore   = balancedScores.TryGetValue(hwnd, out var bs)   ? bs.ToString("F1")   : "-";
+        string balancedScore   = balancedScores.TryGetValue(hwnd, out var bs)    ? bs.ToString("F1")  : "-";
         string strongBiasScore = strongBiasScores.TryGetValue(hwnd, out var sbs) ? sbs.ToString("F1") : "-";
         string closestDirScore = closestDirScores.TryGetValue(hwnd, out var cs)  ? cs.ToString("F1")  : "-";
+        string edgeMatchScore  = edgeMatchScores.TryGetValue(hwnd, out var ems)  ? ems.ToString("F1") : "-";
 
         Console.WriteLine(
-            $"{label,-titleWidth} {balancedScore,scoreWidth} {strongBiasScore,scoreWidth} {closestDirScore,scoreWidth}");
+            $"{label,-titleWidth} {balancedScore,scoreWidth} {strongBiasScore,scoreWidth} {closestDirScore,scoreWidth} {edgeMatchScore,scoreWidth}");
     }
 
     Console.WriteLine();
