@@ -20,3 +20,4 @@ SetForegroundWindow
 GetForegroundWindow
 SendInput
 MonitorFromPoint
+MessageBeep
