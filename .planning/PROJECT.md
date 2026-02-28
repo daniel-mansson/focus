@@ -46,7 +46,7 @@ Given a direction, reliably switch focus to the most intuitive window in that di
 - GUI or system tray — CLI tool only
 - Linux/macOS support — Windows-specific by design
 - Window resizing or moving — only focus switching
-- Background service/daemon mode — invoked per-call via hotkeys
+- GUI or system tray for daemon — daemon managed via CLI only (`focus daemon`)
 
 ## Current Milestone: v2.0 Overlay Preview
 
@@ -75,7 +75,7 @@ Given a direction, reliably switch focus to the most intuitive window in that di
 - **Runtime**: .NET 10 — in use since v1.0 (dev machine has .NET 10 available)
 - **Performance**: Must complete in <100ms for hotkey responsiveness
 - **Dependencies**: Minimal — Win32 API via P/Invoke only, no third-party native dependencies
-- **Invocation**: Stateless CLI tool — no persistent process, no inter-process communication
+- **Invocation**: CLI tool + optional persistent daemon for overlay preview
 
 ## Key Decisions
 

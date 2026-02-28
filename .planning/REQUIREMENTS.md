@@ -3,9 +3,9 @@
 **Defined:** 2026-02-26
 **Core Value:** Given a direction, reliably switch focus to the most intuitive window in that direction — fast enough for hotkey use, accurate enough to feel natural.
 
-## v1 Requirements
+## v1 Requirements (Complete)
 
-Requirements for initial release. Each maps to roadmap phases.
+All v1 requirements shipped and validated. See v1.0 milestone archive for details.
 
 ### Window Enumeration & Filtering
 
@@ -49,13 +49,57 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Debug & Testing
 
-- [x] **DBG-01**: User can run `--debug enumerate` to list all detected windows with their properties (hwnd, title, bounds, cloaked status)
-- [x] **DBG-02**: User can run `--debug score <direction>` to show all candidates with their scores without switching focus
-- [x] **DBG-03**: User can run `--debug config` to show resolved config (defaults + file + overrides)
+- [x] **DBG-01**: User can run `--debug enumerate` to list all detected windows with their properties
+- [x] **DBG-02**: User can run `--debug score <direction>` to show all candidates with their scores
+- [x] **DBG-03**: User can run `--debug config` to show resolved config
 
-## v2 Requirements
+## v2.0 Requirements
+
+Requirements for overlay preview daemon milestone. Each maps to roadmap phases.
+
+### Daemon Infrastructure
+
+- [ ] **DAEMON-01**: User can start a background daemon via `focus daemon` that persists until explicitly stopped
+- [ ] **DAEMON-02**: Daemon installs WH_KEYBOARD_LL hook and detects CAPSLOCK held/released state
+- [ ] **DAEMON-03**: Daemon debounces CAPSLOCK hold with configurable activation delay before showing overlay
+- [ ] **DAEMON-04**: Daemon enforces single instance via named mutex (second launch exits with error)
+- [ ] **DAEMON-05**: Daemon cleans up overlay windows and unhooks keyboard hook on exit/crash
+- [ ] **DAEMON-06**: Daemon filters LLKHF_INJECTED key events to prevent AHK-triggered overlay flicker
+
+### Overlay Rendering
+
+- [ ] **OVERLAY-01**: Overlay renders colored borders on the top-ranked target window for each of the 4 directions simultaneously
+- [ ] **OVERLAY-02**: Overlay windows are click-through, always-on-top, excluded from taskbar/Alt+Tab, and excluded from navigation enumeration
+- [ ] **OVERLAY-03**: Overlay dismisses immediately when CAPSLOCK is released
+- [ ] **OVERLAY-04**: Overlay updates target positions when foreground window changes while CAPSLOCK is held
+- [ ] **OVERLAY-05**: Overlay gracefully handles directions with no candidate (no overlay rendered for that direction)
+
+### Renderer System
+
+- [ ] **RENDER-01**: IOverlayRenderer interface defines the contract for overlay rendering
+- [ ] **RENDER-02**: Default border renderer draws colored borders using Win32 GDI (no WPF/WinForms)
+- [ ] **RENDER-03**: Renderer selection is driven by config (overlayRenderer field)
+
+### Configuration
+
+- [ ] **CFG-05**: Per-direction overlay colors configurable in JSON config (left/right/up/down, hex ARGB)
+- [ ] **CFG-06**: Activation delay configurable in JSON config (overlayDelayMs, default ~150ms)
+- [ ] **CFG-07**: Overlay renderer name configurable in JSON config (default: "border")
+
+## Future Requirements
 
 Deferred to future release. Tracked but not in current roadmap.
+
+### Custom Renderers
+
+- **RENDER-04**: Per-strategy custom renderer implementations (e.g., edge-matching draws connecting lines)
+- **RENDER-05**: Strategy-aware renderer auto-selection based on active strategy
+
+### Overlay Polish
+
+- **OVERLAY-06**: Live overlay update on window layout change (new windows opened/closed while modifier held)
+- **OVERLAY-07**: Configurable overlay border thickness in JSON config
+- **OVERLAY-08**: DPI-aware border thickness scaling on mixed-DPI multi-monitor setups
 
 ### Enhanced Filtering
 
@@ -69,28 +113,28 @@ Deferred to future release. Tracked but not in current roadmap.
 
 - **DESK-01**: Tool filters windows by current virtual desktop (IVirtualDesktopManager)
 
-### Advanced Configuration
-
-- **CFG-05**: User can define custom numeric weight parameters per strategy in config
-
 ## Out of Scope
 
 Explicitly excluded. Documented to prevent scope creep.
 
 | Feature | Reason |
 |---------|--------|
-| GUI / system tray | Contradicts stateless CLI design — adds persistent process, IPC, maintenance burden |
-| Background daemon / service mode | Stateless per-invocation model is core to the design; AOT solves startup latency if needed |
-| Window tiling / layout management | Entirely different problem domain requiring persistent state and deep Win32 hooks |
-| Focus-follows-mouse | Requires persistent background process with mouse hook; incompatible with CLI design |
+| Animated overlay transitions (fade in/out) | Disproportionate complexity for minimal UX gain; overlay should be instant |
+| Window title/content preview in overlay | DwmRegisterThumbnail complexity; colored border at window position IS the preview |
+| CAPSLOCK toggle state feedback | Tool uses CAPSLOCK as modifier (hold), not toggle; conflating both confuses UX |
+| Interactive/clickable overlay elements | Conflicts with WS_EX_TRANSPARENT (click-through); navigation is keyboard-only |
+| System tray icon or context menu | Adds GUI layer to CLI-first tool; daemon lifecycle via `focus daemon` CLI |
+| Auto-start on login | Deployment/packaging problem; document manual Startup folder approach |
+| WPF/WinUI overlay rendering | Significant binary size and runtime dependencies; Win32 GDI sufficient |
+| Window tiling / layout management | Entirely different problem domain |
+| Focus-follows-mouse | Requires persistent mouse hook; incompatible with keyboard-first design |
 | Linux / macOS support | Windows-specific by design (Win32 API) |
-| Window resizing or moving | Only focus switching — pair with FancyWM/Komorebi for layout |
-| Window title/class-based focus (name-based jumping) | Different tool category; use AHK WinActivate for this |
-| Focus history tracking | Hidden state = unreproducible behavior; use geometric scoring only |
 
 ## Traceability
 
 Which phases cover which requirements. Updated during roadmap creation.
+
+### v1 (Complete)
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
@@ -123,11 +167,34 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DBG-02 | Phase 3 | Complete |
 | DBG-03 | Phase 3 | Complete |
 
+### v2.0
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| DAEMON-01 | — | Pending |
+| DAEMON-02 | — | Pending |
+| DAEMON-03 | — | Pending |
+| DAEMON-04 | — | Pending |
+| DAEMON-05 | — | Pending |
+| DAEMON-06 | — | Pending |
+| OVERLAY-01 | — | Pending |
+| OVERLAY-02 | — | Pending |
+| OVERLAY-03 | — | Pending |
+| OVERLAY-04 | — | Pending |
+| OVERLAY-05 | — | Pending |
+| RENDER-01 | — | Pending |
+| RENDER-02 | — | Pending |
+| RENDER-03 | — | Pending |
+| CFG-05 | — | Pending |
+| CFG-06 | — | Pending |
+| CFG-07 | — | Pending |
+
 **Coverage:**
-- v1 requirements: 28 total
-- Mapped to phases: 28
-- Unmapped: 0 ✓
+- v1 requirements: 28 total — all complete ✓
+- v2.0 requirements: 17 total
+- Mapped to phases: 0
+- Unmapped: 17 ⚠️
 
 ---
 *Requirements defined: 2026-02-26*
-*Last updated: 2026-02-28 after plan 03-02 completion (CFG-02, CFG-03, FOCUS-02, OUT-01, OUT-03, DBG-02, DBG-03 marked complete — all v1 requirements complete)*
+*Last updated: 2026-03-01 after milestone v2.0 requirements definition*
