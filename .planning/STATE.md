@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 Phase: 8 (In-Daemon Navigation) — complete
 Plan: 08-01 — complete (all tasks done, human-verified)
 Status: Ready for Phase 9 (Overlay Chaining)
-Last activity: 2026-03-01 — 08-01 complete (OnDirectionKeyDown navigation verified by human tester)
+Last activity: 2026-03-01 - Completed quick task 1: Add a white border around the currently active window when holding caps lock
 
 Progress: [████░░░░░░] 40%
 
@@ -69,6 +69,12 @@ Progress: [████░░░░░░] 40%
 
 ### Blockers
 None.
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 1 | Add a white border around the currently active window when holding caps lock | 2026-03-01 | b79d6ae | [1-add-a-white-border-around-the-currently-](./quick/1-add-a-white-border-around-the-currently-/) |
 
 ### Todos
 - Execute 09-PLAN (Overlay Chaining) — Phase 8 complete, all requirements met
