@@ -1,5 +1,6 @@
 using System.CommandLine;
 using Focus.Windows;
+using Focus.Windows.Daemon;
 
 var debugOption = new Option<string?>("--debug")
 {
@@ -47,6 +48,34 @@ rootCommand.Options.Add(wrapOption);
 rootCommand.Options.Add(excludeOption);
 rootCommand.Options.Add(initConfigOption);
 rootCommand.Arguments.Add(directionArgument);
+
+// --- Daemon subcommand ---
+var daemonCommand = new Command("daemon", "Run as a persistent background daemon with CAPSLOCK overlay hook");
+var backgroundOption = new Option<bool>("--background")
+{
+    Description = "Detach from console and run in background with tray icon only"
+};
+var daemonVerboseOption = new Option<bool>("--verbose", "-v")
+{
+    Description = "Log CAPSLOCK hold/release events to stderr"
+};
+daemonCommand.Options.Add(backgroundOption);
+daemonCommand.Options.Add(daemonVerboseOption);
+
+daemonCommand.SetAction(parseResult =>
+{
+    if (!OperatingSystem.IsWindowsVersionAtLeast(6, 0, 6000))
+    {
+        Console.Error.WriteLine("Error: Daemon requires Windows Vista or later.");
+        return 2;
+    }
+
+    bool background = parseResult.GetValue(backgroundOption);
+    bool verbose = parseResult.GetValue(daemonVerboseOption);
+    return DaemonCommand.Run(background, verbose);
+});
+
+rootCommand.Subcommands.Add(daemonCommand);
 
 rootCommand.SetAction(parseResult =>
 {
