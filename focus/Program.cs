@@ -1,10 +1,14 @@
 using System.CommandLine;
 using Focus.Windows;
 using Focus.Windows.Daemon;
+using Focus.Windows.Daemon.Overlay;
+using global::Windows.Win32;
+using global::Windows.Win32.Foundation;
+using global::Windows.Win32.Graphics.Dwm;
 
 var debugOption = new Option<string?>("--debug")
 {
-    Description = "Debug mode: enumerate | score | config"
+    Description = "Debug mode: enumerate | score | config | overlay"
 };
 
 var verboseOption = new Option<bool>("--verbose", "-v")
@@ -228,7 +232,72 @@ rootCommand.SetAction(parseResult =>
             }
         }
 
-        Console.Error.WriteLine($"Unknown --debug value: {debugValue}. Use: enumerate, score, config");
+        if (debugValue == "overlay")
+        {
+            if (!OperatingSystem.IsWindowsVersionAtLeast(6, 0, 6000))
+            {
+                Console.Error.WriteLine("Error: This tool requires Windows Vista or later.");
+                return 2;
+            }
+
+            var overlayDirection = DirectionParser.Parse(directionValue);
+            if (overlayDirection is null)
+            {
+                Console.Error.WriteLine("Usage: focus --debug overlay <direction>");
+                return 2;
+            }
+
+            // Load config for overlay colors and renderer selection
+            var overlayConfig = FocusConfig.Load();
+            var renderer = OverlayManager.CreateRenderer(overlayConfig.OverlayRenderer);
+
+            // Get foreground window bounds using DWMWA_EXTENDED_FRAME_BOUNDS
+            var fgHwnd = PInvoke.GetForegroundWindow();
+            RECT fgBounds = default;
+            var hr = PInvoke.DwmGetWindowAttribute(fgHwnd,
+                DWMWINDOWATTRIBUTE.DWMWA_EXTENDED_FRAME_BOUNDS,
+                System.Runtime.InteropServices.MemoryMarshal.AsBytes(
+                    System.Runtime.InteropServices.MemoryMarshal.CreateSpan(ref fgBounds, 1)));
+
+            if (hr.Failed)
+            {
+                Console.Error.WriteLine($"Error: Could not get foreground window bounds (HRESULT: 0x{hr.Value:X8})");
+                return 2;
+            }
+
+            Console.WriteLine($"Overlay: {overlayDirection.Value} on foreground window");
+            Console.WriteLine($"  Bounds: {fgBounds.left},{fgBounds.top},{fgBounds.right},{fgBounds.bottom}");
+            Console.WriteLine($"  Color: {overlayConfig.OverlayColors.GetArgb(overlayDirection.Value):X8}");
+            Console.WriteLine("Press any key to dismiss...");
+
+            // Create overlay on this thread (STA thread via UseWindowsForms=true in csproj)
+            // Use Application.DoEvents() as a simple message pump for WM_PAINT handling
+            using var overlayManager = new OverlayManager(renderer, overlayConfig.OverlayColors);
+            overlayManager.ShowOverlay(overlayDirection.Value, fgBounds);
+
+            // Wait for keypress on a background thread, then signal exit
+            var exitEvent = new ManualResetEventSlim(false);
+            var keyThread = new Thread(() =>
+            {
+                Console.ReadKey(true);
+                exitEvent.Set();
+            });
+            keyThread.IsBackground = true;
+            keyThread.Start();
+
+            // Pump messages until keypress — simple DoEvents loop (~60fps)
+            while (!exitEvent.IsSet)
+            {
+                Application.DoEvents();
+                Thread.Sleep(16);
+            }
+
+            overlayManager.HideAll();
+            Console.WriteLine("Overlay dismissed.");
+            return 0;
+        }
+
+        Console.Error.WriteLine($"Unknown --debug value: {debugValue}. Use: enumerate, score, config, overlay");
         return 2;
     }
 
