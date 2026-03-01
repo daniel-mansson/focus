@@ -116,6 +116,6 @@ Phases execute in numeric order: 4 → 5 → 6
 | 1. Win32 Foundation | v1.0 | 2/2 | Complete | 2026-02-27 |
 | 2. Navigation Pipeline | v1.0 | 2/2 | Complete | 2026-02-27 |
 | 3. Config, Strategies & Complete CLI | v1.0 | 2/2 | Complete | 2026-02-28 |
-| 4. Daemon Core | v2.0 | 0/2 | Not started | - |
+| 4. Daemon Core | 1/2 | In Progress|  | - |
 | 5. Overlay Windows | v2.0 | 0/? | Not started | - |
 | 6. Navigation Integration | v2.0 | 0/? | Not started | - |
