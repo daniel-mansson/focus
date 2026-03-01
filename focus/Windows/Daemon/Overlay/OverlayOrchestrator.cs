@@ -5,6 +5,7 @@ using Focus.Windows;
 using global::Windows.Win32;
 using global::Windows.Win32.Foundation;
 using global::Windows.Win32.Graphics.Dwm;
+using global::Windows.Win32.Graphics.Gdi;
 
 namespace Focus.Windows.Daemon.Overlay;
 
@@ -208,6 +209,9 @@ internal sealed class OverlayOrchestrator : IDisposable
                 bounds.bottom += LeftRightInset;
             }
 
+            // Clamp to the monitor so overlays on partially off-screen windows stay visible.
+            ClampToMonitor(new HWND((nint)(IntPtr)top.Hwnd), ref bounds);
+
             _overlayManager.ShowOverlay(direction, bounds);
         }
 
@@ -236,6 +240,29 @@ internal sealed class OverlayOrchestrator : IDisposable
                 // If bounds retrieval fails, do nothing — graceful degradation.
             }
         }
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Helpers.
+    // -----------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// Clamps a RECT to the physical bounds of the monitor that owns the given HWND.
+    /// Ensures overlays on partially off-screen windows are pinned to the screen edge.
+    /// </summary>
+    private static unsafe void ClampToMonitor(HWND hwnd, ref RECT bounds)
+    {
+        var hMon = PInvoke.MonitorFromWindow(hwnd, MONITOR_FROM_FLAGS.MONITOR_DEFAULTTONEAREST);
+        MONITORINFO mi = default;
+        mi.cbSize = (uint)sizeof(MONITORINFO);
+        if (!PInvoke.GetMonitorInfo(hMon, ref mi))
+            return;
+
+        var mon = mi.rcMonitor;
+        if (bounds.left   < mon.left)   bounds.left   = mon.left;
+        if (bounds.top    < mon.top)    bounds.top    = mon.top;
+        if (bounds.right  > mon.right)  bounds.right  = mon.right;
+        if (bounds.bottom > mon.bottom) bounds.bottom = mon.bottom;
     }
 
     // -----------------------------------------------------------------------------------------
