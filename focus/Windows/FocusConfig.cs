@@ -14,6 +14,7 @@ internal class FocusConfig
     public string[] Exclude { get; set; } = [];
     public OverlayColors OverlayColors { get; set; } = new();
     public string OverlayRenderer { get; set; } = "border";
+    public int OverlayDelayMs { get; set; } = 0;  // CFG-06: default 0 per user decision (REQUIREMENTS.md says ~150ms but user overrode to 0)
 
     public static string GetConfigPath()
     {

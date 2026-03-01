@@ -54,3 +54,6 @@ BITMAPINFOHEADER
 BLENDFUNCTION
 WNDCLASSEXW
 DefWindowProc
+SetWinEventHook
+UnhookWinEvent
+keybd_event

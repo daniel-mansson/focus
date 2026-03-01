@@ -49,6 +49,20 @@ internal sealed class OverlayManager : IDisposable
     }
 
     /// <summary>
+    /// Shows and paints the overlay for the given direction at the specified screen bounds,
+    /// using a color override instead of the configured direction color.
+    /// Used for the solo-window dim indicator.
+    /// </summary>
+    public void ShowOverlay(Direction direction, RECT bounds, uint colorOverride)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        var window = _windows[direction];
+        window.Show(bounds);
+        _renderer.Paint(window.Hwnd, bounds, colorOverride, direction);
+    }
+
+    /// <summary>
     /// Hides the overlay for the given direction.
     /// </summary>
     public void HideOverlay(Direction direction)

@@ -11,11 +11,15 @@ internal sealed class CapsLockMonitor
     private readonly ChannelReader<KeyEvent> _reader;
     private readonly bool _verbose;
     private bool _isHeld;
+    private readonly Action? _onHeld;
+    private readonly Action? _onReleased;
 
-    public CapsLockMonitor(ChannelReader<KeyEvent> reader, bool verbose)
+    public CapsLockMonitor(ChannelReader<KeyEvent> reader, bool verbose, Action? onHeld = null, Action? onReleased = null)
     {
         _reader = reader;
         _verbose = verbose;
+        _onHeld = onHeld;
+        _onReleased = onReleased;
     }
 
     /// <summary>
@@ -55,6 +59,7 @@ internal sealed class CapsLockMonitor
     {
         if (_verbose)
             Console.Error.WriteLine($"[{DateTime.Now:HH:mm:ss.fff}] CAPSLOCK held");
+        _onHeld?.Invoke();
     }
 
     /// <summary>
@@ -65,6 +70,7 @@ internal sealed class CapsLockMonitor
     {
         if (_verbose)
             Console.Error.WriteLine($"[{DateTime.Now:HH:mm:ss.fff}] CAPSLOCK released");
+        _onReleased?.Invoke();
     }
 
     /// <summary>
