@@ -1,4 +1,5 @@
 using System.Runtime.Versioning;
+using Focus.Windows;
 using global::Windows.Win32.Foundation;
 
 namespace Focus.Windows.Daemon.Overlay;
@@ -22,5 +23,6 @@ internal interface IOverlayRenderer
     /// <param name="hwnd">The overlay window handle to paint.</param>
     /// <param name="bounds">Target window bounds in physical screen coordinates.</param>
     /// <param name="argbColor">Color as 0xAARRGGBB (e.g., 0xBF4488CC for semi-transparent blue).</param>
-    void Paint(HWND hwnd, RECT bounds, uint argbColor);
+    /// <param name="direction">The navigation direction that targeted this window.</param>
+    void Paint(HWND hwnd, RECT bounds, uint argbColor, Direction direction);
 }

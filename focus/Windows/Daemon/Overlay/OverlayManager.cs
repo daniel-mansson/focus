@@ -45,7 +45,7 @@ internal sealed class OverlayManager : IDisposable
 
         var window = _windows[direction];
         window.Show(bounds);
-        _renderer.Paint(window.Hwnd, bounds, _colors.GetArgb(direction));
+        _renderer.Paint(window.Hwnd, bounds, _colors.GetArgb(direction), direction);
     }
 
     /// <summary>
