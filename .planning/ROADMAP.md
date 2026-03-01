@@ -86,10 +86,11 @@ Plans:
   2. The overlay window does not appear in Alt+Tab or the taskbar, and `focus --debug enumerate` shows zero rows with the daemon process name while the daemon is running
   3. Per-direction colors (left/right/up/down, hex ARGB) read from JSON config appear correctly on the rendered borders — the default colors apply when not configured
   4. On a secondary monitor at a different DPI scale, the overlay border aligns accurately with the target window bounds
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 05-01: TBD
+- [ ] 05-01-PLAN.md — Overlay infrastructure: NativeMethods.txt additions, IOverlayRenderer interface, OverlayWindow HWND wrapper, BorderRenderer GDI implementation, OverlayColors config, OverlayManager orchestrator, FocusConfig extension
+- [ ] 05-02-PLAN.md — Debug overlay command (`focus --debug overlay <direction>`) wired into Program.cs + human verification of overlay rendering
 
 #### Phase 6: Navigation Integration
 **Goal**: Holding CAPSLOCK shows colored borders on the actual top-ranked directional candidate windows (all four directions simultaneously), updating when the foreground window changes, and dismissing instantly on CAPSLOCK release
@@ -117,5 +118,5 @@ Phases execute in numeric order: 4 → 5 → 6
 | 2. Navigation Pipeline | v1.0 | 2/2 | Complete | 2026-02-27 |
 | 3. Config, Strategies & Complete CLI | v1.0 | 2/2 | Complete | 2026-02-28 |
 | 4. Daemon Core | v2.0 | 2/2 | Complete | 2026-03-01 |
-| 5. Overlay Windows | v2.0 | 0/? | Not started | - |
+| 5. Overlay Windows | v2.0 | 0/2 | Planned | - |
 | 6. Navigation Integration | v2.0 | 0/? | Not started | - |
