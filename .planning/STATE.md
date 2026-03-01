@@ -84,6 +84,7 @@ None.
 | 3 | Print resolved config to stderr on verbose daemon startup | 2026-03-01 | 40029f2 | [3-when-starting-the-daemon-in-verbose-mode](./quick/3-when-starting-the-daemon-in-verbose-mode/) |
 | 4 | Make config file accept same kebab-case values as CLI | 2026-03-01 | 9b4a04e | [4-make-config-file-accept-same-dash-separa](./quick/4-make-config-file-accept-same-dash-separa/) |
 | 5 | Add CAPS+number window selection with configurable overlay labels | 2026-03-01 | 5d38aa5 | [5-add-caps-number-window-selection-with-co](./quick/5-add-caps-number-window-selection-with-co/) |
+| 6 | Include active window in overlay numbering so IDs stay stable | 2026-03-02 | 7c4e6fe | [6-include-active-window-in-overlay-numberi](./quick/6-include-active-window-in-overlay-numberi/) |
 | 6 | Include active window in overlay numbering for position-stable numbers | 2026-03-02 | 7c4e6fe | [6-include-active-window-in-overlay-numberi](./quick/6-include-active-window-in-overlay-numberi/) |
 
 ### Todos
