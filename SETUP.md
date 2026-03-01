@@ -191,7 +191,7 @@ For most users that expands to something like `C:\Users\YourName\AppData\Roaming
 ```json
 {
   "strategy": "balanced",
-  "wrap": "noOp",
+  "wrap": "no-op",
   "exclude": []
 }
 ```
@@ -200,15 +200,13 @@ For most users that expands to something like `C:\Users\YourName\AppData\Roaming
 
 | Field | Type | Values | Default | Description |
 |---|---|---|---|---|
-| `strategy` | string | `balanced`, `strongAxisBias`, `closestInDirection`, `edgeMatching`, `edgeProximity`, `axisOnly` | `balanced` | Default scoring strategy for direction navigation |
-| `wrap` | string | `noOp`, `wrap`, `beep` | `noOp` | Behavior when no window is found in the requested direction |
+| `strategy` | string | `balanced`, `strong-axis-bias`, `closest-in-direction`, `edge-matching`, `edge-proximity`, `axis-only` | `balanced` | Default scoring strategy for direction navigation |
+| `wrap` | string | `no-op`, `wrap`, `beep` | `no-op` | Behavior when no window is found in the requested direction |
 | `exclude` | array | glob patterns | `[]` | Process names to exclude from window enumeration |
-
-Note: JSON field values use camelCase (e.g., `strongAxisBias`, `closestInDirection`, `edgeMatching`, `edgeProximity`, `axisOnly`, `noOp`). CLI flags use kebab-case (e.g., `--strategy strong-axis-bias`, `--strategy edge-matching`, `--strategy edge-proximity`, `--strategy axis-only`).
 
 **Wrap behavior:**
 
-- `noOp` — do nothing when no candidate exists in that direction (default)
+- `no-op` — do nothing when no candidate exists in that direction (default)
 - `wrap` — cycle to the window at the opposite edge of the screen
 - `beep` — play the system beep sound when no candidate is found
 
@@ -219,7 +217,7 @@ The `exclude` array contains glob patterns matched against the process name (wit
 ```json
 {
   "strategy": "balanced",
-  "wrap": "noOp",
+  "wrap": "no-op",
   "exclude": ["explorer", "Teams", "Slack*"]
 }
 ```
