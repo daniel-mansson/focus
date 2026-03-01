@@ -19,10 +19,25 @@ internal sealed class KeyboardHookHandler : IDisposable
     private readonly ChannelWriter<KeyEvent> _channelWriter;
     private global::Windows.Win32.UnhookWindowsHookExSafeHandle? _hookHandle;
 
+    // CAPSLOCK state tracked in real-time from hook callbacks
+    private bool _capsLockHeld;
+
     // Virtual key codes
     private const uint VK_CAPITAL = 0x14;
     private const uint VK_SHIFT   = 0x10;
     private const uint VK_CONTROL = 0x11;
+
+    // Direction key virtual key codes — arrows
+    private const uint VK_LEFT  = 0x25;
+    private const uint VK_UP    = 0x26;
+    private const uint VK_RIGHT = 0x27;
+    private const uint VK_DOWN  = 0x28;
+
+    // Direction key virtual key codes — WASD
+    private const uint VK_W = 0x57;
+    private const uint VK_A = 0x41;
+    private const uint VK_S = 0x53;
+    private const uint VK_D = 0x44;
 
     // KBDLLHOOKSTRUCT flags
     private const uint LLKHF_INJECTED = 0x00000010; // Injected from any process (DAEMON-06)
@@ -73,6 +88,13 @@ internal sealed class KeyboardHookHandler : IDisposable
 
     public void Dispose() => Uninstall();
 
+    private static bool IsDirectionKey(uint vkCode) => vkCode switch
+    {
+        VK_LEFT or VK_UP or VK_RIGHT or VK_DOWN => true,
+        VK_W or VK_A or VK_S or VK_D => true,
+        _ => false
+    };
+
     private unsafe LRESULT HookCallback(int nCode, WPARAM wParam, LPARAM lParam)
     {
         if (nCode < 0)
@@ -84,7 +106,33 @@ internal sealed class KeyboardHookHandler : IDisposable
         if (((uint)kbd->flags & LLKHF_INJECTED) != 0)
             return PInvoke.CallNextHookEx(null, nCode, wParam, lParam);
 
-        // Only process VK_CAPITAL (CAPSLOCK)
+        // Direction key interception: runs before CAPSLOCK check so direction keys
+        // are handled when CAPSLOCK is already held (regardless of other modifiers).
+        if (IsDirectionKey(kbd->vkCode))
+        {
+            if (!_capsLockHeld)
+            {
+                // CAPSLOCK not held — pass direction key through normally (HOTKEY-04)
+                return PInvoke.CallNextHookEx(null, nCode, wParam, lParam);
+            }
+
+            // CAPSLOCK is held — intercept and suppress the direction key (HOTKEY-03)
+            bool isKeyDown = (uint)wParam.Value == WM_KEYDOWN || (uint)wParam.Value == WM_SYSKEYDOWN;
+
+            // Read modifier state for verbose logging (direction keys are suppressed regardless of modifiers)
+            bool shiftHeld = (PInvoke.GetKeyState((int)VK_SHIFT) & 0x8000) != 0;
+            bool ctrlHeld  = (PInvoke.GetKeyState((int)VK_CONTROL) & 0x8000) != 0;
+            bool altHeld   = ((uint)kbd->flags & LLKHF_ALTDOWN) != 0;
+
+            // MUST use TryWrite (fire-and-forget) — NEVER use WriteAsync in hook callback.
+            // Hook callback has a 1000ms total budget on Windows 10 1709+.
+            _channelWriter.TryWrite(new KeyEvent(kbd->vkCode, isKeyDown, kbd->time, shiftHeld, ctrlHeld, altHeld));
+
+            // Suppress the key — return non-zero so the focused app never sees it
+            return (LRESULT)1;
+        }
+
+        // Only process VK_CAPITAL (CAPSLOCK) from here on
         if (kbd->vkCode != VK_CAPITAL)
             return PInvoke.CallNextHookEx(null, nCode, wParam, lParam);
 
@@ -101,12 +149,14 @@ internal sealed class KeyboardHookHandler : IDisposable
         if ((PInvoke.GetKeyState((int)VK_SHIFT) & 0x8000) != 0)
             return PInvoke.CallNextHookEx(null, nCode, wParam, lParam);
 
+        // Update _capsLockHeld in real-time so direction key check above is accurate
+        bool capsIsKeyDown = (uint)wParam.Value == WM_KEYDOWN || (uint)wParam.Value == WM_SYSKEYDOWN;
+        _capsLockHeld = capsIsKeyDown;
+
         // Post bare CAPSLOCK event to worker thread via Channel
         // MUST use TryWrite (fire-and-forget) — NEVER use WriteAsync in hook callback.
-        // Hook callback has a 1000ms total budget on Windows 10 1709+.
         // TryWrite on unbounded channel always succeeds.
-        bool isKeyDown = (uint)wParam.Value == WM_KEYDOWN || (uint)wParam.Value == WM_SYSKEYDOWN;
-        _channelWriter.TryWrite(new KeyEvent(kbd->vkCode, isKeyDown, kbd->time));
+        _channelWriter.TryWrite(new KeyEvent(kbd->vkCode, capsIsKeyDown, kbd->time));
 
         // DAEMON-02: Suppress CAPSLOCK toggle — return non-zero to eat the event.
         // This prevents the CAPSLOCK toggle state from changing.
