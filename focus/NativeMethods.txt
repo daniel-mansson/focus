@@ -21,3 +21,9 @@ GetForegroundWindow
 SendInput
 MonitorFromPoint
 MessageBeep
+SetWindowsHookEx
+UnhookWindowsHookEx
+CallNextHookEx
+GetModuleHandle
+FreeConsole
+GetKeyState
