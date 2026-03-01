@@ -76,15 +76,15 @@ internal sealed class BorderRenderer : IOverlayRenderer
         PInvoke.RoundRect(memDC, 0, 0, width, height, CornerEllipse, CornerEllipse);
 
         // 8. Apply premultiplied alpha to all GDI-drawn pixels.
-        //    GDI writes full-opacity color but sets alpha=0xFF; transparent pixels remain 0.
-        //    We need: alpha = desired alpha, RGB = color * alpha / 255 (premultiplied).
+        //    GDI draws RGB values but does NOT set the alpha channel — alpha stays at 0x00.
+        //    Detect drawn pixels by checking if any RGB component is non-zero.
+        //    Then set: alpha = desired alpha, RGB = color * alpha / 255 (premultiplied).
         PInvoke.GdiFlush();
         uint* pixelBuf = (uint*)bits;
         for (int i = 0; i < width * height; i++)
         {
             uint pixel = pixelBuf[i];
-            byte pixAlpha = (byte)(pixel >> 24);
-            if (pixAlpha != 0) // Only modify pixels GDI touched
+            if ((pixel & 0x00FFFFFF) != 0) // GDI wrote RGB but left alpha at 0
             {
                 byte pr = (byte)((((pixel >> 16) & 0xFF) * (uint)alpha) / 255);
                 byte pg = (byte)((((pixel >>  8) & 0xFF) * (uint)alpha) / 255);
