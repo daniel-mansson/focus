@@ -3,7 +3,7 @@
 ## Milestones
 
 - ✅ **v1.0 CLI** - Phases 1-3 (shipped 2026-02-28)
-- 🚧 **v2.0 Overlay Preview** - Phases 4-6 (in progress)
+- ✅ **v2.0 Overlay Preview** - Phases 4-6 (shipped 2026-03-01)
 
 ## Phases
 
@@ -58,7 +58,7 @@ Plans:
 
 </details>
 
-### v2.0 Overlay Preview (In Progress)
+### v2.0 Overlay Preview (COMPLETE — shipped 2026-03-01)
 
 **Milestone Goal:** A persistent background daemon that renders directional overlay previews (colored borders) on candidate windows while CAPSLOCK is held, using a low-level keyboard hook and layered Win32 windows.
 
@@ -102,11 +102,11 @@ Plans:
   3. While CAPSLOCK is held, switching the foreground window (via Alt+Tab) causes overlays to reposition to reflect the new source window within one update cycle
   4. Directions with no candidate window (e.g., nothing to the left) show no overlay for that direction — the daemon does not crash or show a misplaced overlay
   5. The CAPSLOCK overlay does not appear for brief accidental presses — the activation delay (overlayDelayMs, default ~150ms, configurable in JSON) prevents spurious triggers
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
-- [ ] 06-01-PLAN.md — ForegroundMonitor (SetWinEventHook), OverlayOrchestrator (coordination), CapsLockMonitor callbacks, OverlayManager color override, FocusConfig.OverlayDelayMs
-- [ ] 06-02-PLAN.md — Daemon lifecycle wiring (DaemonCommand + DaemonApplicationContext), fade-in/fade-out animation, ForceCapsLockOff, human verification
+- [x] 06-01-PLAN.md — ForegroundMonitor (SetWinEventHook), OverlayOrchestrator (coordination), CapsLockMonitor callbacks, OverlayManager color override, FocusConfig.OverlayDelayMs
+- [x] 06-02-PLAN.md — Daemon lifecycle wiring (DaemonCommand + DaemonApplicationContext), instant show/hide (fade removed), ForceCapsLockOff, human verification
 
 ## Progress
 
@@ -120,4 +120,4 @@ Phases execute in numeric order: 4 → 5 → 6
 | 3. Config, Strategies & Complete CLI | v1.0 | 2/2 | Complete | 2026-02-28 |
 | 4. Daemon Core | v2.0 | 2/2 | Complete | 2026-03-01 |
 | 5. Overlay Windows | v2.0 | 2/2 | Complete | 2026-03-01 |
-| 6. Navigation Integration | 1/2 | In Progress|  | - |
+| 6. Navigation Integration | 2/2 | Complete   | 2026-03-01 | 2026-03-01 |

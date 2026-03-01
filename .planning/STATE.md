@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Overlay Preview
-status: unknown
-last_updated: "2026-03-01T16:31:00Z"
+status: complete
+last_updated: "2026-03-01T17:30:00Z"
 progress:
-  total_phases: 5
-  completed_phases: 5
-  total_plans: 10
-  completed_plans: 10
+  total_phases: 6
+  completed_phases: 6
+  total_plans: 12
+  completed_plans: 12
 ---
 
 # Project State
@@ -22,12 +22,12 @@ See: .planning/PROJECT.md (updated 2026-02-28)
 
 ## Current Position
 
-Phase: 6 of 6 (Navigation Integration) — IN PROGRESS
-Plan: 1 of 2 complete (06-01-PLAN.md done)
-Status: Phase 6 Plan 01 complete — orchestration API surface (ForegroundMonitor + OverlayOrchestrator) built and compiling
-Last activity: 2026-03-01 - Completed 06-01: ForegroundMonitor, OverlayOrchestrator, CapsLockMonitor callbacks, OverlayManager colorOverride overload
+Phase: 6 of 6 (Navigation Integration) — COMPLETE
+Plan: 2 of 2 complete (06-02-PLAN.md done)
+Status: Phase 6 complete — v2.0 Overlay Preview milestone fully shipped. CAPSLOCK hold shows directional colored borders, release hides instantly, foreground reposition works.
+Last activity: 2026-03-01 - Completed 06-02: Daemon lifecycle wiring, ForceCapsLockOff, instant overlay show/hide, stale-frame fix, bounds clamping — all 8 human scenarios passed
 
-Progress: [█████░░░░░] ~58% (v2.0 milestone, 5/6 plans complete for phases 4-6)
+Progress: [██████████] 100% (v2.0 milestone complete, 6/6 phases done)
 
 ## Performance Metrics
 
@@ -50,7 +50,7 @@ Progress: [█████░░░░░] ~58% (v2.0 milestone, 5/6 plans compl
 |-------|-------|--------|----------|
 | 4. Daemon Core | 2/2 | Complete | Plan 01: 3min, Plan 02: 16min |
 | 5. Overlay Rendering | 2/2 | Complete | Plan 01: 7min, Plan 02: 30min |
-| 6. Overlay Wiring | 1/2 | In Progress | Plan 01: 3min |
+| 6. Overlay Wiring | 2/2 | Complete | Plan 01: 3min, Plan 02: ~60min |
 
 ## Accumulated Context
 
@@ -87,6 +87,11 @@ Carried from v1.0 + v2.0 research:
 - Phase 6 (06-01): ForegroundMonitor delegate (WINEVENTPROC) must be pinned with GCHandle.Alloc — same pattern as hook delegate, but instance field instead of static field
 - Phase 6 (06-01): Control.Invoke pattern for STA dispatch: volatile _shutdownRequested guard + try/catch ObjectDisposedException+InvalidOperationException around every Invoke call
 - Phase 6 (06-01): Solo-window dim indicator color 0x30AAAAAA (~19% opacity neutral gray) — visible but subtle, confirms daemon activity when no navigation candidates exist
+- Phase 6 (06-02): Fade animation removed entirely — instant show/hide preferred over 100ms fade-in/80ms fade-out after human testing; all WinForms Timer fade machinery removed
+- Phase 6 (06-02): OverlayWindow.Show split into Reposition+Paint+Show to eliminate stale frame flash when re-activating an overlay with new bounds
+- Phase 6 (06-02): Left/right overlay bounds expanded by 3px in all directions to prevent visual overlap with up/down border overlays on the same window
+- Phase 6 (06-02): Overlay bounds clamped to monitor edges via MonitorFromWindow+GetMonitorInfo — handles partially off-screen source windows without rendering artifacts
+- Phase 6 (06-02): Out-param pattern for STA-thread object creation — DaemonApplicationContext fills `out OverlayOrchestrator orchestrator` before returning, allowing DaemonCommand.Run to hold reference for ordered shutdown
 
 ### Pending Todos
 
@@ -108,6 +113,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-01T16:31:00Z
-Stopped at: Completed 06-01-PLAN.md — ForegroundMonitor + OverlayOrchestrator created, CapsLockMonitor and OverlayManager modified, all 6 files compile clean. Ready for Phase 6 Plan 02 (daemon lifecycle wiring + fade animation).
+Last session: 2026-03-01T17:30:00Z
+Stopped at: Completed 06-02-PLAN.md — Daemon lifecycle wiring complete, all 8 human test scenarios passed, v2.0 Overlay Preview milestone COMPLETE. No further plans in roadmap.
 Resume file: None
