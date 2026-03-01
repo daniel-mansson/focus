@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Overlay Preview
 status: unknown
-last_updated: "2026-03-01T08:39:11.117Z"
+last_updated: "2026-03-01T09:41:00.000Z"
 progress:
   total_phases: 5
   completed_phases: 4
   total_plans: 10
-  completed_plans: 9
+  completed_plans: 10
 ---
 
 # Project State
@@ -22,12 +22,12 @@ See: .planning/PROJECT.md (updated 2026-02-28)
 
 ## Current Position
 
-Phase: 5 of 6 (Overlay Rendering) — IN PROGRESS
-Plan: 1 of 2 complete (05-01-PLAN.md done)
-Status: Phase 5 plan 1 complete — overlay rendering infrastructure built
-Last activity: 2026-03-01 — Plan 05-01 executed: IOverlayRenderer, OverlayWindow, BorderRenderer, OverlayManager
+Phase: 5 of 6 (Overlay Rendering) — COMPLETE
+Plan: 2 of 2 complete (05-02-PLAN.md done)
+Status: Phase 5 complete — overlay rendering pipeline verified end-to-end
+Last activity: 2026-03-01 — Plan 05-02 executed: debug overlay command wired, GDI alpha bug fixed, human verification passed
 
-Progress: [███░░░░░░░] ~42% (v2.0 milestone, 3/6 plans complete)
+Progress: [████░░░░░░] ~50% (v2.0 milestone, 4/6 plans complete)
 
 ## Performance Metrics
 
@@ -49,7 +49,7 @@ Progress: [███░░░░░░░] ~42% (v2.0 milestone, 3/6 plans compl
 | Phase | Plans | Status | Duration |
 |-------|-------|--------|----------|
 | 4. Daemon Core | 2/2 | Complete | Plan 01: 3min, Plan 02: 16min |
-| 5. Overlay Rendering | 1/2 | In Progress | Plan 01: 7min |
+| 5. Overlay Rendering | 2/2 | Complete | Plan 01: 7min, Plan 02: 30min |
 | 6. Overlay Wiring | 0/2 | Pending | — |
 
 ## Accumulated Context
@@ -79,6 +79,9 @@ Carried from v1.0 + v2.0 research:
 - [Phase 05-overlay-windows]: Per-instance unique window class name (FocusOverlay_XXXXXXXX) to avoid registration conflicts
 - [Phase 05-overlay-windows]: Marshal.SizeOf<WNDCLASSEXW> instead of unsafe sizeof — WNDCLASSEXW is a managed partial struct
 - [Phase 05-overlay-windows]: DefWindowProc must be listed explicitly in NativeMethods.txt — not auto-generated transitively
+- Phase 5 (05-02): GDI RoundRect draws RGB but leaves alpha at 0x00 in DIBs — detect drawn pixels via (pixel & 0x00FFFFFF) != 0, not pixAlpha != 0
+- Phase 5 (05-02): Application.DoEvents + Thread.Sleep(16) as message pump for debug overlay command — no full WinForms Application.Run required
+- Phase 5 (05-02): Background thread with ManualResetEventSlim for Console.ReadKey without blocking the message pump thread
 
 ### Pending Todos
 
@@ -93,6 +96,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-01T08:37:00Z
-Stopped at: Completed 05-01-PLAN.md — overlay rendering infrastructure built (IOverlayRenderer, OverlayWindow, BorderRenderer, OverlayManager). Ready for 05-02 debug command wiring.
+Last session: 2026-03-01T09:41:00Z
+Stopped at: Completed 05-02-PLAN.md — debug overlay command wired, GDI alpha detection bug fixed and human-verified. Phase 5 complete. Ready for Phase 6 (Overlay Wiring).
 Resume file: None
