@@ -50,22 +50,22 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| HOTKEY-01 | — | Pending |
-| HOTKEY-02 | — | Pending |
-| HOTKEY-03 | — | Pending |
-| HOTKEY-04 | — | Pending |
-| NAV-01 | — | Pending |
-| NAV-02 | — | Pending |
-| NAV-03 | — | Pending |
-| CHAIN-01 | — | Pending |
-| CHAIN-02 | — | Pending |
-| CHAIN-03 | — | Pending |
+| HOTKEY-01 | Phase 7 | Pending |
+| HOTKEY-02 | Phase 7 | Pending |
+| HOTKEY-03 | Phase 7 | Pending |
+| HOTKEY-04 | Phase 7 | Pending |
+| NAV-01 | Phase 8 | Pending |
+| NAV-02 | Phase 8 | Pending |
+| NAV-03 | Phase 8 | Pending |
+| CHAIN-01 | Phase 9 | Pending |
+| CHAIN-02 | Phase 9 | Pending |
+| CHAIN-03 | Phase 9 | Pending |
 
 **Coverage:**
 - v3.0 requirements: 10 total
-- Mapped to phases: 0
-- Unmapped: 10 (awaiting roadmap)
+- Mapped to phases: 10
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-01*
-*Last updated: 2026-03-01 after initial definition*
+*Last updated: 2026-03-01 after roadmap creation (phases 7-9)*
