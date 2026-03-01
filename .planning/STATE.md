@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-02-28)
 Phase: 5 of 6 (Overlay Rendering) — COMPLETE
 Plan: 2 of 2 complete (05-02-PLAN.md done)
 Status: Phase 5 complete — overlay rendering pipeline verified end-to-end
-Last activity: 2026-03-01 — Plan 05-02 executed: debug overlay command wired, GDI alpha bug fixed, human verification passed
+Last activity: 2026-03-01 - Completed quick task 6: add debug command showing all directions with overlays
 
 Progress: [████░░░░░░] ~50% (v2.0 milestone, 4/6 plans complete)
 
@@ -93,6 +93,12 @@ None yet.
 - RESOLVED (05-01): Premultiplied alpha compositing implemented in BorderRenderer — GdiFlush + pixel-level multiplication pattern established
 - v1.0 carry: UWP enumeration behavior on Windows 11 24H2 must be validated with real windows
 - v1.0 carry: SendInput + ALT bypass must be validated specifically via AHK invocation
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 6 | Add debug command showing all directions with overlays | 2026-03-01 | cbd6f49 | [6-add-debug-command-showing-all-directions](./quick/6-add-debug-command-showing-all-directions/) |
 
 ## Session Continuity
 
