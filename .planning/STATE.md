@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-02-28)
 Phase: 5 of 6 (Overlay Rendering) — COMPLETE
 Plan: 2 of 2 complete (05-02-PLAN.md done)
 Status: Phase 5 complete — overlay rendering pipeline verified end-to-end
-Last activity: 2026-03-01 - Completed quick task 6: add debug command showing all directions with overlays
+Last activity: 2026-03-01 - Completed quick task 7: directional edge overlay with corner fade-out
 
 Progress: [████░░░░░░] ~50% (v2.0 milestone, 4/6 plans complete)
 
@@ -82,6 +82,7 @@ Carried from v1.0 + v2.0 research:
 - Phase 5 (05-02): GDI RoundRect draws RGB but leaves alpha at 0x00 in DIBs — detect drawn pixels via (pixel & 0x00FFFFFF) != 0, not pixAlpha != 0
 - Phase 5 (05-02): Application.DoEvents + Thread.Sleep(16) as message pump for debug overlay command — no full WinForms Application.Run required
 - Phase 5 (05-02): Background thread with ManualResetEventSlim for Console.ReadKey without blocking the message pump thread
+- Quick-7: Direct pixel buffer writes (not GDI) required for selective directional edge rendering — GetPixelAlpha helper with primary-edge-first ordering minimizes sqrt calls via corner quadrant bounding box
 
 ### Pending Todos
 
@@ -99,9 +100,10 @@ None yet.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 6 | Add debug command showing all directions with overlays | 2026-03-01 | cbd6f49 | [6-add-debug-command-showing-all-directions](./quick/6-add-debug-command-showing-all-directions/) |
+| 7 | Directional edge overlay with corner fade-out | 2026-03-01 | 5621b71 | [7-directional-edge-overlay-with-corner-fad](./quick/7-directional-edge-overlay-with-corner-fad/) |
 
 ## Session Continuity
 
-Last session: 2026-03-01T09:06:34Z
-Stopped at: Completed quick task 6 — added --debug all command showing overlays for all 4 directions simultaneously with per-direction scoring output. Phase 5 still complete. Ready for Phase 6 (Overlay Wiring).
+Last session: 2026-03-01T09:49:43Z
+Stopped at: Completed quick task 7 — replaced full-box RoundRect overlay with directional edge rendering (primary edge + corners + 20% fade tails). Phase 5 still complete. Ready for Phase 6 (Overlay Wiring).
 Resume file: None
