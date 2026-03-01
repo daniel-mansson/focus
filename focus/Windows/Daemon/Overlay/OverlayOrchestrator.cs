@@ -190,11 +190,7 @@ internal sealed class OverlayOrchestrator : IDisposable
         var (windows, _) = enumerator.GetNavigableWindows();
         var filtered = ExcludeFilter.Apply(windows, config.Exclude);
 
-        // Remove the current foreground window from the list (user is selecting "other" windows)
-        var fgHwnd = (nint)(IntPtr)PInvoke.GetForegroundWindow();
-        var candidates = filtered.Where(w => w.Hwnd != fgHwnd).ToList();
-
-        var sorted = WindowSorter.SortByPosition(candidates, config.NumberSortStrategy);
+        var sorted = WindowSorter.SortByPosition(filtered, config.NumberSortStrategy);
 
         // number is 1-based, index is 0-based
         int index = number - 1;
@@ -419,9 +415,7 @@ internal sealed class OverlayOrchestrator : IDisposable
         // Number overlay labels — render after directional overlays so labels appear on top
         if (config.NumberOverlayEnabled)
         {
-            var fgHwndVal = (nint)(IntPtr)PInvoke.GetForegroundWindow();
-            var nonFgWindows = filtered.Where(w => w.Hwnd != fgHwndVal).ToList();
-            var sorted = WindowSorter.SortByPosition(nonFgWindows, config.NumberSortStrategy);
+            var sorted = WindowSorter.SortByPosition(filtered, config.NumberSortStrategy);
 
             for (int i = 0; i < Math.Min(sorted.Count, 9); i++)
             {
