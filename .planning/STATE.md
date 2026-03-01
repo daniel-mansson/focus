@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Integrated Navigation
 status: unknown
-last_updated: "2026-03-01T20:04:28.813Z"
+last_updated: "2026-03-01T22:09:05Z"
 progress:
   total_phases: 2
   completed_phases: 2
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 Phase: 8 (In-Daemon Navigation) — complete
 Plan: 08-01 — complete (all tasks done, human-verified)
 Status: Ready for Phase 9 (Overlay Chaining)
-Last activity: 2026-03-01 - Completed quick task 1: Add a white border around the currently active window when holding caps lock
+Last activity: 2026-03-01 - Completed quick task 3: Print resolved config to stderr on verbose daemon startup
 
 Progress: [████░░░░░░] 40%
 
@@ -49,6 +49,7 @@ Progress: [████░░░░░░] 40%
 
 ### Key Decisions
 - Quick task 1: ForegroundBorderColor = 0xE0FFFFFF (~88% opacity white); PaintFullBorder static method bypasses IOverlayRenderer direction-based contract
+- Quick task 3: Single timestamp captured once for config dump block — all lines share same [HH:mm:ss.fff] to avoid clock drift confusion
 - v3.0 phases numbered from 7 to continue from v2.0 (phases 4-6)
 - 3 phases derived from 3 natural requirement clusters (hotkey wiring, navigation firing, overlay chaining)
 - Depth is "quick" — 3 phases is appropriate compression for 10 requirements across tight dependency chain
@@ -75,6 +76,7 @@ None.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 1 | Add a white border around the currently active window when holding caps lock | 2026-03-01 | b79d6ae | [1-add-a-white-border-around-the-currently-](./quick/1-add-a-white-border-around-the-currently-/) |
+| 3 | Print resolved config to stderr on verbose daemon startup | 2026-03-01 | 40029f2 | [3-when-starting-the-daemon-in-verbose-mode](./quick/3-when-starting-the-daemon-in-verbose-mode/) |
 
 ### Todos
 - Execute 09-PLAN (Overlay Chaining) — Phase 8 complete, all requirements met
@@ -87,9 +89,10 @@ None.
 | 07 | 02 | ~20 min | 2/2 | 2 |
 | 08 | 01 | ~30 min | 2/2 | 3 |
 | quick-1 | 01 | ~15 min | 2/2 | 3 |
+| quick-3 | 01 | ~5 min | 1/1 | 1 |
 
 ## Session Continuity
 
-Last session: 2026-03-01T21:50:00Z
-Stopped at: Completed quick task 1 (white border) — human-verified and approved
+Last session: 2026-03-01T22:09:05Z
+Stopped at: Completed quick task 3 (verbose config dump) — 1/1 tasks done
 Resume file: .planning/phases/09-overlay-chaining/09-PLAN.md (next phase)
