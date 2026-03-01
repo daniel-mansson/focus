@@ -42,6 +42,10 @@ DeleteObject
 SelectObject
 GdiFlush
 SetBkMode
+SetTextColor
+DrawText
+CreateFontIndirect
+LOGFONTW
 CreatePen
 GetStockObject
 RoundRect

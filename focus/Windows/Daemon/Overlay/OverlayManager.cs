@@ -19,10 +19,11 @@ internal sealed class OverlayManager : IDisposable
     private readonly OverlayColors _colors;
     private readonly Dictionary<Direction, OverlayWindow> _windows;
     private readonly OverlayWindow _foregroundWindow;
+    private readonly List<OverlayWindow> _numberWindows;
     private bool _disposed;
 
     /// <summary>
-    /// Creates the manager and all four overlay windows.
+    /// Creates the manager and all four overlay windows plus 9 number label windows.
     /// Must be called on the STA thread.
     /// </summary>
     public OverlayManager(IOverlayRenderer renderer, OverlayColors colors)
@@ -39,6 +40,10 @@ internal sealed class OverlayManager : IDisposable
         };
 
         _foregroundWindow = new OverlayWindow();
+
+        _numberWindows = new List<OverlayWindow>();
+        for (int i = 0; i < 9; i++)
+            _numberWindows.Add(new OverlayWindow());
     }
 
     /// <summary>
@@ -102,7 +107,22 @@ internal sealed class OverlayManager : IDisposable
     }
 
     /// <summary>
-    /// Hides all four directional overlay windows and the foreground border overlay.
+    /// Renders a number label (1-9) on the overlay window for the given window bounds.
+    /// The label appears at the configured position within the window's bounds.
+    /// </summary>
+    public void ShowNumberLabel(int number, RECT windowBounds, NumberOverlayPosition position)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (number < 1 || number > 9) return;
+
+        var window = _numberWindows[number - 1];
+        NumberLabelRenderer.PaintNumberLabel(window.Hwnd, windowBounds, number, position);
+        window.Show();
+    }
+
+    /// <summary>
+    /// Hides all four directional overlay windows, the foreground border overlay,
+    /// and all nine number label overlay windows.
     /// </summary>
     public void HideAll()
     {
@@ -110,6 +130,8 @@ internal sealed class OverlayManager : IDisposable
         foreach (var window in _windows.Values)
             window.Hide();
         _foregroundWindow.Hide();
+        foreach (var nw in _numberWindows)
+            nw.Hide();
     }
 
     /// <summary>
@@ -133,5 +155,8 @@ internal sealed class OverlayManager : IDisposable
             window.Dispose();
 
         _foregroundWindow.Dispose();
+
+        foreach (var nw in _numberWindows)
+            nw.Dispose();
     }
 }
