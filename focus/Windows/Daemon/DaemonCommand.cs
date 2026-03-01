@@ -62,8 +62,9 @@ internal static class DaemonCommand
         OverlayOrchestrator? orchestrator = null;
 
         var monitor = new CapsLockMonitor(channel.Reader, verbose,
-            onHeld:     () => orchestrator?.OnCapsLockHeld(),
-            onReleased: () => orchestrator?.OnCapsLockReleased());
+            onHeld:             () => orchestrator?.OnCapsLockHeld(),
+            onReleased:         () => orchestrator?.OnCapsLockReleased(),
+            onDirectionKeyDown: (dir) => orchestrator?.OnDirectionKeyDown(dir));
 
         // 9. Set up cancellation (used by both Ctrl+C and tray Exit paths)
         using var cts = new CancellationTokenSource();

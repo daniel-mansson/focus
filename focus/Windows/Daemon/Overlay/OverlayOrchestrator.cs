@@ -105,6 +105,17 @@ internal sealed class OverlayOrchestrator : IDisposable
     }
 
     /// <summary>
+    /// Called when a direction key is pressed while CAPSLOCK is held.
+    /// Phase 7: no-op (interception only). Phase 8 will add navigation.
+    /// </summary>
+    /// <param name="direction">Cardinal direction: "up", "down", "left", "right"</param>
+    public void OnDirectionKeyDown(string direction)
+    {
+        // Phase 8 will wire navigation here.
+        // Direction key interception and suppression is handled in KeyboardHookHandler.
+    }
+
+    /// <summary>
     /// Signals that shutdown is in progress. Prevents further Invoke calls after disposal begins.
     /// Call before Dispose() from the shutdown path.
     /// </summary>
