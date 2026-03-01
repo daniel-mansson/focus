@@ -44,8 +44,9 @@ internal sealed class OverlayManager : IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
 
         var window = _windows[direction];
-        window.Show(bounds);
+        window.Reposition(bounds);
         _renderer.Paint(window.Hwnd, bounds, _colors.GetArgb(direction), direction);
+        window.Show();
     }
 
     /// <summary>
@@ -58,8 +59,9 @@ internal sealed class OverlayManager : IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
 
         var window = _windows[direction];
-        window.Show(bounds);
+        window.Reposition(bounds);
         _renderer.Paint(window.Hwnd, bounds, colorOverride, direction);
+        window.Show();
     }
 
     /// <summary>

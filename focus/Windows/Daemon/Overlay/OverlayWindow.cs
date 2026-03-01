@@ -109,10 +109,10 @@ internal sealed class OverlayWindow : IDisposable
     }
 
     /// <summary>
-    /// Positions and shows the overlay window at the given screen bounds.
-    /// SWP_NOACTIVATE ensures focus is never stolen.
+    /// Positions and resizes the overlay window WITHOUT making it visible.
+    /// Call this before Paint so the window has correct size, then call Show().
     /// </summary>
-    public void Show(RECT bounds)
+    public void Reposition(RECT bounds)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
@@ -124,7 +124,24 @@ internal sealed class OverlayWindow : IDisposable
             HwndTopmost,
             bounds.left, bounds.top,
             width, height,
-            SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE | SET_WINDOW_POS_FLAGS.SWP_SHOWWINDOW);
+            SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
+    }
+
+    /// <summary>
+    /// Makes the overlay window visible without changing position or size.
+    /// </summary>
+    public void Show()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        PInvoke.SetWindowPos(
+            _hwnd,
+            HwndTopmost,
+            0, 0, 0, 0,
+            SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE |
+            SET_WINDOW_POS_FLAGS.SWP_NOMOVE |
+            SET_WINDOW_POS_FLAGS.SWP_NOSIZE |
+            SET_WINDOW_POS_FLAGS.SWP_SHOWWINDOW);
     }
 
     /// <summary>

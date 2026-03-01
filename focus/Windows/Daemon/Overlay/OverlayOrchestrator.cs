@@ -25,9 +25,9 @@ internal sealed class OverlayOrchestrator : IDisposable
     // ~19% opacity neutral gray — subtle "daemon is alive" indicator for the solo-window case.
     private const uint SoloDimColor = 0x30AAAAAA;
 
-    // Fade timing: 100ms fade-in, 80ms fade-out. Timer fires every ~16ms (~60fps).
-    private const float FadeInDurationMs  = 100f;
-    private const float FadeOutDurationMs = 80f;
+    // Left/right overlays are expanded by this many pixels to avoid overlapping up/down borders
+    // on the same target window. Matches BorderRenderer.BorderThickness + 1.
+    private const int LeftRightInset = 3;
 
     private readonly OverlayManager _overlayManager;
     private readonly FocusConfig _config;
@@ -37,22 +37,10 @@ internal sealed class OverlayOrchestrator : IDisposable
 
     private readonly ForegroundMonitor _foregroundMonitor;
 
-    // Optional activation delay (config.OverlayDelayMs). Fired once, then stopped.
+    // Optional activation delay (config.OverlayDelayMs). Fired once, then the Tick handler stops it.
     private readonly System.Windows.Forms.Timer _delayTimer;
 
-    // Fade animation timer — fires at ~60fps during fade-in and fade-out.
-    private readonly System.Windows.Forms.Timer _fadeTimer;
-
     private bool _capsLockHeld;
-
-    // Fade state — managed exclusively on the STA thread.
-    private float _fadeProgress;   // 0.0 = transparent, 1.0 = full opacity
-    private bool _fadingIn;        // true = fading in, false = fading out
-
-    // Last-shown overlay positions and colors — populated by ShowOverlaysForCurrentForeground.
-    // Used by RepaintAllOverlays to re-paint with scaled alpha during fade animation.
-    // Key: Direction, Value: (RECT bounds, uint argbColor)
-    private readonly Dictionary<Direction, (RECT Bounds, uint Color)> _lastShown = new();
 
     private bool _disposed;
 
@@ -79,11 +67,6 @@ internal sealed class OverlayOrchestrator : IDisposable
         // Activation delay timer — fires once, then the Tick handler stops it.
         _delayTimer = new System.Windows.Forms.Timer();
         _delayTimer.Tick += OnDelayTimerTick;
-
-        // Fade animation timer.
-        _fadeTimer = new System.Windows.Forms.Timer();
-        _fadeTimer.Interval = 16; // ~60fps
-        _fadeTimer.Tick += OnFadeTick;
     }
 
     // -----------------------------------------------------------------------------------------
@@ -145,7 +128,6 @@ internal sealed class OverlayOrchestrator : IDisposable
         else
         {
             ShowOverlaysForCurrentForeground();
-            StartFadeIn();
         }
     }
 
@@ -156,8 +138,7 @@ internal sealed class OverlayOrchestrator : IDisposable
         // Stop delay timer — user released before delay elapsed, preventing a spurious trigger.
         _delayTimer.Stop();
 
-        // Start fade-out instead of immediately hiding — overlays fade to transparent over ~80ms.
-        StartFadeOut();
+        _overlayManager.HideAll();
     }
 
     private void OnDelayTimerTick(object? sender, EventArgs e)
@@ -169,7 +150,6 @@ internal sealed class OverlayOrchestrator : IDisposable
         if (_capsLockHeld)
         {
             ShowOverlaysForCurrentForeground();
-            StartFadeIn();
         }
     }
 
@@ -178,91 +158,7 @@ internal sealed class OverlayOrchestrator : IDisposable
         // Only reposition while CapsLock is held.
         if (!_capsLockHeld) return;
 
-        // If a fade-out is running (CAPSLOCK released path), ignore foreground changes.
-        // _capsLockHeld is false in that case, so this guard already handles it.
-        // If fading in or already at full opacity, snap to new foreground immediately.
-        _fadeTimer.Stop();
-        _fadeProgress = 1.0f;
-
         ShowOverlaysForCurrentForeground();
-        RepaintAllOverlays(_fadeProgress);
-    }
-
-    // -----------------------------------------------------------------------------------------
-    // Fade animation — all on STA thread (Timer.Tick fires on STA thread).
-    // -----------------------------------------------------------------------------------------
-
-    private void StartFadeIn()
-    {
-        _fadeTimer.Stop();
-        _fadingIn = true;
-        _fadeProgress = 0.0f;
-        // Paint first frame immediately so the overlays appear without a 16ms delay.
-        RepaintAllOverlays(_fadeProgress);
-        _fadeTimer.Start();
-    }
-
-    private void StartFadeOut()
-    {
-        _fadeTimer.Stop();
-        _fadingIn = false;
-        // Keep _fadeProgress at its current value for a smooth transition from wherever we are.
-        // If overlays were never shown (quick tap before delay elapsed), nothing is visible.
-        if (_fadeProgress > 0.0f)
-        {
-            _fadeTimer.Start();
-        }
-        else
-        {
-            // Nothing visible — skip the fade and clean up immediately.
-            _overlayManager.HideAll();
-            _lastShown.Clear();
-        }
-    }
-
-    private void OnFadeTick(object? sender, EventArgs e)
-    {
-        float step = _fadingIn
-            ? (16f / FadeInDurationMs)
-            : (16f / FadeOutDurationMs);
-
-        _fadeProgress = _fadingIn
-            ? Math.Min(1.0f, _fadeProgress + step)
-            : Math.Max(0.0f, _fadeProgress - step);
-
-        RepaintAllOverlays(_fadeProgress);
-
-        bool done = _fadingIn ? _fadeProgress >= 1.0f : _fadeProgress <= 0.0f;
-
-        if (done)
-        {
-            _fadeTimer.Stop();
-
-            if (!_fadingIn)
-            {
-                // Fade-out complete — hide all overlays and clear stored state.
-                _overlayManager.HideAll();
-                _lastShown.Clear();
-            }
-        }
-    }
-
-    /// <summary>
-    /// Re-paints all currently tracked overlays with their last-known bounds and colors,
-    /// but with alpha scaled by <paramref name="alphaScale"/>.
-    /// Called each timer tick during fade-in and fade-out.
-    /// </summary>
-    private void RepaintAllOverlays(float alphaScale)
-    {
-        foreach (var (dir, (bounds, color)) in _lastShown)
-        {
-            // Scale the alpha channel: extract 0xAA from 0xAARRGGBB, multiply, recombine.
-            uint originalAlpha = (color >> 24) & 0xFF;
-            uint scaledAlpha   = (uint)(originalAlpha * alphaScale);
-            uint scaledColor   = (color & 0x00FFFFFF) | (scaledAlpha << 24);
-
-            _overlayManager.ShowOverlay(dir, bounds, scaledColor);
-        }
     }
 
     // -----------------------------------------------------------------------------------------
@@ -271,12 +167,12 @@ internal sealed class OverlayOrchestrator : IDisposable
 
     private unsafe void ShowOverlaysForCurrentForeground()
     {
+        // Hide all overlays first so stale positions from a previous hold are never visible.
+        _overlayManager.HideAll();
+
         var enumerator = new WindowEnumerator();
         var (windows, _) = enumerator.GetNavigableWindows();
         var filtered = ExcludeFilter.Apply(windows, _config.Exclude);
-
-        // Clear previous state — will be repopulated below.
-        _lastShown.Clear();
 
         int candidatesFound = 0;
 
@@ -302,10 +198,15 @@ internal sealed class OverlayOrchestrator : IDisposable
                 bottom = top.Bottom
             };
 
-            uint color = _config.OverlayColors.GetArgb(direction);
-
-            // Track for fade animation repaints.
-            _lastShown[direction] = (bounds, color);
+            // Expand left/right overlays slightly so they don't overlap up/down borders
+            // on the same window — renders the side borders just outside the window edge.
+            if (direction is Direction.Left or Direction.Right)
+            {
+                bounds.left   -= LeftRightInset;
+                bounds.top    -= LeftRightInset;
+                bounds.right  += LeftRightInset;
+                bounds.bottom += LeftRightInset;
+            }
 
             _overlayManager.ShowOverlay(direction, bounds);
         }
@@ -329,7 +230,6 @@ internal sealed class OverlayOrchestrator : IDisposable
                 {
                     foreach (Direction direction in new[] { Direction.Left, Direction.Right, Direction.Up, Direction.Down })
                     {
-                        _lastShown[direction] = (fgBounds, SoloDimColor);
                         _overlayManager.ShowOverlay(direction, fgBounds, SoloDimColor);
                     }
                 }
@@ -353,9 +253,6 @@ internal sealed class OverlayOrchestrator : IDisposable
 
         _delayTimer.Stop();
         _delayTimer.Dispose();
-
-        _fadeTimer.Stop();
-        _fadeTimer.Dispose();
 
         _staDispatcher.Dispose();
     }
