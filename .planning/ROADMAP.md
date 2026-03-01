@@ -28,7 +28,7 @@
 
 ### v3.0 Integrated Navigation (Phases 7-9)
 
-- [ ] **Phase 7: Hotkey Wiring** — Daemon detects and suppresses direction keys while CAPSLOCK is held
+- [x] **Phase 7: Hotkey Wiring** — Daemon detects and suppresses direction keys while CAPSLOCK is held (completed 2026-03-01)
 - [ ] **Phase 8: In-Daemon Navigation** — Direction hotkeys trigger focus switching directly from the daemon
 - [ ] **Phase 9: Overlay Chaining** — Overlay persists through sequential moves and refreshes to new candidates
 
@@ -79,7 +79,7 @@ Plans:
 | 4. Daemon Core | v2.0 | 2/2 | Complete | 2026-03-01 |
 | 5. Overlay Windows | v2.0 | 2/2 | Complete | 2026-03-01 |
 | 6. Navigation Integration | v2.0 | 2/2 | Complete | 2026-03-01 |
-| 7. Hotkey Wiring | v3.0 | 1/2 | In progress | — |
+| 7. Hotkey Wiring | 2/2 | Complete   | 2026-03-01 | — |
 | 8. In-Daemon Navigation | v3.0 | 0/? | Not started | — |
 | 9. Overlay Chaining | v3.0 | 0/? | Not started | — |
 

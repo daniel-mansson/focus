@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v3.0
 milestone_name: Integrated Navigation
 status: executing
-last_updated: "2026-03-01T18:38:00.000Z"
+last_updated: "2026-03-01T19:00:00.000Z"
 progress:
   total_phases: 3
   completed_phases: 0
   total_plans: 6
-  completed_plans: 1
+  completed_plans: 2
 ---
 
 # Project State
@@ -18,16 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-01)
 
 **Core value:** Given a direction, reliably switch focus to the most intuitive window in that direction — fast enough for hotkey use, accurate enough to feel natural.
-**Current focus:** v3.0 Integrated Navigation — Phase 7 Plan 01 complete
+**Current focus:** v3.0 Integrated Navigation — Phase 7 complete (both plans done)
 
 ## Current Position
 
-Phase: 7 (Hotkey Wiring) — in progress (1/2 plans complete)
-Plan: 07-02 (next)
-Status: Executing
-Last activity: 2026-03-01 — 07-01 direction key interception and suppression complete
+Phase: 8 (In-Daemon Navigation) — not started
+Plan: 08-01 (next)
+Status: Ready
+Last activity: 2026-03-01 — 07-02 direction key callback wired + human-verified
 
-Progress: [█░░░░░░░░░] 10%
+Progress: [██░░░░░░░░] 20%
 
 ## Milestones
 
@@ -59,21 +59,24 @@ Progress: [█░░░░░░░░░] 10%
 - Modifier prefix order in verbose log: Ctrl+Alt+Shift+ (control before alt before shift)
 - Both keydown and keyup posted to channel; only keydown triggers callback and logging
 - KeyEvent extended with optional ShiftHeld/CtrlHeld/AltHeld — defaults false for CAPSLOCK events
+- OnDirectionKeyDown is a no-op in Phase 7 — Phase 8 hook point only; interception/suppression lives in KeyboardHookHandler
+- Closure pattern orchestrator?.OnDirectionKeyDown(dir) matches existing onHeld/onReleased — null-safe before STA thread initializes
 
 ### Blockers
 None.
 
 ### Todos
-- Execute 07-02-PLAN.md (wire direction callback into orchestrator + human verification)
+- Execute 08-01-PLAN.md (in-daemon navigation — Phase 8)
 
 ## Performance Metrics
 
 | Phase | Plan | Duration | Tasks | Files |
 |-------|------|----------|-------|-------|
 | 07 | 01 | ~2 min | 2/2 | 3 |
+| 07 | 02 | ~20 min | 2/2 | 2 |
 
 ## Session Continuity
 
-Last session: 2026-03-01T18:38:00Z
-Stopped at: Completed 07-01-PLAN.md (direction key interception and suppression)
-Resume file: .planning/phases/07-hotkey-wiring/07-02-PLAN.md
+Last session: 2026-03-01T19:00:00Z
+Stopped at: Completed 07-02-PLAN.md (direction key callback wired + human-verified; Phase 7 complete)
+Resume file: .planning/phases/08-in-daemon-navigation/ (Phase 8 not yet planned)
