@@ -34,7 +34,7 @@ internal class FocusConfig
             var options = new JsonSerializerOptions
             {
                 PropertyNameCaseInsensitive = true,
-                Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
+                Converters = { new JsonStringEnumConverter(JsonNamingPolicy.KebabCaseLower) }
             };
             return JsonSerializer.Deserialize<FocusConfig>(json, options) ?? new FocusConfig();
         }
@@ -50,7 +50,7 @@ internal class FocusConfig
         var options = new JsonSerializerOptions
         {
             WriteIndented = true,
-            Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
+            Converters = { new JsonStringEnumConverter(JsonNamingPolicy.KebabCaseLower) }
         };
         var json = JsonSerializer.Serialize(new FocusConfig(), options);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
