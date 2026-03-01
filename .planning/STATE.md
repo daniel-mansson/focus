@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Integrated Navigation
 status: unknown
-last_updated: "2026-03-01T22:43:23Z"
+last_updated: "2026-03-02T00:00:00Z"
 progress:
   total_phases: 2
   completed_phases: 2
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 Phase: 8 (In-Daemon Navigation) — complete
 Plan: 08-01 — complete (all tasks done, human-verified)
 Status: Ready for Phase 9 (Overlay Chaining)
-Last activity: 2026-03-01 - Completed quick task 5: Add CAPS+number window selection with overlay labels (2/3 tasks; awaiting human verify)
+Last activity: 2026-03-02 - Completed quick task 6: Include active window in overlay numbering (1/1 tasks)
 
 Progress: [████░░░░░░] 40%
 
@@ -53,6 +53,7 @@ Progress: [████░░░░░░] 40%
 - Quick task 3: Single timestamp captured once for config dump block — all lines share same [HH:mm:ss.fff] to avoid clock drift confusion
 - Quick task 4: JsonNamingPolicy.KebabCaseLower replaces CamelCase in both Load() and WriteDefaults() — no backward compat needed since camelCase values were confusing users
 - Quick task 5: _directionKeysHeld HashSet reused for number key repeat suppression (VK ranges don't overlap in practice); CreateFontIndirect preferred over CreateFont (safe handle overload); alpha fixup pass needed for GDI ClearType text in layered windows; fresh config load in ShowOverlaysForCurrentForeground() enables runtime changes
+- Quick task 6: Both ShowOverlaysForCurrentForeground and ActivateByNumberSta now sort full filtered window list — active window included in numbering for position-stable numbers across navigation; re-activating already-focused window via CAPS+N is harmless no-op
 - v3.0 phases numbered from 7 to continue from v2.0 (phases 4-6)
 - 3 phases derived from 3 natural requirement clusters (hotkey wiring, navigation firing, overlay chaining)
 - Depth is "quick" — 3 phases is appropriate compression for 10 requirements across tight dependency chain
@@ -83,6 +84,7 @@ None.
 | 3 | Print resolved config to stderr on verbose daemon startup | 2026-03-01 | 40029f2 | [3-when-starting-the-daemon-in-verbose-mode](./quick/3-when-starting-the-daemon-in-verbose-mode/) |
 | 4 | Make config file accept same kebab-case values as CLI | 2026-03-01 | 9b4a04e | [4-make-config-file-accept-same-dash-separa](./quick/4-make-config-file-accept-same-dash-separa/) |
 | 5 | Add CAPS+number window selection with configurable overlay labels | 2026-03-01 | 5d38aa5 | [5-add-caps-number-window-selection-with-co](./quick/5-add-caps-number-window-selection-with-co/) |
+| 6 | Include active window in overlay numbering for position-stable numbers | 2026-03-02 | 7c4e6fe | [6-include-active-window-in-overlay-numberi](./quick/6-include-active-window-in-overlay-numberi/) |
 
 ### Todos
 - Execute 09-PLAN (Overlay Chaining) — Phase 8 complete, all requirements met
@@ -99,9 +101,9 @@ None.
 | quick-3 | 01 | ~5 min | 1/1 | 1 |
 | quick-4 | 01 | ~1 min | 2/2 | 2 |
 | quick-5 | 01 | ~7 min | 2/3 | 9 |
+| quick-6 | 01 | ~3 min | 1/1 | 1 |
 
 ## Session Continuity
 
-Last session: 2026-03-01T22:43:23Z
-Stopped at: quick task 5 — checkpoint:human-verify (Task 3/3); awaiting verification of CAPS+number window selection end-to-end
-Resume file: .planning/quick/5-add-caps-number-window-selection-with-co/5-PLAN.md (continue after human verify)
+Last session: 2026-03-02T00:00:00Z
+Stopped at: Completed quick task 6 — include active window in overlay numbering (1/1 tasks, no checkpoints)
