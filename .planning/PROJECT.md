@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A lightweight C# command-line tool that enables directional window focus navigation on Windows, inspired by Hyprland's arrow-key-based window switching. Invoked via AutoHotkey hotkeys (e.g., `focus left`), it finds the best candidate window in the given direction and switches focus to it — bringing Hyprland-style spatial navigation to Windows without requiring a full tiling window manager.
+A lightweight C# command-line tool and optional background daemon that enables directional window focus navigation on Windows, inspired by Hyprland's arrow-key-based window switching. Invoked via AutoHotkey hotkeys (e.g., `focus left`), it finds the best candidate window in the given direction and switches focus to it. The daemon mode (`focus daemon`) renders colored border overlays on target windows while CAPSLOCK is held, showing which window each direction would navigate to — bringing Hyprland-style spatial navigation to Windows without requiring a full tiling window manager.
 
 ## Core Value
 
@@ -30,65 +30,62 @@ Given a direction, reliably switch focus to the most intuitive window in that di
 - ✓ Verbose/debug flag to log window enumeration, scores, and chosen target — v1.0
 - ✓ Meaningful exit codes (0=switched, 1=no candidate, 2=error) — v1.0
 
+<!-- Shipped and confirmed valuable (v2.0). -->
+
+- ✓ Background daemon mode (`focus daemon`) with low-level keyboard hook — v2.0
+- ✓ Detect CAPSLOCK held → show overlay, released → dismiss overlay — v2.0
+- ✓ Overlay renders colored borders on target windows (one per direction, all four simultaneously) — v2.0
+- ✓ Per-direction colors, configurable in JSON config (hex ARGB) — v2.0
+- ✓ Pluggable overlay renderer with IOverlayRenderer interface and config-driven selection — v2.0
+- ✓ Overlay windows excluded from navigation enumeration (WS_EX_TOOLWINDOW) — v2.0
+- ✓ Overlay repositions on foreground window change while modifier held — v2.0
+- ✓ Single-instance daemon with replace semantics (kills existing on restart) — v2.0
+- ✓ Sleep/wake recovery for keyboard hook and CAPSLOCK state — v2.0
+- ✓ Configurable activation delay (overlayDelayMs) to suppress accidental taps — v2.0
+
 ### Active
 
-- [ ] Background daemon mode (`focus daemon`) with low-level keyboard hook
-- [ ] Detect CAPSLOCK held → show overlay, released → dismiss overlay
-- [ ] Overlay renders colored borders on target windows (one per direction)
-- [ ] Per-direction colors, configurable in JSON config
-- [ ] Pluggable overlay renderer — default style (colored borders) plus per-strategy custom renderers
-- [ ] Overlay windows excluded from navigation enumeration (WS_EX_TOOLWINDOW)
-- [ ] Overlay updates per current active strategy
+(None yet — define with `/gsd:new-milestone`)
 
 ### Out of Scope
 
 - Window tiling or layout management — this is focus navigation only
-- GUI or system tray — CLI tool only
-- Linux/macOS support — Windows-specific by design
+- Linux/macOS support — Windows-specific by design (Win32 API)
 - Window resizing or moving — only focus switching
-- GUI or system tray for daemon — daemon managed via CLI only (`focus daemon`)
-
-## Current Milestone: v2.0 Overlay Preview
-
-**Goal:** Add a persistent background daemon that renders directional overlay previews on target windows while the navigation modifier key (CAPSLOCK) is held.
-
-**Target features:**
-- Background daemon mode with low-level keyboard hook (WH_KEYBOARD_LL)
-- Visual overlay showing which windows will be targeted per direction (colored borders)
-- Pluggable renderer system — default overlay style plus per-strategy custom visualizations
-- Per-direction configurable colors in existing JSON config
+- GUI or system tray for daemon — daemon managed via CLI only (`focus daemon`); tray icon is minimal (exit only)
+- Animated overlay transitions (fade in/out) — tested and rejected; instant show/hide feels better
+- Window title/content preview in overlay — DwmRegisterThumbnail complexity; colored border at window position IS the preview
+- Interactive/clickable overlay elements — conflicts with WS_EX_TRANSPARENT click-through; navigation is keyboard-only
 
 ## Context
 
-- Designed to be triggered by AutoHotkey hotkeys for seamless integration into existing workflows
-- Windows' foreground activation restrictions require the Alt keypress workaround (keybd_event) before SetForegroundWindow
-- DwmGetWindowAttribute with DWMWA_EXTENDED_FRAME_BOUNDS gives accurate visible bounds (unlike GetWindowRect which includes invisible borders on Windows 10+)
-- Virtual screen coordinates handle multi-monitor naturally — no special per-monitor logic needed
-- The weighting algorithm is the core UX differentiator and needs to be tunable:
-  - **Balanced**: considers both distance and alignment roughly equally
-  - **Strong axis bias**: heavily favors the movement direction axis
-  - **Closest in direction**: nearest window in the general direction wins, even if off-axis
-- v2.0: Daemon mode is a fundamental shift from stateless CLI — the process persists, manages a keyboard hook, and renders overlays. AHK still handles CAPSLOCK+Arrow → `focus <direction>` for actual navigation.
+Shipped v2.0 with 3,298 LOC C# across 22 source files.
+Tech stack: .NET 8 (net8.0-windows), CsWin32 0.3.269 for P/Invoke, WinForms (message pump + tray icon only), GDI for overlay rendering.
+Two modes: stateless CLI (`focus <direction>`) for AHK hotkeys, persistent daemon (`focus daemon`) for overlay previews.
+Six weighting strategies available: balanced, strong-axis-bias, closest-in-direction, edge-matching, edge-proximity, axis-only.
 
 ## Constraints
 
-- **Runtime**: .NET 10 — in use since v1.0 (dev machine has .NET 10 available)
+- **Runtime**: .NET 8 (net8.0-windows) — WinForms required for daemon message pump
 - **Performance**: Must complete in <100ms for hotkey responsiveness
-- **Dependencies**: Minimal — Win32 API via P/Invoke only, no third-party native dependencies
+- **Dependencies**: Minimal — Win32 API via CsWin32 P/Invoke, System.CommandLine, FileSystemGlobbing
 - **Invocation**: CLI tool + optional persistent daemon for overlay preview
 
 ## Key Decisions
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| C# with .NET 8 | Good Win32 interop via P/Invoke, fast startup with AOT potential, user preference | — Pending |
-| JSON config file | Simple, human-editable, standard format for settings | — Pending |
-| Configurable weighting strategies | Core UX needs tuning — different strategies suit different workflows | — Pending |
-| Configurable wrap-around | User preference varies — some want wrap, some want boundary stop | — Pending |
-| SetForegroundWindow + Alt keypress | Standard workaround for Windows foreground activation restriction | — Pending |
-
-| Daemon mode for overlay preview | CAPSLOCK hold triggers visual preview — requires persistent process with keyboard hook | — Pending |
-| Pluggable overlay renderers | Default renderer + per-strategy custom renderers — keeps visual system extensible | — Pending |
+| C# with .NET 8 | Good Win32 interop via P/Invoke, fast startup with AOT potential, user preference | ✓ Good — CsWin32 interop works well, 22 files / 3.3k LOC is compact |
+| JSON config file | Simple, human-editable, standard format for settings | ✓ Good — clean separation of defaults, file, and CLI overrides |
+| Configurable weighting strategies | Core UX needs tuning — different strategies suit different workflows | ✓ Good — six strategies shipped, user can switch per workflow |
+| Configurable wrap-around | User preference varies — some want wrap, some want boundary stop | ✓ Good — wrap/no-op/beep all work |
+| SetForegroundWindow + Alt keypress | Standard workaround for Windows foreground activation restriction | ✓ Good — reliable from AHK invocation |
+| Daemon mode for overlay preview | CAPSLOCK hold triggers visual preview — requires persistent process with keyboard hook | ✓ Good — daemon is stable, hook survives sleep/wake |
+| Pluggable overlay renderers | Default renderer + per-strategy custom renderers — keeps visual system extensible | ✓ Good — IOverlayRenderer interface clean, config-driven selection works |
+| WH_KEYBOARD_LL + CAPSLOCK suppression | System-wide hook intercepts CAPSLOCK before it toggles LED state | ✓ Good — no CAPSLOCK toggle flicker, LLKHF_INJECTED filter prevents AHK interference |
+| Win32 GDI layered windows for overlays | UpdateLayeredWindow + premultiplied alpha DIB — no WPF/WinUI dependency | ✓ Good — lightweight, accurate positioning, click-through |
+| Fade animation removed (instant show/hide) | User tested both, preferred instant transitions over 100ms fade | ✓ Good — eliminated all timer/alpha machinery, simpler code |
+| Replace semantics for daemon mutex | Kill existing daemon on restart rather than error — smoother UX | ✓ Good — user never sees "already running" errors |
 
 ---
-*Last updated: 2026-02-28 after milestone v2.0 start*
+*Last updated: 2026-03-01 after v2.0 milestone*
