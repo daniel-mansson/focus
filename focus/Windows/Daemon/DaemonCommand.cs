@@ -83,21 +83,19 @@ internal static class DaemonCommand
 
         // 11. Cleanup — ordered to ensure no orphaned hooks or zombie processes
 
-        // Wait for the STA thread to finish (it should exit once Application.ExitThread() was called)
-        staThread.Join(TimeSpan.FromSeconds(3));
-
-        // Uninstall keyboard hook (DaemonApplicationContext.Dispose does not uninstall —
-        // we are the owner of hook lifecycle)
+        // Uninstall keyboard hook first — stop producing events immediately
         hook.Uninstall();
         hook.Dispose();
 
         // Signal channel completion so the consumer's ReadAllAsync loop exits cleanly
         channel.Writer.Complete();
 
-        // Wait for consumer task to drain and finish (with timeout)
+        // Wait for STA thread and consumer to finish (short timeouts — they should exit quickly)
+        staThread.Join(TimeSpan.FromMilliseconds(500));
+
         try
         {
-            consumerTask.Wait(TimeSpan.FromSeconds(3));
+            consumerTask.Wait(TimeSpan.FromMilliseconds(500));
         }
         catch { }
 
