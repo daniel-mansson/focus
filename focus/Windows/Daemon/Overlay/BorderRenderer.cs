@@ -123,6 +123,160 @@ internal sealed class BorderRenderer : IOverlayRenderer
     }
 
     /// <summary>
+    /// Renders a full-perimeter rounded-rectangle border on a layered overlay window.
+    /// All 4 edges are rendered at full opacity — no fade tails. Used for the foreground
+    /// window highlight overlay (white border) that appears simultaneously with directional overlays.
+    /// </summary>
+    /// <param name="hwnd">The overlay window HWND (must be a layered window).</param>
+    /// <param name="bounds">Screen-coordinate bounding rect of the target window.</param>
+    /// <param name="argbColor">Color in 0xAARRGGBB format (e.g. 0xE0FFFFFF for ~88% white).</param>
+    public static unsafe void PaintFullBorder(HWND hwnd, RECT bounds, uint argbColor)
+    {
+        int width  = bounds.right  - bounds.left;
+        int height = bounds.bottom - bounds.top;
+
+        if (width <= 0 || height <= 0)
+            return;
+
+        // Extract ARGB components (format: 0xAARRGGBB)
+        byte alpha = (byte)(argbColor >> 24);
+        byte r     = (byte)(argbColor >> 16);
+        byte g     = (byte)(argbColor >> 8);
+        byte b     = (byte)(argbColor);
+
+        // 1. Get screen DC for palette matching in UpdateLayeredWindow.
+        var screenDC = PInvoke.GetDC(HWND.Null);
+
+        // 2. Create 32bpp top-down DIB section.
+        var bmi = new BITMAPINFO();
+        bmi.bmiHeader.biSize        = (uint)sizeof(BITMAPINFOHEADER);
+        bmi.bmiHeader.biWidth       = width;
+        bmi.bmiHeader.biHeight      = -height; // negative = top-down
+        bmi.bmiHeader.biPlanes      = 1;
+        bmi.bmiHeader.biBitCount    = 32;
+        bmi.bmiHeader.biCompression = 0; // BI_RGB
+
+        void* bits;
+        var hBitmap = PInvoke.CreateDIBSection(screenDC, &bmi, DIB_USAGE.DIB_RGB_COLORS, &bits, HANDLE.Null, 0);
+
+        // 3. Create compatible DC and select bitmap.
+        var memDC     = PInvoke.CreateCompatibleDC(screenDC);
+        var oldBitmap = PInvoke.SelectObject(memDC, (HGDIOBJ)hBitmap);
+
+        // 4. Clear DIB to fully transparent (zero all bytes).
+        PInvoke.GdiFlush();
+        NativeMemory.Clear(bits, (nuint)(width * height * 4));
+
+        // 5. Write full-perimeter border pixels (premultiplied ARGB).
+        PInvoke.GdiFlush();
+        uint* pixelBuf = (uint*)bits;
+
+        int effectiveRadius = Math.Min(CornerRadius, Math.Min(width / 2, height / 2));
+
+        for (int py = 0; py < height; py++)
+        {
+            for (int px = 0; px < width; px++)
+            {
+                float a = GetFullBorderAlpha(px, py, width, height, BorderThickness, effectiveRadius);
+                if (a <= 0f) continue;
+
+                byte localAlpha = (byte)(a * alpha);
+                byte pr = (byte)((r * localAlpha) / 255);
+                byte pg = (byte)((g * localAlpha) / 255);
+                byte pb = (byte)((b * localAlpha) / 255);
+                pixelBuf[py * width + px] = ((uint)localAlpha << 24) | ((uint)pr << 16) | ((uint)pg << 8) | pb;
+            }
+        }
+
+        // 6. Call UpdateLayeredWindow to composite the DIB onto the layered window.
+        var blend = new BLENDFUNCTION
+        {
+            BlendOp             = 0,   // AC_SRC_OVER
+            BlendFlags          = 0,
+            SourceConstantAlpha = 255, // use per-pixel alpha from the DIB
+            AlphaFormat         = 1,   // AC_SRC_ALPHA
+        };
+
+        var ptDst   = new System.Drawing.Point(bounds.left, bounds.top);
+        var sizeSrc = new SIZE(width, height);
+        var ptSrc   = new System.Drawing.Point(0, 0);
+
+        PInvoke.UpdateLayeredWindow(
+            hwnd,
+            screenDC,
+            &ptDst,
+            &sizeSrc,
+            memDC,
+            &ptSrc,
+            new COLORREF(0),
+            &blend,
+            UPDATE_LAYERED_WINDOW_FLAGS.ULW_ALPHA);
+
+        // 7. Cleanup GDI resources.
+        PInvoke.SelectObject(memDC, oldBitmap);
+        PInvoke.DeleteDC(memDC);
+        PInvoke.DeleteObject((HGDIOBJ)hBitmap);
+        PInvoke.ReleaseDC(HWND.Null, screenDC);
+    }
+
+    /// <summary>
+    /// Returns the opacity [0.0, 1.0] for pixel (px, py) in a full-perimeter rounded-rect border.
+    ///
+    /// A pixel is "on the border" if:
+    ///   1. It is within <paramref name="thickness"/> pixels of any edge AND not in a corner cutout, OR
+    ///   2. It lies on a corner arc (within the rounded corner region).
+    ///
+    /// Corner cutout: if a pixel is within <paramref name="radius"/> of a corner but outside the arc,
+    /// it is transparent (creates the rounded-corner effect).
+    /// </summary>
+    private static float GetFullBorderAlpha(int px, int py, int w, int h, int thickness, int radius)
+    {
+        // Determine which corner region the pixel falls in (if any).
+        bool inTL = px < radius && py < radius;
+        bool inTR = px >= w - radius && py < radius;
+        bool inBL = px < radius && py >= h - radius;
+        bool inBR = px >= w - radius && py >= h - radius;
+
+        if (inTL)
+        {
+            // Top-left: center of arc is at (radius, radius)
+            float dist = MathF.Sqrt((px - radius) * (px - radius) + (py - radius) * (py - radius));
+            return (dist >= radius - thickness && dist <= radius) ? 1.0f : 0.0f;
+        }
+
+        if (inTR)
+        {
+            // Top-right: center of arc is at (w - 1 - radius, radius)
+            int cx = w - 1 - radius;
+            float dist = MathF.Sqrt((px - cx) * (px - cx) + (py - radius) * (py - radius));
+            return (dist >= radius - thickness && dist <= radius) ? 1.0f : 0.0f;
+        }
+
+        if (inBL)
+        {
+            // Bottom-left: center of arc is at (radius, h - 1 - radius)
+            int cy = h - 1 - radius;
+            float dist = MathF.Sqrt((px - radius) * (px - radius) + (py - cy) * (py - cy));
+            return (dist >= radius - thickness && dist <= radius) ? 1.0f : 0.0f;
+        }
+
+        if (inBR)
+        {
+            // Bottom-right: center of arc is at (w - 1 - radius, h - 1 - radius)
+            int cx = w - 1 - radius;
+            int cy = h - 1 - radius;
+            float dist = MathF.Sqrt((px - cx) * (px - cx) + (py - cy) * (py - cy));
+            return (dist >= radius - thickness && dist <= radius) ? 1.0f : 0.0f;
+        }
+
+        // Non-corner region: lit if within thickness of any edge.
+        if (px < thickness || px >= w - thickness || py < thickness || py >= h - thickness)
+            return 1.0f;
+
+        return 0.0f;
+    }
+
+    /// <summary>
     /// Returns the opacity [0.0, 1.0] for pixel (px, py) in a DIB of size (w, h),
     /// given the navigation direction and rendering parameters.
     ///

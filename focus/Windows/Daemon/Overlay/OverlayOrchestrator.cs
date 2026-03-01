@@ -26,6 +26,9 @@ internal sealed class OverlayOrchestrator : IDisposable
     // ~19% opacity neutral gray — subtle "daemon is alive" indicator for the solo-window case.
     private const uint SoloDimColor = 0x30AAAAAA;
 
+    // ~88% opacity white — thin full-perimeter border on the currently focused window.
+    private const uint ForegroundBorderColor = 0xE0FFFFFF;
+
     // Left/right overlays are expanded by this many pixels to avoid overlapping up/down borders
     // on the same target window. Matches BorderRenderer.BorderThickness + 1.
     private const int LeftRightInset = 3;
@@ -235,6 +238,23 @@ internal sealed class OverlayOrchestrator : IDisposable
         // Hide all overlays first so stale positions from a previous hold are never visible.
         _overlayManager.HideAll();
 
+        // Show white border around the currently focused window.
+        var fgHwnd = PInvoke.GetForegroundWindow();
+        if (fgHwnd != default)
+        {
+            RECT fgBounds = default;
+            var boundsBytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref fgBounds, 1));
+            var hr = PInvoke.DwmGetWindowAttribute(
+                fgHwnd,
+                DWMWINDOWATTRIBUTE.DWMWA_EXTENDED_FRAME_BOUNDS,
+                boundsBytes);
+
+            if (hr.Succeeded && (fgBounds.right - fgBounds.left) > 0)
+            {
+                _overlayManager.ShowForegroundOverlay(fgBounds, ForegroundBorderColor);
+            }
+        }
+
         var enumerator = new WindowEnumerator();
         var (windows, _) = enumerator.GetNavigableWindows();
         var filtered = ExcludeFilter.Apply(windows, _config.Exclude);
@@ -283,14 +303,14 @@ internal sealed class OverlayOrchestrator : IDisposable
         // Show a dim/muted border on the foreground window itself as a "daemon is alive" indicator.
         if (candidatesFound == 0)
         {
-            var fgHwnd = PInvoke.GetForegroundWindow();
+            var soloFgHwnd = PInvoke.GetForegroundWindow();
 
-            if (fgHwnd != default)
+            if (soloFgHwnd != default)
             {
                 RECT fgBounds = default;
                 var boundsBytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref fgBounds, 1));
                 var hr = PInvoke.DwmGetWindowAttribute(
-                    fgHwnd,
+                    soloFgHwnd,
                     DWMWINDOWATTRIBUTE.DWMWA_EXTENDED_FRAME_BOUNDS,
                     boundsBytes);
 

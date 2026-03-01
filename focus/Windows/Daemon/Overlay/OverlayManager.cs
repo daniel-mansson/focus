@@ -5,7 +5,9 @@ namespace Focus.Windows.Daemon.Overlay;
 
 /// <summary>
 /// Manages four OverlayWindow instances (one per Direction) and coordinates
-/// show/hide/paint using the configured IOverlayRenderer.
+/// show/hide/paint using the configured IOverlayRenderer. Also manages a 5th
+/// foreground overlay window that draws a full-perimeter white border around
+/// the currently active window when CAPSLOCK is held.
 ///
 /// This is the public API surface for Plan 02 (debug command) and Phase 6 (daemon wiring).
 /// Must be instantiated on the STA thread — OverlayWindow HWNDs are created in the constructor.
@@ -16,6 +18,7 @@ internal sealed class OverlayManager : IDisposable
     private readonly IOverlayRenderer _renderer;
     private readonly OverlayColors _colors;
     private readonly Dictionary<Direction, OverlayWindow> _windows;
+    private readonly OverlayWindow _foregroundWindow;
     private bool _disposed;
 
     /// <summary>
@@ -34,6 +37,8 @@ internal sealed class OverlayManager : IDisposable
             [Direction.Up]    = new OverlayWindow(),
             [Direction.Down]  = new OverlayWindow(),
         };
+
+        _foregroundWindow = new OverlayWindow();
     }
 
     /// <summary>
@@ -74,13 +79,37 @@ internal sealed class OverlayManager : IDisposable
     }
 
     /// <summary>
-    /// Hides all four overlay windows.
+    /// Shows a full-perimeter white border around the foreground window.
+    /// Uses BorderRenderer.PaintFullBorder directly since this is a distinct contract
+    /// (all 4 edges rendered together, no direction parameter).
+    /// </summary>
+    public void ShowForegroundOverlay(RECT bounds, uint argbColor)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        _foregroundWindow.Reposition(bounds);
+        BorderRenderer.PaintFullBorder(_foregroundWindow.Hwnd, bounds, argbColor);
+        _foregroundWindow.Show();
+    }
+
+    /// <summary>
+    /// Hides the foreground border overlay.
+    /// </summary>
+    public void HideForegroundOverlay()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        _foregroundWindow.Hide();
+    }
+
+    /// <summary>
+    /// Hides all four directional overlay windows and the foreground border overlay.
     /// </summary>
     public void HideAll()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         foreach (var window in _windows.Values)
             window.Hide();
+        _foregroundWindow.Hide();
     }
 
     /// <summary>
@@ -102,5 +131,7 @@ internal sealed class OverlayManager : IDisposable
 
         foreach (var window in _windows.Values)
             window.Dispose();
+
+        _foregroundWindow.Dispose();
     }
 }
