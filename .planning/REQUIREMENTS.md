@@ -9,10 +9,10 @@ Requirements for v3.0 Integrated Navigation. Each maps to roadmap phases.
 
 ### Hotkey Detection
 
-- [ ] **HOTKEY-01**: Daemon detects arrow key presses (Up/Down/Left/Right) while CAPSLOCK is held
-- [ ] **HOTKEY-02**: Daemon detects WASD key presses while CAPSLOCK is held (W=up, A=left, S=down, D=right)
-- [ ] **HOTKEY-03**: Direction keys (arrows + WASD) are suppressed from reaching the focused app while CAPSLOCK is held
-- [ ] **HOTKEY-04**: Direction keys pass through normally when CAPSLOCK is not held
+- [x] **HOTKEY-01**: Daemon detects arrow key presses (Up/Down/Left/Right) while CAPSLOCK is held
+- [x] **HOTKEY-02**: Daemon detects WASD key presses while CAPSLOCK is held (W=up, A=left, S=down, D=right)
+- [x] **HOTKEY-03**: Direction keys (arrows + WASD) are suppressed from reaching the focused app while CAPSLOCK is held
+- [x] **HOTKEY-04**: Direction keys pass through normally when CAPSLOCK is not held
 
 ### Focus Navigation
 
@@ -50,10 +50,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| HOTKEY-01 | Phase 7 | Pending |
-| HOTKEY-02 | Phase 7 | Pending |
-| HOTKEY-03 | Phase 7 | Pending |
-| HOTKEY-04 | Phase 7 | Pending |
+| HOTKEY-01 | Phase 7 | Complete (07-01) |
+| HOTKEY-02 | Phase 7 | Complete (07-01) |
+| HOTKEY-03 | Phase 7 | Complete (07-01) |
+| HOTKEY-04 | Phase 7 | Complete (07-01) |
 | NAV-01 | Phase 8 | Pending |
 | NAV-02 | Phase 8 | Pending |
 | NAV-03 | Phase 8 | Pending |
@@ -68,4 +68,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-03-01*
-*Last updated: 2026-03-01 after roadmap creation (phases 7-9)*
+*Last updated: 2026-03-01 after 07-01 completion (HOTKEY-01 through HOTKEY-04 marked complete)*

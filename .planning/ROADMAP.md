@@ -45,7 +45,7 @@
   4. The daemon log (verbose mode) reports each intercepted direction key with its mapped direction (e.g., W → up, D → right)
 **Plans**: 2 plans
 Plans:
-- [ ] 07-01-PLAN.md — Expand keyboard hook to intercept and suppress direction keys while CAPSLOCK held
+- [x] 07-01-PLAN.md — Expand keyboard hook to intercept and suppress direction keys while CAPSLOCK held
 - [ ] 07-02-PLAN.md — Wire direction callback into orchestrator + human verification
 
 ### Phase 8: In-Daemon Navigation
@@ -79,7 +79,7 @@ Plans:
 | 4. Daemon Core | v2.0 | 2/2 | Complete | 2026-03-01 |
 | 5. Overlay Windows | v2.0 | 2/2 | Complete | 2026-03-01 |
 | 6. Navigation Integration | v2.0 | 2/2 | Complete | 2026-03-01 |
-| 7. Hotkey Wiring | v3.0 | 0/2 | Planning complete | — |
+| 7. Hotkey Wiring | v3.0 | 1/2 | In progress | — |
 | 8. In-Daemon Navigation | v3.0 | 0/? | Not started | — |
 | 9. Overlay Chaining | v3.0 | 0/? | Not started | — |
 
