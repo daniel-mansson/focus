@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Focus.Windows.Daemon.Overlay;
 
 namespace Focus.Windows;
 
@@ -11,6 +12,8 @@ internal class FocusConfig
     public Strategy Strategy { get; set; } = Strategy.Balanced;
     public WrapBehavior Wrap { get; set; } = WrapBehavior.NoOp;
     public string[] Exclude { get; set; } = [];
+    public OverlayColors OverlayColors { get; set; } = new();
+    public string OverlayRenderer { get; set; } = "border";
 
     public static string GetConfigPath()
     {
