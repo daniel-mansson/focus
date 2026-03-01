@@ -59,11 +59,11 @@ Requirements for overlay preview daemon milestone. Each maps to roadmap phases.
 
 ### Daemon Infrastructure
 
-- [ ] **DAEMON-01**: User can start a background daemon via `focus daemon` that persists until explicitly stopped
+- [x] **DAEMON-01**: User can start a background daemon via `focus daemon` that persists until explicitly stopped
 - [x] **DAEMON-02**: Daemon installs WH_KEYBOARD_LL hook and detects CAPSLOCK held/released state
 - [ ] **DAEMON-03**: Daemon debounces CAPSLOCK hold with configurable activation delay before showing overlay
 - [x] **DAEMON-04**: Daemon enforces single instance via named mutex (second launch exits with error)
-- [ ] **DAEMON-05**: Daemon cleans up overlay windows and unhooks keyboard hook on exit/crash
+- [x] **DAEMON-05**: Daemon cleans up overlay windows and unhooks keyboard hook on exit/crash
 - [x] **DAEMON-06**: Daemon filters LLKHF_INJECTED key events to prevent AHK-triggered overlay flicker
 
 ### Overlay Rendering
@@ -171,11 +171,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DAEMON-01 | Phase 4 | Pending |
+| DAEMON-01 | Phase 4 | Complete |
 | DAEMON-02 | Phase 4 | Complete |
 | DAEMON-03 | Phase 6 | Pending |
 | DAEMON-04 | Phase 4 | Complete |
-| DAEMON-05 | Phase 4 | Pending |
+| DAEMON-05 | Phase 4 | Complete |
 | DAEMON-06 | Phase 4 | Complete |
 | OVERLAY-01 | Phase 6 | Pending |
 | OVERLAY-02 | Phase 5 | Pending |
@@ -197,4 +197,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-02-26*
-*Last updated: 2026-03-01 after milestone v2.0 roadmap creation (phases 4-6)*
+*Last updated: 2026-03-01 after Phase 4 completion (04-02: DAEMON-01 and DAEMON-05 completed)*

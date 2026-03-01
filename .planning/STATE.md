@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Overlay Preview
 status: roadmap_ready
-last_updated: "2026-03-01T07:34:10Z"
+last_updated: "2026-03-01T07:52:52Z"
 progress:
   total_phases: 3
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 6
-  completed_plans: 1
+  completed_plans: 2
 ---
 
 # Project State
@@ -18,16 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-02-28)
 
 **Core value:** Given a direction, reliably switch focus to the most intuitive window in that direction — fast enough for hotkey use, accurate enough to feel natural.
-**Current focus:** Phase 4 — Daemon Core (v2.0 Overlay Preview)
+**Current focus:** Phase 5 — Overlay Rendering (v2.0 Overlay Preview)
 
 ## Current Position
 
-Phase: 4 of 6 (Daemon Core)
-Plan: 1 of 2 complete (04-01-PLAN.md done, 04-02-PLAN.md next)
-Status: In progress
-Last activity: 2026-03-01 — Plan 04-01 executed: daemon core components built
+Phase: 4 of 6 (Daemon Core) — COMPLETE
+Plan: 2 of 2 complete (04-01-PLAN.md done, 04-02-PLAN.md done)
+Status: Phase 4 complete — ready for Phase 5
+Last activity: 2026-03-01 — Plan 04-02 executed: daemon wired and human-verified (all 8 checks passed)
 
-Progress: [█░░░░░░░░░] ~17% (v2.0 milestone, 1/6 plans complete)
+Progress: [██░░░░░░░░] ~33% (v2.0 milestone, 2/6 plans complete)
 
 ## Performance Metrics
 
@@ -48,7 +48,7 @@ Progress: [█░░░░░░░░░] ~17% (v2.0 milestone, 1/6 plans compl
 
 | Phase | Plans | Status | Duration |
 |-------|-------|--------|----------|
-| 4. Daemon Core | 1/2 | In progress | Plan 01: 3min |
+| 4. Daemon Core | 2/2 | Complete | Plan 01: 3min, Plan 02: 16min |
 | 5. Overlay Rendering | 0/2 | Pending | — |
 | 6. Overlay Wiring | 0/2 | Pending | — |
 
@@ -71,6 +71,10 @@ Carried from v1.0 + v2.0 research:
 - Phase 4 (04-01): TargetFramework must be net8.0-windows (not net8.0) when UseWindowsForms=true — NETSDK1136 enforces this
 - Phase 4 (04-01): KBDLLHOOKSTRUCT must be explicitly in NativeMethods.txt — CsWin32 does not generate it as a transitive dependency of SetWindowsHookEx
 - Phase 4 (04-01): SetWindowsHookEx with SafeHandle hmod returns UnhookWindowsHookExSafeHandle — use Dispose() instead of PInvoke.UnhookWindowsHookEx directly
+- Phase 4 (04-02): Hook installed in DaemonApplicationContext constructor — Application.Run blocks until ExitThread; constructor runs before pump starts so hook is ready when first messages arrive
+- Phase 4 (04-02): cts.Token.Register(() => Application.ExitThread()) for cross-thread STA shutdown — works for both Ctrl+C and tray Exit paths without needing Invoke or thread sync
+- Phase 4 (04-02): Ordered cleanup: staThread.Join -> hook.Uninstall+Dispose -> channel.Writer.Complete -> consumerTask.Wait(500ms) -> mutex.Release
+- Phase 4 (04-02): Inner NativeWindow pattern for WM_POWERBROADCAST — create sealed class inheriting NativeWindow, call CreateHandle(new CreateParams()), override WndProc
 
 ### Pending Todos
 
@@ -85,6 +89,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-01T07:34:10Z
-Stopped at: Completed 04-01-PLAN.md — daemon core components (KeyEvent, KeyboardHookHandler, CapsLockMonitor, DaemonMutex)
+Last session: 2026-03-01T07:52:52Z
+Stopped at: Completed 04-02-PLAN.md — daemon wired (TrayIcon, DaemonCommand, Program.cs) and human-verified (all 8 checks passed). Phase 4 complete.
 Resume file: None
