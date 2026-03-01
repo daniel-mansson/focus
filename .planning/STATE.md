@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Overlay Preview
 status: unknown
-last_updated: "2026-03-01T09:02:46.085Z"
+last_updated: "2026-03-01T16:31:00Z"
 progress:
   total_phases: 5
   completed_phases: 5
@@ -18,16 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-02-28)
 
 **Core value:** Given a direction, reliably switch focus to the most intuitive window in that direction — fast enough for hotkey use, accurate enough to feel natural.
-**Current focus:** Phase 5 — Overlay Rendering (v2.0 Overlay Preview)
+**Current focus:** Phase 6 — Navigation Integration (Overlay Wiring)
 
 ## Current Position
 
-Phase: 5 of 6 (Overlay Rendering) — COMPLETE
-Plan: 2 of 2 complete (05-02-PLAN.md done)
-Status: Phase 5 complete — overlay rendering pipeline verified end-to-end
-Last activity: 2026-03-01 - Completed quick task 7: directional edge overlay with corner fade-out
+Phase: 6 of 6 (Navigation Integration) — IN PROGRESS
+Plan: 1 of 2 complete (06-01-PLAN.md done)
+Status: Phase 6 Plan 01 complete — orchestration API surface (ForegroundMonitor + OverlayOrchestrator) built and compiling
+Last activity: 2026-03-01 - Completed 06-01: ForegroundMonitor, OverlayOrchestrator, CapsLockMonitor callbacks, OverlayManager colorOverride overload
 
-Progress: [████░░░░░░] ~50% (v2.0 milestone, 4/6 plans complete)
+Progress: [█████░░░░░] ~58% (v2.0 milestone, 5/6 plans complete for phases 4-6)
 
 ## Performance Metrics
 
@@ -50,7 +50,7 @@ Progress: [████░░░░░░] ~50% (v2.0 milestone, 4/6 plans compl
 |-------|-------|--------|----------|
 | 4. Daemon Core | 2/2 | Complete | Plan 01: 3min, Plan 02: 16min |
 | 5. Overlay Rendering | 2/2 | Complete | Plan 01: 7min, Plan 02: 30min |
-| 6. Overlay Wiring | 0/2 | Pending | — |
+| 6. Overlay Wiring | 1/2 | In Progress | Plan 01: 3min |
 
 ## Accumulated Context
 
@@ -83,6 +83,10 @@ Carried from v1.0 + v2.0 research:
 - Phase 5 (05-02): Application.DoEvents + Thread.Sleep(16) as message pump for debug overlay command — no full WinForms Application.Run required
 - Phase 5 (05-02): Background thread with ManualResetEventSlim for Console.ReadKey without blocking the message pump thread
 - Quick-7: Direct pixel buffer writes (not GDI) required for selective directional edge rendering — GetPixelAlpha helper with primary-edge-first ordering minimizes sqrt calls via corner quadrant bounding box
+- Phase 6 (06-01): HWINEVENTHOOK is in Windows.Win32.UI.Accessibility namespace despite file being named Windows.Win32.HWINEVENTHOOK.g.cs — use `using global::Windows.Win32.UI.Accessibility`
+- Phase 6 (06-01): ForegroundMonitor delegate (WINEVENTPROC) must be pinned with GCHandle.Alloc — same pattern as hook delegate, but instance field instead of static field
+- Phase 6 (06-01): Control.Invoke pattern for STA dispatch: volatile _shutdownRequested guard + try/catch ObjectDisposedException+InvalidOperationException around every Invoke call
+- Phase 6 (06-01): Solo-window dim indicator color 0x30AAAAAA (~19% opacity neutral gray) — visible but subtle, confirms daemon activity when no navigation candidates exist
 
 ### Pending Todos
 
@@ -104,6 +108,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-01T09:49:43Z
-Stopped at: Completed quick task 7 — replaced full-box RoundRect overlay with directional edge rendering (primary edge + corners + 20% fade tails). Phase 5 still complete. Ready for Phase 6 (Overlay Wiring).
+Last session: 2026-03-01T16:31:00Z
+Stopped at: Completed 06-01-PLAN.md — ForegroundMonitor + OverlayOrchestrator created, CapsLockMonitor and OverlayManager modified, all 6 files compile clean. Ready for Phase 6 Plan 02 (daemon lifecycle wiring + fade animation).
 Resume file: None

@@ -102,7 +102,7 @@ Plans:
   3. While CAPSLOCK is held, switching the foreground window (via Alt+Tab) causes overlays to reposition to reflect the new source window within one update cycle
   4. Directions with no candidate window (e.g., nothing to the left) show no overlay for that direction — the daemon does not crash or show a misplaced overlay
   5. The CAPSLOCK overlay does not appear for brief accidental presses — the activation delay (overlayDelayMs, default ~150ms, configurable in JSON) prevents spurious triggers
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 
 Plans:
 - [ ] 06-01-PLAN.md — ForegroundMonitor (SetWinEventHook), OverlayOrchestrator (coordination), CapsLockMonitor callbacks, OverlayManager color override, FocusConfig.OverlayDelayMs
@@ -120,4 +120,4 @@ Phases execute in numeric order: 4 → 5 → 6
 | 3. Config, Strategies & Complete CLI | v1.0 | 2/2 | Complete | 2026-02-28 |
 | 4. Daemon Core | v2.0 | 2/2 | Complete | 2026-03-01 |
 | 5. Overlay Windows | v2.0 | 2/2 | Complete | 2026-03-01 |
-| 6. Navigation Integration | v2.0 | 0/2 | Planned | - |
+| 6. Navigation Integration | 1/2 | In Progress|  | - |

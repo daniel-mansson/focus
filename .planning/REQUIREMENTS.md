@@ -61,18 +61,18 @@ Requirements for overlay preview daemon milestone. Each maps to roadmap phases.
 
 - [x] **DAEMON-01**: User can start a background daemon via `focus daemon` that persists until explicitly stopped
 - [x] **DAEMON-02**: Daemon installs WH_KEYBOARD_LL hook and detects CAPSLOCK held/released state
-- [ ] **DAEMON-03**: Daemon debounces CAPSLOCK hold with configurable activation delay before showing overlay
+- [x] **DAEMON-03**: Daemon debounces CAPSLOCK hold with configurable activation delay before showing overlay
 - [x] **DAEMON-04**: Daemon enforces single instance via named mutex (second launch exits with error)
 - [x] **DAEMON-05**: Daemon cleans up overlay windows and unhooks keyboard hook on exit/crash
 - [x] **DAEMON-06**: Daemon filters LLKHF_INJECTED key events to prevent AHK-triggered overlay flicker
 
 ### Overlay Rendering
 
-- [ ] **OVERLAY-01**: Overlay renders colored borders on the top-ranked target window for each of the 4 directions simultaneously
+- [x] **OVERLAY-01**: Overlay renders colored borders on the top-ranked target window for each of the 4 directions simultaneously
 - [x] **OVERLAY-02**: Overlay windows are click-through, always-on-top, excluded from taskbar/Alt+Tab, and excluded from navigation enumeration
-- [ ] **OVERLAY-03**: Overlay dismisses immediately when CAPSLOCK is released
-- [ ] **OVERLAY-04**: Overlay updates target positions when foreground window changes while CAPSLOCK is held
-- [ ] **OVERLAY-05**: Overlay gracefully handles directions with no candidate (no overlay rendered for that direction)
+- [x] **OVERLAY-03**: Overlay dismisses immediately when CAPSLOCK is released
+- [x] **OVERLAY-04**: Overlay updates target positions when foreground window changes while CAPSLOCK is held
+- [x] **OVERLAY-05**: Overlay gracefully handles directions with no candidate (no overlay rendered for that direction)
 
 ### Renderer System
 
@@ -83,7 +83,7 @@ Requirements for overlay preview daemon milestone. Each maps to roadmap phases.
 ### Configuration
 
 - [x] **CFG-05**: Per-direction overlay colors configurable in JSON config (left/right/up/down, hex ARGB)
-- [ ] **CFG-06**: Activation delay configurable in JSON config (overlayDelayMs, default ~150ms)
+- [x] **CFG-06**: Activation delay configurable in JSON config (overlayDelayMs, default ~150ms)
 - [x] **CFG-07**: Overlay renderer name configurable in JSON config (default: "border")
 
 ## Future Requirements
@@ -173,20 +173,20 @@ Which phases cover which requirements. Updated during roadmap creation.
 |-------------|-------|--------|
 | DAEMON-01 | Phase 4 | Complete |
 | DAEMON-02 | Phase 4 | Complete |
-| DAEMON-03 | Phase 6 | Pending |
+| DAEMON-03 | Phase 6 | Complete |
 | DAEMON-04 | Phase 4 | Complete |
 | DAEMON-05 | Phase 4 | Complete |
 | DAEMON-06 | Phase 4 | Complete |
-| OVERLAY-01 | Phase 6 | Pending |
+| OVERLAY-01 | Phase 6 | Complete |
 | OVERLAY-02 | Phase 5 | Complete |
-| OVERLAY-03 | Phase 6 | Pending |
-| OVERLAY-04 | Phase 6 | Pending |
-| OVERLAY-05 | Phase 6 | Pending |
+| OVERLAY-03 | Phase 6 | Complete |
+| OVERLAY-04 | Phase 6 | Complete |
+| OVERLAY-05 | Phase 6 | Complete |
 | RENDER-01 | Phase 5 | Complete |
 | RENDER-02 | Phase 5 | Complete |
 | RENDER-03 | Phase 5 | Complete |
 | CFG-05 | Phase 5 | Complete |
-| CFG-06 | Phase 6 | Pending |
+| CFG-06 | Phase 6 | Complete |
 | CFG-07 | Phase 5 | Complete |
 
 **Coverage:**
