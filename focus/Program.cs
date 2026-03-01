@@ -8,7 +8,7 @@ using global::Windows.Win32.Graphics.Dwm;
 
 var debugOption = new Option<string?>("--debug")
 {
-    Description = "Debug mode: enumerate | score | config | overlay"
+    Description = "Debug mode: enumerate | score | config | overlay | all"
 };
 
 var verboseOption = new Option<bool>("--verbose", "-v")
@@ -297,7 +297,89 @@ rootCommand.SetAction(parseResult =>
             return 0;
         }
 
-        Console.Error.WriteLine($"Unknown --debug value: {debugValue}. Use: enumerate, score, config, overlay");
+        if (debugValue == "all")
+        {
+            if (!OperatingSystem.IsWindowsVersionAtLeast(6, 0, 6000))
+            {
+                Console.Error.WriteLine("Error: This tool requires Windows Vista or later.");
+                return 2;
+            }
+
+            var allConfig = FocusConfig.Load();
+            var allRenderer = OverlayManager.CreateRenderer(allConfig.OverlayRenderer);
+
+            var enumerator = new WindowEnumerator();
+            var (windows, _) = enumerator.GetNavigableWindows();
+            var filtered = ExcludeFilter.Apply(windows, allConfig.Exclude);
+
+            var fgHwnd = PInvoke.GetForegroundWindow();
+            RECT fgBounds = default;
+            PInvoke.DwmGetWindowAttribute(fgHwnd,
+                DWMWINDOWATTRIBUTE.DWMWA_EXTENDED_FRAME_BOUNDS,
+                System.Runtime.InteropServices.MemoryMarshal.AsBytes(
+                    System.Runtime.InteropServices.MemoryMarshal.CreateSpan(ref fgBounds, 1)));
+
+            Console.WriteLine($"Debug ALL directions from foreground window");
+            Console.WriteLine($"  Bounds: {fgBounds.left},{fgBounds.top},{fgBounds.right},{fgBounds.bottom}");
+            Console.WriteLine($"  Strategy: {allConfig.Strategy}");
+            Console.WriteLine();
+
+            using var overlayManager = new OverlayManager(allRenderer, allConfig.OverlayColors);
+
+            foreach (var dir in new[] { Direction.Left, Direction.Right, Direction.Up, Direction.Down })
+            {
+                var ranked = NavigationService.GetRankedCandidates(filtered, dir, allConfig.Strategy);
+
+                Console.WriteLine($"--- {dir} ---");
+
+                if (ranked.Count == 0)
+                {
+                    Console.WriteLine($"  (no candidates)");
+                    Console.WriteLine();
+                    continue;
+                }
+
+                int displayCount = Math.Min(5, ranked.Count);
+                for (int i = 0; i < displayCount; i++)
+                {
+                    var (w, score) = ranked[i];
+                    bool isTop = i == 0;
+                    string rank = isTop ? $"  #{i + 1}*" : $"  #{i + 1} ";
+                    Console.WriteLine($"{rank} score={score:F1}  \"{Truncate(w.Title, 30)}\"  ({Truncate(w.ProcessName, 12)})  [{w.Left},{w.Top},{w.Right},{w.Bottom}]");
+                }
+
+                var topWindow = ranked[0].Window;
+                var targetBounds = new RECT
+                {
+                    left   = topWindow.Left,
+                    top    = topWindow.Top,
+                    right  = topWindow.Right,
+                    bottom = topWindow.Bottom
+                };
+                overlayManager.ShowOverlay(dir, targetBounds);
+
+                Console.WriteLine();
+            }
+
+            Console.WriteLine("Overlays shown on top candidates. Press any key to dismiss...");
+
+            var exitEvent = new ManualResetEventSlim(false);
+            var keyThread = new Thread(() => { Console.ReadKey(true); exitEvent.Set(); });
+            keyThread.IsBackground = true;
+            keyThread.Start();
+
+            while (!exitEvent.IsSet)
+            {
+                Application.DoEvents();
+                Thread.Sleep(16);
+            }
+
+            overlayManager.HideAll();
+            Console.WriteLine("Overlays dismissed.");
+            return 0;
+        }
+
+        Console.Error.WriteLine($"Unknown --debug value: {debugValue}. Use: enumerate, score, config, overlay, all");
         return 2;
     }
 
