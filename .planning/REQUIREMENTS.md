@@ -69,22 +69,22 @@ Requirements for overlay preview daemon milestone. Each maps to roadmap phases.
 ### Overlay Rendering
 
 - [ ] **OVERLAY-01**: Overlay renders colored borders on the top-ranked target window for each of the 4 directions simultaneously
-- [ ] **OVERLAY-02**: Overlay windows are click-through, always-on-top, excluded from taskbar/Alt+Tab, and excluded from navigation enumeration
+- [x] **OVERLAY-02**: Overlay windows are click-through, always-on-top, excluded from taskbar/Alt+Tab, and excluded from navigation enumeration
 - [ ] **OVERLAY-03**: Overlay dismisses immediately when CAPSLOCK is released
 - [ ] **OVERLAY-04**: Overlay updates target positions when foreground window changes while CAPSLOCK is held
 - [ ] **OVERLAY-05**: Overlay gracefully handles directions with no candidate (no overlay rendered for that direction)
 
 ### Renderer System
 
-- [ ] **RENDER-01**: IOverlayRenderer interface defines the contract for overlay rendering
-- [ ] **RENDER-02**: Default border renderer draws colored borders using Win32 GDI (no WPF/WinForms)
-- [ ] **RENDER-03**: Renderer selection is driven by config (overlayRenderer field)
+- [x] **RENDER-01**: IOverlayRenderer interface defines the contract for overlay rendering
+- [x] **RENDER-02**: Default border renderer draws colored borders using Win32 GDI (no WPF/WinForms)
+- [x] **RENDER-03**: Renderer selection is driven by config (overlayRenderer field)
 
 ### Configuration
 
-- [ ] **CFG-05**: Per-direction overlay colors configurable in JSON config (left/right/up/down, hex ARGB)
+- [x] **CFG-05**: Per-direction overlay colors configurable in JSON config (left/right/up/down, hex ARGB)
 - [ ] **CFG-06**: Activation delay configurable in JSON config (overlayDelayMs, default ~150ms)
-- [ ] **CFG-07**: Overlay renderer name configurable in JSON config (default: "border")
+- [x] **CFG-07**: Overlay renderer name configurable in JSON config (default: "border")
 
 ## Future Requirements
 
@@ -178,16 +178,16 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DAEMON-05 | Phase 4 | Complete |
 | DAEMON-06 | Phase 4 | Complete |
 | OVERLAY-01 | Phase 6 | Pending |
-| OVERLAY-02 | Phase 5 | Pending |
+| OVERLAY-02 | Phase 5 | Complete |
 | OVERLAY-03 | Phase 6 | Pending |
 | OVERLAY-04 | Phase 6 | Pending |
 | OVERLAY-05 | Phase 6 | Pending |
-| RENDER-01 | Phase 5 | Pending |
-| RENDER-02 | Phase 5 | Pending |
-| RENDER-03 | Phase 5 | Pending |
-| CFG-05 | Phase 5 | Pending |
+| RENDER-01 | Phase 5 | Complete |
+| RENDER-02 | Phase 5 | Complete |
+| RENDER-03 | Phase 5 | Complete |
+| CFG-05 | Phase 5 | Complete |
 | CFG-06 | Phase 6 | Pending |
-| CFG-07 | Phase 5 | Pending |
+| CFG-07 | Phase 5 | Complete |
 
 **Coverage:**
 - v1 requirements: 28 total — all complete ✓

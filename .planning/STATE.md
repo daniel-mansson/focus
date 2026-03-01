@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Overlay Preview
 status: unknown
-last_updated: "2026-03-01T07:59:49.061Z"
+last_updated: "2026-03-01T08:39:11.117Z"
 progress:
-  total_phases: 4
+  total_phases: 5
   completed_phases: 4
-  total_plans: 8
-  completed_plans: 8
+  total_plans: 10
+  completed_plans: 9
 ---
 
 # Project State
@@ -22,12 +22,12 @@ See: .planning/PROJECT.md (updated 2026-02-28)
 
 ## Current Position
 
-Phase: 4 of 6 (Daemon Core) — COMPLETE
-Plan: 2 of 2 complete (04-01-PLAN.md done, 04-02-PLAN.md done)
-Status: Phase 4 complete — ready for Phase 5
-Last activity: 2026-03-01 — Plan 04-02 executed: daemon wired and human-verified (all 8 checks passed)
+Phase: 5 of 6 (Overlay Rendering) — IN PROGRESS
+Plan: 1 of 2 complete (05-01-PLAN.md done)
+Status: Phase 5 plan 1 complete — overlay rendering infrastructure built
+Last activity: 2026-03-01 — Plan 05-01 executed: IOverlayRenderer, OverlayWindow, BorderRenderer, OverlayManager
 
-Progress: [██░░░░░░░░] ~33% (v2.0 milestone, 2/6 plans complete)
+Progress: [███░░░░░░░] ~42% (v2.0 milestone, 3/6 plans complete)
 
 ## Performance Metrics
 
@@ -49,7 +49,7 @@ Progress: [██░░░░░░░░] ~33% (v2.0 milestone, 2/6 plans compl
 | Phase | Plans | Status | Duration |
 |-------|-------|--------|----------|
 | 4. Daemon Core | 2/2 | Complete | Plan 01: 3min, Plan 02: 16min |
-| 5. Overlay Rendering | 0/2 | Pending | — |
+| 5. Overlay Rendering | 1/2 | In Progress | Plan 01: 7min |
 | 6. Overlay Wiring | 0/2 | Pending | — |
 
 ## Accumulated Context
@@ -75,6 +75,10 @@ Carried from v1.0 + v2.0 research:
 - Phase 4 (04-02): cts.Token.Register(() => Application.ExitThread()) for cross-thread STA shutdown — works for both Ctrl+C and tray Exit paths without needing Invoke or thread sync
 - Phase 4 (04-02): Ordered cleanup: staThread.Join -> hook.Uninstall+Dispose -> channel.Writer.Complete -> consumerTask.Wait(500ms) -> mutex.Release
 - Phase 4 (04-02): Inner NativeWindow pattern for WM_POWERBROADCAST — create sealed class inheriting NativeWindow, call CreateHandle(new CreateParams()), override WndProc
+- [Phase 05-overlay-windows]: Raw PCWSTR overload for CreateWindowEx/UnregisterClass — HINSTANCE is not SafeHandle
+- [Phase 05-overlay-windows]: Per-instance unique window class name (FocusOverlay_XXXXXXXX) to avoid registration conflicts
+- [Phase 05-overlay-windows]: Marshal.SizeOf<WNDCLASSEXW> instead of unsafe sizeof — WNDCLASSEXW is a managed partial struct
+- [Phase 05-overlay-windows]: DefWindowProc must be listed explicitly in NativeMethods.txt — not auto-generated transitively
 
 ### Pending Todos
 
@@ -83,12 +87,12 @@ None yet.
 ### Blockers/Concerns
 
 - RESOLVED (04-01): CsWin32 HOOKPROC delegate interop verified — FreeLibrarySafeHandle pattern compiles, KBDLLHOOKSTRUCT must be explicitly listed in NativeMethods.txt
-- Phase 5 research flag: Premultiplied alpha compositing failure is subtle — a rendering spike against a known ARGB value is recommended before full OverlayWindow implementation
+- RESOLVED (05-01): Premultiplied alpha compositing implemented in BorderRenderer — GdiFlush + pixel-level multiplication pattern established
 - v1.0 carry: UWP enumeration behavior on Windows 11 24H2 must be validated with real windows
 - v1.0 carry: SendInput + ALT bypass must be validated specifically via AHK invocation
 
 ## Session Continuity
 
-Last session: 2026-03-01T07:52:52Z
-Stopped at: Completed 04-02-PLAN.md — daemon wired (TrayIcon, DaemonCommand, Program.cs) and human-verified (all 8 checks passed). Phase 4 complete.
+Last session: 2026-03-01T08:37:00Z
+Stopped at: Completed 05-01-PLAN.md — overlay rendering infrastructure built (IOverlayRenderer, OverlayWindow, BorderRenderer, OverlayManager). Ready for 05-02 debug command wiring.
 Resume file: None
