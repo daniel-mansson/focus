@@ -45,6 +45,22 @@ internal static class DaemonCommand
         // 5. Load configuration from disk (renderer, colors, delay, strategy, etc.)
         var config = FocusConfig.Load();
 
+        // 5a. If verbose, print the resolved config to stderr so the user knows what's in effect
+        if (verbose)
+        {
+            var configPath = FocusConfig.GetConfigPath();
+            var ts = DateTime.Now.ToString("HH:mm:ss.fff");
+            Console.Error.WriteLine($"[{ts}] Config:");
+            Console.Error.WriteLine($"[{ts}]   file: {configPath}");
+            Console.Error.WriteLine($"[{ts}]   exists: {File.Exists(configPath)}");
+            Console.Error.WriteLine($"[{ts}]   strategy: {config.Strategy}");
+            Console.Error.WriteLine($"[{ts}]   wrap: {config.Wrap}");
+            Console.Error.WriteLine($"[{ts}]   exclude: [{string.Join(", ", config.Exclude.Select(p => $"\"{p}\""))}]");
+            Console.Error.WriteLine($"[{ts}]   overlayRenderer: {config.OverlayRenderer}");
+            Console.Error.WriteLine($"[{ts}]   overlayDelayMs: {config.OverlayDelayMs}");
+            Console.Error.WriteLine($"[{ts}]   overlayColors: left={config.OverlayColors.Left} right={config.OverlayColors.Right} up={config.OverlayColors.Up} down={config.OverlayColors.Down}");
+        }
+
         // 6. Create unbounded event channel (producer: hook callback, consumer: monitor task)
         var channel = Channel.CreateUnbounded<KeyEvent>(new UnboundedChannelOptions
         {
