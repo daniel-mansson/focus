@@ -32,6 +32,7 @@ internal sealed class OverlayOrchestrator : IDisposable
 
     private readonly OverlayManager _overlayManager;
     private readonly FocusConfig _config;
+    private readonly bool _verbose;
 
     // WinForms control used for cross-thread Invoke from CapsLockMonitor worker thread to STA.
     private readonly Control _staDispatcher;
@@ -51,10 +52,11 @@ internal sealed class OverlayOrchestrator : IDisposable
     /// <summary>
     /// Creates the orchestrator. Must be called on the STA thread.
     /// </summary>
-    public OverlayOrchestrator(OverlayManager overlayManager, FocusConfig config)
+    public OverlayOrchestrator(OverlayManager overlayManager, FocusConfig config, bool verbose = false)
     {
         _overlayManager = overlayManager;
         _config = config;
+        _verbose = verbose;
 
         // Create a WinForms control to marshal cross-thread calls onto the STA thread.
         // Force handle creation immediately so Invoke is available before the message pump starts.
@@ -106,13 +108,64 @@ internal sealed class OverlayOrchestrator : IDisposable
 
     /// <summary>
     /// Called when a direction key is pressed while CAPSLOCK is held.
-    /// Phase 7: no-op (interception only). Phase 8 will add navigation.
+    /// Marshals to the STA thread and performs the full navigation pipeline:
+    /// parse direction, load fresh config, enumerate windows, score, activate.
     /// </summary>
     /// <param name="direction">Cardinal direction: "up", "down", "left", "right"</param>
     public void OnDirectionKeyDown(string direction)
     {
-        // Phase 8 will wire navigation here.
-        // Direction key interception and suppression is handled in KeyboardHookHandler.
+        if (_shutdownRequested) return;
+
+        try
+        {
+            _staDispatcher.Invoke(() => NavigateSta(direction));
+        }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
+    }
+
+    private void NavigateSta(string direction)
+    {
+        // 1. Parse direction string — defensive; CapsLockMonitor should never send invalid values.
+        var dir = DirectionParser.Parse(direction);
+        if (dir is null) return;
+
+        // 2. Load config fresh on every call so runtime config changes are always respected.
+        var config = FocusConfig.Load();
+
+        // 3. Enumerate navigable windows.
+        var enumerator = new WindowEnumerator();
+        var (windows, _) = enumerator.GetNavigableWindows();
+
+        // 4. Apply exclude filter.
+        var filtered = ExcludeFilter.Apply(windows, config.Exclude);
+
+        // 5. Score and rank candidates. The overload with out-params gives us the foreground HWND
+        //    and origin for verbose logging. When no foreground window exists, NavigationService
+        //    uses screen center as origin (locked decision — no fallback code needed here).
+        var ranked = NavigationService.GetRankedCandidates(filtered, dir.Value, config.Strategy,
+            out var fgHwnd, out var originX, out var originY);
+
+        // 6. Verbose: log origin and candidate count.
+        if (_verbose)
+        {
+            var ts = DateTime.Now.ToString("HH:mm:ss.fff");
+            Console.Error.WriteLine(
+                $"[{ts}] Navigate: {direction} | origin: 0x{fgHwnd:X8} center=({originX:F0}, {originY:F0}) | candidates: {ranked.Count}");
+        }
+
+        // 7. Activate best candidate with wrap handling.
+        int result = FocusActivator.ActivateWithWrap(ranked, filtered, dir.Value, config.Strategy, config.Wrap, _verbose);
+
+        // 8. Verbose: log outcome. result==1 (no candidates) is a silent no-op per user decision.
+        if (_verbose)
+        {
+            var ts = DateTime.Now.ToString("HH:mm:ss.fff");
+            if (result == 0)
+                Console.Error.WriteLine($"[{ts}] Navigate: {direction} -> success");
+            else if (result == 2)
+                Console.Error.WriteLine($"[{ts}] Navigate: {direction} -> all activations failed");
+        }
     }
 
     /// <summary>

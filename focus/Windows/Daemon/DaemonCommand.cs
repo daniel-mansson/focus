@@ -83,7 +83,7 @@ internal static class DaemonCommand
         //     it to the captured 'orchestrator' variable via the out parameter.
         var staThread = new Thread(() =>
         {
-            Application.Run(new DaemonApplicationContext(hook, monitor, () => cts.Cancel(), config, out orchestrator));
+            Application.Run(new DaemonApplicationContext(hook, monitor, () => cts.Cancel(), config, verbose, out orchestrator));
         });
         staThread.SetApartmentState(ApartmentState.STA);
         staThread.IsBackground = false;  // Keep process alive while message pump runs

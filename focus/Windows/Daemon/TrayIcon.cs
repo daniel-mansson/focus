@@ -22,7 +22,7 @@ internal sealed class DaemonApplicationContext : ApplicationContext
     /// WinForms Controls, and timers are created on the correct thread.
     /// </summary>
     public DaemonApplicationContext(KeyboardHookHandler hook, CapsLockMonitor monitor, Action onExit,
-        FocusConfig config, out OverlayOrchestrator orchestrator)
+        FocusConfig config, bool verbose, out OverlayOrchestrator orchestrator)
     {
         _hook    = hook;
         _monitor = monitor;
@@ -39,7 +39,7 @@ internal sealed class DaemonApplicationContext : ApplicationContext
         // Control for cross-thread Invoke — both require the STA thread.
         var renderer = OverlayManager.CreateRenderer(config.OverlayRenderer);
         _overlayManager = new OverlayManager(renderer, config.OverlayColors);
-        _orchestrator = new OverlayOrchestrator(_overlayManager, config);
+        _orchestrator = new OverlayOrchestrator(_overlayManager, config, verbose);
 
         // Expose orchestrator to DaemonCommand.Run via out parameter so it can inject callbacks
         // and call RequestShutdown/Dispose during the ordered teardown sequence.
