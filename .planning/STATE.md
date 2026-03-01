@@ -48,6 +48,7 @@ Progress: [████░░░░░░] 40%
 ## Accumulated Context
 
 ### Key Decisions
+- Quick task 1: ForegroundBorderColor = 0xE0FFFFFF (~88% opacity white); PaintFullBorder static method bypasses IOverlayRenderer direction-based contract
 - v3.0 phases numbered from 7 to continue from v2.0 (phases 4-6)
 - 3 phases derived from 3 natural requirement clusters (hotkey wiring, navigation firing, overlay chaining)
 - Depth is "quick" — 3 phases is appropriate compression for 10 requirements across tight dependency chain
@@ -79,9 +80,10 @@ None.
 | 07 | 01 | ~2 min | 2/2 | 3 |
 | 07 | 02 | ~20 min | 2/2 | 2 |
 | 08 | 01 | ~30 min | 2/2 | 3 |
+| quick-1 | 01 | ~15 min | 2/2 | 3 |
 
 ## Session Continuity
 
-Last session: 2026-03-01T21:48:00Z
-Stopped at: Quick task 1 (white border) — Task 1 committed (964df6f), awaiting human verification (Task 2 checkpoint)
-Resume file: .planning/quick/1-add-a-white-border-around-the-currently-/1-PLAN.md (Task 2: human-verify)
+Last session: 2026-03-01T21:50:00Z
+Stopped at: Completed quick task 1 (white border) — human-verified and approved
+Resume file: .planning/phases/09-overlay-chaining/09-PLAN.md (next phase)
