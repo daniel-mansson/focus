@@ -267,8 +267,49 @@ internal sealed class OverlayOrchestrator : IDisposable
 
             if (ranked.Count == 0)
             {
-                // OVERLAY-05: no candidate in this direction — hide that overlay silently.
-                _overlayManager.HideOverlay(direction);
+                if (_config.Wrap == WrapBehavior.Wrap)
+                {
+                    // When wrap is enabled and no candidates exist in this direction,
+                    // find the wrap target: the furthest window in the opposite direction.
+                    var opposite = GetOppositeDirection(direction);
+                    var wrapped = NavigationService.GetRankedCandidates(filtered, opposite, _config.Strategy);
+
+                    if (wrapped.Count == 0)
+                    {
+                        // Nothing in any direction — hide and continue.
+                        _overlayManager.HideOverlay(direction);
+                        continue;
+                    }
+
+                    // The list is sorted ascending by score (best/closest first).
+                    // The wrap target is the LAST entry — the furthest window on the opposite edge.
+                    var wrapTarget = wrapped[wrapped.Count - 1].Window;
+                    var wrapBounds = new RECT
+                    {
+                        left   = wrapTarget.Left,
+                        top    = wrapTarget.Top,
+                        right  = wrapTarget.Right,
+                        bottom = wrapTarget.Bottom
+                    };
+
+                    if (direction is Direction.Left or Direction.Right)
+                    {
+                        wrapBounds.left   -= LeftRightInset;
+                        wrapBounds.top    -= LeftRightInset;
+                        wrapBounds.right  += LeftRightInset;
+                        wrapBounds.bottom += LeftRightInset;
+                    }
+
+                    ClampToMonitor(new HWND((nint)(IntPtr)wrapTarget.Hwnd), ref wrapBounds);
+
+                    _overlayManager.ShowOverlay(direction, wrapBounds);
+                    candidatesFound++;
+                }
+                else
+                {
+                    // OVERLAY-05: no candidate in this direction and wrap is disabled — hide silently.
+                    _overlayManager.HideOverlay(direction);
+                }
                 continue;
             }
 
@@ -329,6 +370,19 @@ internal sealed class OverlayOrchestrator : IDisposable
     // -----------------------------------------------------------------------------------------
     // Helpers.
     // -----------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// Returns the cardinal direction directly opposite to the given direction.
+    /// Used to find the wrap target when no candidates exist in the requested direction.
+    /// </summary>
+    private static Direction GetOppositeDirection(Direction direction) => direction switch
+    {
+        Direction.Left  => Direction.Right,
+        Direction.Right => Direction.Left,
+        Direction.Up    => Direction.Down,
+        Direction.Down  => Direction.Up,
+        _               => direction
+    };
 
     /// <summary>
     /// Clamps a RECT to the physical bounds of the monitor that owns the given HWND.
