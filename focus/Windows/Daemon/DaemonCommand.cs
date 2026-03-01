@@ -59,6 +59,9 @@ internal static class DaemonCommand
             Console.Error.WriteLine($"[{ts}]   overlayRenderer: {config.OverlayRenderer}");
             Console.Error.WriteLine($"[{ts}]   overlayDelayMs: {config.OverlayDelayMs}");
             Console.Error.WriteLine($"[{ts}]   overlayColors: left={config.OverlayColors.Left} right={config.OverlayColors.Right} up={config.OverlayColors.Up} down={config.OverlayColors.Down}");
+            Console.Error.WriteLine($"[{ts}]   numberOverlayEnabled: {config.NumberOverlayEnabled}");
+            Console.Error.WriteLine($"[{ts}]   numberOverlayPosition: {config.NumberOverlayPosition}");
+            Console.Error.WriteLine($"[{ts}]   numberSortStrategy: {config.NumberSortStrategy}");
         }
 
         // 6. Create unbounded event channel (producer: hook callback, consumer: monitor task)
@@ -80,7 +83,8 @@ internal static class DaemonCommand
         var monitor = new CapsLockMonitor(channel.Reader, verbose,
             onHeld:             () => orchestrator?.OnCapsLockHeld(),
             onReleased:         () => orchestrator?.OnCapsLockReleased(),
-            onDirectionKeyDown: (dir) => orchestrator?.OnDirectionKeyDown(dir));
+            onDirectionKeyDown: (dir) => orchestrator?.OnDirectionKeyDown(dir),
+            onNumberKeyDown:    (num) => orchestrator?.OnNumberKeyDown(num));
 
         // 9. Set up cancellation (used by both Ctrl+C and tray Exit paths)
         using var cts = new CancellationTokenSource();

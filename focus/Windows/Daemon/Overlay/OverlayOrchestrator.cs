@@ -110,6 +110,18 @@ internal sealed class OverlayOrchestrator : IDisposable
     }
 
     /// <summary>
+    /// Called when a number key (1-9) is pressed while CAPSLOCK is held.
+    /// Marshals to the STA thread and activates the Nth window sorted by horizontal position.
+    /// </summary>
+    public void OnNumberKeyDown(int number)
+    {
+        if (_shutdownRequested) return;
+        try { _staDispatcher.Invoke(() => ActivateByNumberSta(number)); }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
+    }
+
+    /// <summary>
     /// Called when a direction key is pressed while CAPSLOCK is held.
     /// Marshals to the STA thread and performs the full navigation pipeline:
     /// parse direction, load fresh config, enumerate windows, score, activate.
@@ -168,6 +180,41 @@ internal sealed class OverlayOrchestrator : IDisposable
                 Console.Error.WriteLine($"[{ts}] Navigate: {direction} -> success");
             else if (result == 2)
                 Console.Error.WriteLine($"[{ts}] Navigate: {direction} -> all activations failed");
+        }
+    }
+
+    private void ActivateByNumberSta(int number)
+    {
+        var config = FocusConfig.Load();
+        var enumerator = new WindowEnumerator();
+        var (windows, _) = enumerator.GetNavigableWindows();
+        var filtered = ExcludeFilter.Apply(windows, config.Exclude);
+
+        // Remove the current foreground window from the list (user is selecting "other" windows)
+        var fgHwnd = (nint)(IntPtr)PInvoke.GetForegroundWindow();
+        var candidates = filtered.Where(w => w.Hwnd != fgHwnd).ToList();
+
+        var sorted = WindowSorter.SortByPosition(candidates, config.NumberSortStrategy);
+
+        // number is 1-based, index is 0-based
+        int index = number - 1;
+        if (index < 0 || index >= sorted.Count)
+        {
+            if (_verbose)
+            {
+                var ts = DateTime.Now.ToString("HH:mm:ss.fff");
+                Console.Error.WriteLine($"[{ts}] Number: {number} -> no window at index (have {sorted.Count})");
+            }
+            return;
+        }
+
+        var target = sorted[index];
+        bool ok = FocusActivator.TryActivateWindow(target.Hwnd);
+
+        if (_verbose)
+        {
+            var ts = DateTime.Now.ToString("HH:mm:ss.fff");
+            Console.Error.WriteLine($"[{ts}] Number: {number} -> 0x{target.Hwnd:X8} \"{WindowInfo.TruncateTitle(target.Title)}\" {(ok ? "ok" : "failed")}");
         }
     }
 
@@ -238,6 +285,9 @@ internal sealed class OverlayOrchestrator : IDisposable
         // Hide all overlays first so stale positions from a previous hold are never visible.
         _overlayManager.HideAll();
 
+        // Load config fresh so runtime changes (strategy, wrap, exclude, number overlay) take effect immediately.
+        var config = FocusConfig.Load();
+
         // Show white border around the currently focused window.
         var fgHwnd = PInvoke.GetForegroundWindow();
         if (fgHwnd != default)
@@ -257,22 +307,22 @@ internal sealed class OverlayOrchestrator : IDisposable
 
         var enumerator = new WindowEnumerator();
         var (windows, _) = enumerator.GetNavigableWindows();
-        var filtered = ExcludeFilter.Apply(windows, _config.Exclude);
+        var filtered = ExcludeFilter.Apply(windows, config.Exclude);
 
         int candidatesFound = 0;
 
         foreach (Direction direction in new[] { Direction.Left, Direction.Right, Direction.Up, Direction.Down })
         {
-            var ranked = NavigationService.GetRankedCandidates(filtered, direction, _config.Strategy);
+            var ranked = NavigationService.GetRankedCandidates(filtered, direction, config.Strategy);
 
             if (ranked.Count == 0)
             {
-                if (_config.Wrap == WrapBehavior.Wrap)
+                if (config.Wrap == WrapBehavior.Wrap)
                 {
                     // When wrap is enabled and no candidates exist in this direction,
                     // find the wrap target: the furthest window in the opposite direction.
                     var opposite = GetOppositeDirection(direction);
-                    var wrapped = NavigationService.GetRankedCandidates(filtered, opposite, _config.Strategy);
+                    var wrapped = NavigationService.GetRankedCandidates(filtered, opposite, config.Strategy);
 
                     if (wrapped.Count == 0)
                     {
@@ -363,6 +413,21 @@ internal sealed class OverlayOrchestrator : IDisposable
                     }
                 }
                 // If bounds retrieval fails, do nothing — graceful degradation.
+            }
+        }
+
+        // Number overlay labels — render after directional overlays so labels appear on top
+        if (config.NumberOverlayEnabled)
+        {
+            var fgHwndVal = (nint)(IntPtr)PInvoke.GetForegroundWindow();
+            var nonFgWindows = filtered.Where(w => w.Hwnd != fgHwndVal).ToList();
+            var sorted = WindowSorter.SortByPosition(nonFgWindows, config.NumberSortStrategy);
+
+            for (int i = 0; i < Math.Min(sorted.Count, 9); i++)
+            {
+                var w = sorted[i];
+                var wBounds = new RECT { left = w.Left, top = w.Top, right = w.Right, bottom = w.Bottom };
+                _overlayManager.ShowNumberLabel(i + 1, wBounds, config.NumberOverlayPosition);
             }
         }
     }

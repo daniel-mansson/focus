@@ -39,6 +39,10 @@ internal sealed class KeyboardHookHandler : IDisposable
     private const uint VK_S = 0x53;
     private const uint VK_D = 0x44;
 
+    // Number key virtual key codes — 1 through 9
+    private const uint VK_1 = 0x31;
+    private const uint VK_9 = 0x39;
+
     // KBDLLHOOKSTRUCT flags
     private const uint LLKHF_INJECTED = 0x00000010; // Injected from any process (DAEMON-06)
     private const uint LLKHF_ALTDOWN  = 0x00000020; // Alt key held
@@ -95,6 +99,8 @@ internal sealed class KeyboardHookHandler : IDisposable
         _ => false
     };
 
+    private static bool IsNumberKey(uint vkCode) => vkCode >= VK_1 && vkCode <= VK_9;
+
     private unsafe LRESULT HookCallback(int nCode, WPARAM wParam, LPARAM lParam)
     {
         if (nCode < 0)
@@ -105,6 +111,17 @@ internal sealed class KeyboardHookHandler : IDisposable
         // DAEMON-06: Filter AHK-injected events — prevents overlay flicker from AHK
         if (((uint)kbd->flags & LLKHF_INJECTED) != 0)
             return PInvoke.CallNextHookEx(null, nCode, wParam, lParam);
+
+        // Number key interception (1-9): suppress and route through channel when CAPS held.
+        if (IsNumberKey(kbd->vkCode))
+        {
+            if (!_capsLockHeld)
+                return PInvoke.CallNextHookEx(null, nCode, wParam, lParam);
+
+            bool isKeyDown = (uint)wParam.Value == WM_KEYDOWN || (uint)wParam.Value == WM_SYSKEYDOWN;
+            _channelWriter.TryWrite(new KeyEvent(kbd->vkCode, isKeyDown, kbd->time));
+            return (LRESULT)1; // suppress
+        }
 
         // Direction key interception: runs before CAPSLOCK check so direction keys
         // are handled when CAPSLOCK is already held (regardless of other modifiers).

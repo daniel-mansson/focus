@@ -5,8 +5,9 @@ namespace Focus.Windows.Daemon;
 /// <summary>
 /// Consumes KeyEvent records from a Channel and maintains CAPSLOCK hold/release
 /// state machine with optional verbose logging to stderr.
-/// Also processes direction key events (arrows + WASD) intercepted while CAPSLOCK is held,
-/// suppressing key repeats and invoking the onDirectionKeyDown callback for Phase 8.
+/// Also processes direction key events (arrows + WASD) and number key events (1-9)
+/// intercepted while CAPSLOCK is held, suppressing key repeats and invoking the
+/// corresponding callbacks for navigation and number-based window selection.
 /// </summary>
 internal sealed class CapsLockMonitor
 {
@@ -16,20 +17,35 @@ internal sealed class CapsLockMonitor
     private readonly Action? _onHeld;
     private readonly Action? _onReleased;
     private readonly Action<string>? _onDirectionKeyDown;
+    private readonly Action<int>? _onNumberKeyDown;
 
-    // Tracks which direction keys are currently pressed to suppress key repeats.
+    // Tracks which direction/number keys are currently pressed to suppress key repeats.
     // Cleared on keyup and on ResetState() to prevent stuck keys after sleep/wake.
+    // VK code ranges for direction (0x25-0x28, 0x41-0x57) and numbers (0x31-0x39) do not overlap.
     private readonly HashSet<uint> _directionKeysHeld = new();
 
     public CapsLockMonitor(ChannelReader<KeyEvent> reader, bool verbose,
         Action? onHeld = null, Action? onReleased = null,
-        Action<string>? onDirectionKeyDown = null)
+        Action<string>? onDirectionKeyDown = null,
+        Action<int>? onNumberKeyDown = null)
     {
         _reader = reader;
         _verbose = verbose;
         _onHeld = onHeld;
         _onReleased = onReleased;
         _onDirectionKeyDown = onDirectionKeyDown;
+        _onNumberKeyDown = onNumberKeyDown;
+    }
+
+    /// <summary>
+    /// Maps a number key VK code to the integer 1-9, or null if not a number key.
+    /// VK codes 0x31-0x39 correspond to keys 1-9 on the main keyboard row.
+    /// </summary>
+    private static int? GetNumberFromVkCode(uint vkCode)
+    {
+        if (vkCode >= 0x31 && vkCode <= 0x39)
+            return (int)(vkCode - 0x30);
+        return null;
     }
 
     /// <summary>
@@ -104,6 +120,14 @@ internal sealed class CapsLockMonitor
                 continue;
             }
 
+            // Number key event (1-9)
+            int? number = GetNumberFromVkCode(evt.VkCode);
+            if (number is not null)
+            {
+                HandleNumberKeyEvent(evt, number.Value);
+                continue;
+            }
+
             // Unknown VK code — defensive: ignore
         }
     }
@@ -155,6 +179,28 @@ internal sealed class CapsLockMonitor
             // Keyup: reset repeat tracking so next distinct press is processed
             _directionKeysHeld.Remove(evt.VkCode);
             // No verbose log and no callback for keyup
+        }
+    }
+
+    private void HandleNumberKeyEvent(KeyEvent evt, int number)
+    {
+        if (evt.IsKeyDown)
+        {
+            // Suppress key repeats — only the initial keydown is acted upon
+            if (_directionKeysHeld.Contains(evt.VkCode))
+                return;
+
+            _directionKeysHeld.Add(evt.VkCode);
+
+            if (_verbose)
+                Console.Error.WriteLine($"[{DateTime.Now:HH:mm:ss.fff}] Number: {number}");
+
+            _onNumberKeyDown?.Invoke(number);
+        }
+        else
+        {
+            // Keyup: reset repeat tracking
+            _directionKeysHeld.Remove(evt.VkCode);
         }
     }
 

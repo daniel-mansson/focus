@@ -6,6 +6,8 @@ namespace Focus.Windows;
 
 internal enum Strategy { Balanced, StrongAxisBias, ClosestInDirection, EdgeMatching, EdgeProximity, AxisOnly }
 internal enum WrapBehavior { NoOp, Wrap, Beep }
+internal enum NumberSortStrategy { LeftEdge, Center }
+internal enum NumberOverlayPosition { TopLeft, TopRight, BottomLeft, BottomRight, TopCenter, Center }
 
 internal class FocusConfig
 {
@@ -15,6 +17,9 @@ internal class FocusConfig
     public OverlayColors OverlayColors { get; set; } = new();
     public string OverlayRenderer { get; set; } = "border";
     public int OverlayDelayMs { get; set; } = 0;  // CFG-06: default 0 per user decision (REQUIREMENTS.md says ~150ms but user overrode to 0)
+    public bool NumberOverlayEnabled { get; set; } = true;
+    public NumberOverlayPosition NumberOverlayPosition { get; set; } = NumberOverlayPosition.TopLeft;
+    public NumberSortStrategy NumberSortStrategy { get; set; } = NumberSortStrategy.LeftEdge;
 
     public static string GetConfigPath()
     {
