@@ -96,6 +96,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-01T09:41:00Z
-Stopped at: Completed 05-02-PLAN.md — debug overlay command wired, GDI alpha detection bug fixed and human-verified. Phase 5 complete. Ready for Phase 6 (Overlay Wiring).
+Last session: 2026-03-01T09:06:34Z
+Stopped at: Completed quick task 6 — added --debug all command showing overlays for all 4 directions simultaneously with per-direction scoring output. Phase 5 still complete. Ready for Phase 6 (Overlay Wiring).
 Resume file: None
