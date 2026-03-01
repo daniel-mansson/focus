@@ -18,14 +18,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-01)
 
 **Core value:** Given a direction, reliably switch focus to the most intuitive window in that direction — fast enough for hotkey use, accurate enough to feel natural.
-**Current focus:** v3.0 Integrated Navigation — Phase 7 complete (both plans done)
+**Current focus:** v3.0 Integrated Navigation — Phase 8 in progress (Task 1 complete, awaiting human-verify checkpoint)
 
 ## Current Position
 
-Phase: 8 (In-Daemon Navigation) — not started
-Plan: 08-01 (next)
-Status: Ready
-Last activity: 2026-03-01 — 07-02 direction key callback wired + human-verified
+Phase: 8 (In-Daemon Navigation) — in progress
+Plan: 08-01 (checkpoint: human-verify at Task 2)
+Status: Awaiting human verification
+Last activity: 2026-03-01 — 08-01 Task 1 complete (OnDirectionKeyDown navigation pipeline implemented)
 
 Progress: [██░░░░░░░░] 20%
 
@@ -61,12 +61,16 @@ Progress: [██░░░░░░░░] 20%
 - KeyEvent extended with optional ShiftHeld/CtrlHeld/AltHeld — defaults false for CAPSLOCK events
 - OnDirectionKeyDown is a no-op in Phase 7 — Phase 8 hook point only; interception/suppression lives in KeyboardHookHandler
 - Closure pattern orchestrator?.OnDirectionKeyDown(dir) matches existing onHeld/onReleased — null-safe before STA thread initializes
+- Load FocusConfig fresh on every direction keypress — runtime config changes take effect immediately without daemon restart
+- Navigate entirely on STA thread via _staDispatcher.Invoke — all Win32 APIs run on STA (same pattern as OnCapsLockHeld)
+- Silent no-op when result == 1 (no candidates in direction) — no log, no beep, no visual (per user decision)
 
 ### Blockers
 None.
 
 ### Todos
-- Execute 08-01-PLAN.md (in-daemon navigation — Phase 8)
+- Human-verify 08-01 Task 2: run daemon --verbose, test CAPSLOCK+direction navigation (5 test scenarios)
+- Execute 09-PLAN when 08-01 is fully approved
 
 ## Performance Metrics
 
@@ -74,9 +78,10 @@ None.
 |-------|------|----------|-------|-------|
 | 07 | 01 | ~2 min | 2/2 | 3 |
 | 07 | 02 | ~20 min | 2/2 | 2 |
+| 08 | 01 | ~5 min | 1/2 (checkpoint) | 3 |
 
 ## Session Continuity
 
-Last session: 2026-03-01T19:00:00Z
-Stopped at: Completed 07-02-PLAN.md (direction key callback wired + human-verified; Phase 7 complete)
-Resume file: .planning/phases/08-in-daemon-navigation/ (Phase 8 not yet planned)
+Last session: 2026-03-01T19:39:00Z
+Stopped at: Checkpoint — 08-01 Task 2 human-verify (Task 1 committed b440df6; navigation pipeline complete, awaiting human testing)
+Resume file: .planning/phases/08-in-daemon-navigation/08-01-PLAN.md (resume at Task 2)

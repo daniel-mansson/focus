@@ -16,9 +16,9 @@ Requirements for v3.0 Integrated Navigation. Each maps to roadmap phases.
 
 ### Focus Navigation
 
-- [ ] **NAV-01**: CAPSLOCK + direction triggers focus switch to the best candidate window in that direction
-- [ ] **NAV-02**: Navigation uses the same scoring engine and config (strategy, wrap behavior) as the CLI
-- [ ] **NAV-03**: Navigation works independently of overlay display (pure hotkey mode)
+- [x] **NAV-01**: CAPSLOCK + direction triggers focus switch to the best candidate window in that direction
+- [x] **NAV-02**: Navigation uses the same scoring engine and config (strategy, wrap behavior) as the CLI
+- [x] **NAV-03**: Navigation works independently of overlay display (pure hotkey mode)
 
 ### Overlay Chaining
 
@@ -54,9 +54,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | HOTKEY-02 | Phase 7 | Complete (07-01) |
 | HOTKEY-03 | Phase 7 | Complete (07-01) |
 | HOTKEY-04 | Phase 7 | Complete (07-01) |
-| NAV-01 | Phase 8 | Pending |
-| NAV-02 | Phase 8 | Pending |
-| NAV-03 | Phase 8 | Pending |
+| NAV-01 | Phase 8 | Complete |
+| NAV-02 | Phase 8 | Complete |
+| NAV-03 | Phase 8 | Complete |
 | CHAIN-01 | Phase 9 | Pending |
 | CHAIN-02 | Phase 9 | Pending |
 | CHAIN-03 | Phase 9 | Pending |
