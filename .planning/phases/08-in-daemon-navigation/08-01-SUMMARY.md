@@ -47,7 +47,7 @@ requirements-completed:
   - NAV-03
 
 # Metrics
-duration: ~5min
+duration: ~30min (including human-verify checkpoint)
 completed: 2026-03-01
 ---
 
@@ -57,24 +57,27 @@ completed: 2026-03-01
 
 ## Performance
 
-- **Duration:** ~5 min
+- **Duration:** ~30 min (including human-verify checkpoint)
 - **Started:** 2026-03-01T19:33:53Z
-- **Completed:** 2026-03-01T19:39:00Z
-- **Tasks:** 1/2 (Task 2 is human-verify checkpoint — awaiting human testing)
+- **Completed:** 2026-03-01T19:45:00Z
+- **Tasks:** 2/2
 - **Files modified:** 3
 
 ## Accomplishments
-- Replaced Phase 7 no-op `OnDirectionKeyDown` with a 8-step navigation pipeline
+- Replaced Phase 7 no-op `OnDirectionKeyDown` with an 8-step navigation pipeline
 - Pipeline: parse direction -> load config fresh -> enumerate windows -> exclude filter -> score/rank -> verbose log -> activate with wrap -> log result
 - Threaded `verbose` bool from `DaemonCommand.Run` through `DaemonApplicationContext` to `OverlayOrchestrator`
 - Build succeeds with 0 errors
+- Human-verified all 5 test scenarios: basic navigation, CLI parity, no-match behavior, navigation independent of overlay timing, CLI independence without daemon
 
 ## Task Commits
 
 Each task was committed atomically:
 
 1. **Task 1: Implement OnDirectionKeyDown navigation in OverlayOrchestrator** - `b440df6` (feat)
-2. **Task 2: Verify daemon navigation matches CLI behavior** - checkpoint:human-verify (awaiting)
+2. **Task 2: Verify daemon navigation matches CLI behavior** - checkpoint approved by human tester
+
+**Checkpoint commit:** `e52ef02` (docs: checkpoint — navigation pipeline implemented, awaiting human-verify)
 
 ## Files Created/Modified
 - `focus/Windows/Daemon/Overlay/OverlayOrchestrator.cs` - Added `_verbose` field, updated constructor signature, replaced no-op with full NavigateSta pipeline
@@ -98,9 +101,15 @@ None.
 None - no external service configuration required.
 
 ## Next Phase Readiness
-- Task 1 complete and committed: navigation pipeline is fully wired
-- Task 2 (human verification) awaiting human testing — daemon must be run with `--verbose` and tested with CAPSLOCK + direction keys
-- Phase 9 (Overlay Chaining) can begin once Task 2 is approved
+- Phase 8 fully complete: all NAV requirements (NAV-01, NAV-02, NAV-03) satisfied and human-verified
+- CAPSLOCK+direction navigation fires immediately on keypress, independently of overlay display state (NAV-03 verified)
+- Phase 9 (Overlay Chaining) can now proceed: depends on Phase 7 (hotkey interception) and Phase 8 (navigation firing) — both complete
+
+## Self-Check: PASSED
+
+- FOUND: .planning/phases/08-in-daemon-navigation/08-01-SUMMARY.md
+- FOUND: commit b440df6 (feat: implement OnDirectionKeyDown navigation)
+- FOUND: commit e52ef02 (docs: checkpoint — navigation pipeline implemented)
 
 ---
 *Phase: 08-in-daemon-navigation*

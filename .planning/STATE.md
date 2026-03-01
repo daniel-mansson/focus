@@ -18,16 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-01)
 
 **Core value:** Given a direction, reliably switch focus to the most intuitive window in that direction — fast enough for hotkey use, accurate enough to feel natural.
-**Current focus:** v3.0 Integrated Navigation — Phase 8 in progress (Task 1 complete, awaiting human-verify checkpoint)
+**Current focus:** v3.0 Integrated Navigation — Phase 8 complete, ready for Phase 9 (Overlay Chaining)
 
 ## Current Position
 
-Phase: 8 (In-Daemon Navigation) — in progress
-Plan: 08-01 (checkpoint: human-verify at Task 2)
-Status: Awaiting human verification
-Last activity: 2026-03-01 — 08-01 Task 1 complete (OnDirectionKeyDown navigation pipeline implemented)
+Phase: 8 (In-Daemon Navigation) — complete
+Plan: 08-01 — complete (all tasks done, human-verified)
+Status: Ready for Phase 9 (Overlay Chaining)
+Last activity: 2026-03-01 — 08-01 complete (OnDirectionKeyDown navigation verified by human tester)
 
-Progress: [██░░░░░░░░] 20%
+Progress: [████░░░░░░] 40%
 
 ## Milestones
 
@@ -64,13 +64,13 @@ Progress: [██░░░░░░░░] 20%
 - Load FocusConfig fresh on every direction keypress — runtime config changes take effect immediately without daemon restart
 - Navigate entirely on STA thread via _staDispatcher.Invoke — all Win32 APIs run on STA (same pattern as OnCapsLockHeld)
 - Silent no-op when result == 1 (no candidates in direction) — no log, no beep, no visual (per user decision)
+- Human-verified: CAPSLOCK+direction and CLI focus <direction> produce identical results (5 test scenarios passed)
 
 ### Blockers
 None.
 
 ### Todos
-- Human-verify 08-01 Task 2: run daemon --verbose, test CAPSLOCK+direction navigation (5 test scenarios)
-- Execute 09-PLAN when 08-01 is fully approved
+- Execute 09-PLAN (Overlay Chaining) — Phase 8 complete, all requirements met
 
 ## Performance Metrics
 
@@ -78,10 +78,10 @@ None.
 |-------|------|----------|-------|-------|
 | 07 | 01 | ~2 min | 2/2 | 3 |
 | 07 | 02 | ~20 min | 2/2 | 2 |
-| 08 | 01 | ~5 min | 1/2 (checkpoint) | 3 |
+| 08 | 01 | ~30 min | 2/2 | 3 |
 
 ## Session Continuity
 
-Last session: 2026-03-01T19:39:00Z
-Stopped at: Checkpoint — 08-01 Task 2 human-verify (Task 1 committed b440df6; navigation pipeline complete, awaiting human testing)
-Resume file: .planning/phases/08-in-daemon-navigation/08-01-PLAN.md (resume at Task 2)
+Last session: 2026-03-01T19:45:00Z
+Stopped at: Completed 08-01-PLAN.md — Phase 8 done, human verification approved
+Resume file: .planning/phases/09-overlay-chaining/09-PLAN.md (next phase)
