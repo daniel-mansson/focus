@@ -22,9 +22,9 @@ Requirements for v3.0 Integrated Navigation. Each maps to roadmap phases.
 
 ### Overlay Chaining
 
-- [ ] **CHAIN-01**: Overlay stays visible after a focus move while CAPSLOCK remains held
-- [ ] **CHAIN-02**: Overlay refreshes to show new directional candidates from the newly focused window
-- [ ] **CHAIN-03**: User can chain multiple directional moves in sequence while holding CAPSLOCK
+- [x] **CHAIN-01**: Overlay stays visible after a focus move while CAPSLOCK remains held
+- [x] **CHAIN-02**: Overlay refreshes to show new directional candidates from the newly focused window
+- [x] **CHAIN-03**: User can chain multiple directional moves in sequence while holding CAPSLOCK
 
 ## Future Requirements
 
@@ -57,9 +57,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | NAV-01 | Phase 8 | Complete |
 | NAV-02 | Phase 8 | Complete |
 | NAV-03 | Phase 8 | Complete |
-| CHAIN-01 | Phase 9 | Pending |
-| CHAIN-02 | Phase 9 | Pending |
-| CHAIN-03 | Phase 9 | Pending |
+| CHAIN-01 | Phase 9 | Complete (user-approved) |
+| CHAIN-02 | Phase 9 | Complete (user-approved) |
+| CHAIN-03 | Phase 9 | Complete (user-approved) |
 
 **Coverage:**
 - v3.0 requirements: 10 total
