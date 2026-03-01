@@ -57,7 +57,9 @@ Plans:
   2. Navigation uses the same strategy and wrap settings from config.json as the CLI does (same scoring engine, same candidates)
   3. Running `focus left` from a terminal while the daemon is active produces the same result as pressing CAPSLOCK + left from within the daemon
   4. The stateless CLI (`focus <direction>`) continues to work independently when the daemon is not running
-**Plans**: TBD
+**Plans**: 1 plan
+Plans:
+- [ ] 08-01-PLAN.md — Implement OnDirectionKeyDown navigation + human verification
 
 ### Phase 9: Overlay Chaining
 **Goal**: Users can chain multiple directional focus moves in sequence while holding CAPSLOCK, with the overlay continuously showing the next available candidates from the current foreground window
@@ -80,7 +82,7 @@ Plans:
 | 5. Overlay Windows | v2.0 | 2/2 | Complete | 2026-03-01 |
 | 6. Navigation Integration | v2.0 | 2/2 | Complete | 2026-03-01 |
 | 7. Hotkey Wiring | 2/2 | Complete   | 2026-03-01 | — |
-| 8. In-Daemon Navigation | v3.0 | 0/? | Not started | — |
+| 8. In-Daemon Navigation | v3.0 | 0/1 | Planned | — |
 | 9. Overlay Chaining | v3.0 | 0/? | Not started | — |
 
 ---
