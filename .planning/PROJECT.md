@@ -45,7 +45,12 @@ Given a direction, reliably switch focus to the most intuitive window in that di
 
 ### Active
 
-(None yet — define with `/gsd:new-milestone`)
+<!-- Current scope: v3.0 Integrated Navigation -->
+
+- [ ] Daemon detects CAPSLOCK + direction keys (arrows + WASD) and performs focus navigation directly
+- [ ] Overlay stays visible during chained moves, refreshing candidates from new foreground window
+- [ ] Direction keys suppressed from reaching focused app while CAPSLOCK held
+- [ ] Stateless CLI (`focus <direction>`) continues to work alongside daemon hotkeys
 
 ### Out of Scope
 
@@ -87,5 +92,15 @@ Six weighting strategies available: balanced, strong-axis-bias, closest-in-direc
 | Fade animation removed (instant show/hide) | User tested both, preferred instant transitions over 100ms fade | ✓ Good — eliminated all timer/alpha machinery, simpler code |
 | Replace semantics for daemon mutex | Kill existing daemon on restart rather than error — smoother UX | ✓ Good — user never sees "already running" errors |
 
+## Current Milestone: v3.0 Integrated Navigation
+
+**Goal:** Daemon handles CAPSLOCK + direction hotkeys (arrows + WASD) to perform focus navigation directly, eliminating the AutoHotkey dependency for window switching.
+
+**Target features:**
+- CAPSLOCK + arrow keys / WASD triggers focus move from within the daemon
+- Overlay stays visible for chaining multiple moves while CAPSLOCK held
+- Direction keys suppressed while CAPSLOCK held (don't leak to focused app)
+- Stateless CLI mode preserved for scripting and other launchers
+
 ---
-*Last updated: 2026-03-01 after v2.0 milestone*
+*Last updated: 2026-03-01 after v3.0 milestone started*
