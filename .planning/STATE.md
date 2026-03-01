@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 Phase: 8 (In-Daemon Navigation) — complete
 Plan: 08-01 — complete (all tasks done, human-verified)
 Status: Ready for Phase 9 (Overlay Chaining)
-Last activity: 2026-03-01 - Completed quick task 3: Print resolved config to stderr on verbose daemon startup
+Last activity: 2026-03-01 - Completed quick task 2: Fix overlay outlines not showing for wrap targets
 
 Progress: [████░░░░░░] 40%
 
@@ -49,6 +49,7 @@ Progress: [████░░░░░░] 40%
 
 ### Key Decisions
 - Quick task 1: ForegroundBorderColor = 0xE0FFFFFF (~88% opacity white); PaintFullBorder static method bypasses IOverlayRenderer direction-based contract
+- Quick task 2: Wrap target is last entry in opposite-direction ranked list (furthest window); candidatesFound incremented for wrap targets to prevent solo-window dim
 - Quick task 3: Single timestamp captured once for config dump block — all lines share same [HH:mm:ss.fff] to avoid clock drift confusion
 - v3.0 phases numbered from 7 to continue from v2.0 (phases 4-6)
 - 3 phases derived from 3 natural requirement clusters (hotkey wiring, navigation firing, overlay chaining)
@@ -76,6 +77,7 @@ None.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 1 | Add a white border around the currently active window when holding caps lock | 2026-03-01 | b79d6ae | [1-add-a-white-border-around-the-currently-](./quick/1-add-a-white-border-around-the-currently-/) |
+| 2 | Fix overlay outlines not showing for wrap targets | 2026-03-01 | c7ea305 | [2-fix-overlay-outlines-not-showing-for-wra](./quick/2-fix-overlay-outlines-not-showing-for-wra/) |
 | 3 | Print resolved config to stderr on verbose daemon startup | 2026-03-01 | 40029f2 | [3-when-starting-the-daemon-in-verbose-mode](./quick/3-when-starting-the-daemon-in-verbose-mode/) |
 
 ### Todos
@@ -89,10 +91,11 @@ None.
 | 07 | 02 | ~20 min | 2/2 | 2 |
 | 08 | 01 | ~30 min | 2/2 | 3 |
 | quick-1 | 01 | ~15 min | 2/2 | 3 |
+| quick-2 | 01 | ~10 min | 2/2 | 1 |
 | quick-3 | 01 | ~5 min | 1/1 | 1 |
 
 ## Session Continuity
 
-Last session: 2026-03-01T22:09:05Z
-Stopped at: Completed quick task 3 (verbose config dump) — 1/1 tasks done
+Last session: 2026-03-01T22:30:00Z
+Stopped at: Completed quick task 2 (wrap overlay fix) — 2/2 tasks done, human-verified
 Resume file: .planning/phases/09-overlay-chaining/09-PLAN.md (next phase)
