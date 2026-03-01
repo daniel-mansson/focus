@@ -1,7 +1,9 @@
 using System.Runtime.Versioning;
 using System.Threading.Channels;
 using System.Windows.Forms;
+using Focus.Windows.Daemon.Overlay;
 using global::Windows.Win32;
+using global::Windows.Win32.UI.Input.KeyboardAndMouse;
 
 namespace Focus.Windows.Daemon;
 
@@ -36,7 +38,14 @@ internal static class DaemonCommand
         if (background)
             PInvoke.FreeConsole();
 
-        // 4. Create unbounded event channel (producer: hook callback, consumer: monitor task)
+        // 4. Force CAPSLOCK toggle OFF before installing the keyboard hook.
+        //    Must be done before hook install so the synthetic keypress is not intercepted by us.
+        ForceCapsLockOff();
+
+        // 5. Load configuration from disk (renderer, colors, delay, strategy, etc.)
+        var config = FocusConfig.Load();
+
+        // 6. Create unbounded event channel (producer: hook callback, consumer: monitor task)
         var channel = Channel.CreateUnbounded<KeyEvent>(new UnboundedChannelOptions
         {
             SingleWriter = true,
@@ -44,11 +53,19 @@ internal static class DaemonCommand
             AllowSynchronousContinuations = false  // Never run continuations on the hook thread
         });
 
-        // 5. Create daemon components
-        var hook    = new KeyboardHookHandler(channel.Writer);
-        var monitor = new CapsLockMonitor(channel.Reader, verbose);
+        // 7. Create keyboard hook handler (producer side)
+        var hook = new KeyboardHookHandler(channel.Writer);
 
-        // 6. Set up cancellation (used by both Ctrl+C and tray Exit paths)
+        // 8. Late-binding reference for OverlayOrchestrator.
+        //    CapsLockMonitor is created before the STA thread (which creates OverlayOrchestrator),
+        //    so we use closures over a captured nullable reference that the STA thread fills in.
+        OverlayOrchestrator? orchestrator = null;
+
+        var monitor = new CapsLockMonitor(channel.Reader, verbose,
+            onHeld:     () => orchestrator?.OnCapsLockHeld(),
+            onReleased: () => orchestrator?.OnCapsLockReleased());
+
+        // 9. Set up cancellation (used by both Ctrl+C and tray Exit paths)
         using var cts = new CancellationTokenSource();
 
         Console.CancelKeyPress += (_, e) =>
@@ -57,41 +74,48 @@ internal static class DaemonCommand
             cts.Cancel();
         };
 
-        // 7. Start consumer task on thread pool — consumes KeyEvent from channel
+        // 10. Start consumer task on thread pool — consumes KeyEvent from channel
         var consumerTask = Task.Run(() => monitor.RunAsync(cts.Token));
 
-        // 8. Run STA message pump on dedicated thread — required for WH_KEYBOARD_LL
+        // 11. Run STA message pump on dedicated thread — required for WH_KEYBOARD_LL.
+        //     DaemonApplicationContext creates OverlayOrchestrator on the STA thread and assigns
+        //     it to the captured 'orchestrator' variable via the out parameter.
         var staThread = new Thread(() =>
         {
-            Application.Run(new DaemonApplicationContext(hook, monitor, () => cts.Cancel()));
+            Application.Run(new DaemonApplicationContext(hook, monitor, () => cts.Cancel(), config, out orchestrator));
         });
         staThread.SetApartmentState(ApartmentState.STA);
         staThread.IsBackground = false;  // Keep process alive while message pump runs
         staThread.Start();
 
-        // 9. Register cancellation callback that exits the STA message pump.
-        //    Handles the Ctrl+C path where tray Exit hasn't already called Application.ExitThread().
-        //    Application.ExitThread() is thread-safe and idempotent — safe to call multiple times.
+        // 12. Register cancellation callback that exits the STA message pump.
+        //     Handles the Ctrl+C path where tray Exit hasn't already called Application.ExitThread().
+        //     Application.ExitThread() is thread-safe and idempotent — safe to call multiple times.
         cts.Token.Register(() => Application.ExitThread());
 
-        // 10. Block main thread until cancellation is signalled (Ctrl+C or tray Exit)
+        // 13. Block main thread until cancellation is signalled (Ctrl+C or tray Exit)
         try
         {
             cts.Token.WaitHandle.WaitOne();
         }
         catch (ObjectDisposedException) { }
 
-        // 11. Cleanup — ordered to ensure no orphaned hooks or zombie processes
+        // 14. Ordered shutdown — prevents Invoke exceptions from worker threads during teardown.
+        //     Signal shutdown first so CapsLockMonitor callbacks become no-ops immediately.
+        orchestrator?.RequestShutdown();
 
-        // Uninstall keyboard hook first — stop producing events immediately
+        // Uninstall keyboard hook — stop producing events immediately
         hook.Uninstall();
         hook.Dispose();
 
         // Signal channel completion so the consumer's ReadAllAsync loop exits cleanly
         channel.Writer.Complete();
 
-        // Wait for STA thread and consumer to finish (short timeouts — they should exit quickly)
+        // Wait for STA thread to finish (ApplicationContext disposes orchestrator on exit)
         staThread.Join(TimeSpan.FromMilliseconds(500));
+
+        // Dispose orchestrator resources after the STA thread has exited
+        orchestrator?.Dispose();
 
         try
         {
@@ -103,5 +127,22 @@ internal static class DaemonCommand
         DaemonMutex.Release(mutex);
 
         return 0;
+    }
+
+    /// <summary>
+    /// Forces the CAPSLOCK toggle state to OFF by sending a synthetic key press if it is currently ON.
+    /// Called at daemon startup and after system sleep/wake to ensure CAPSLOCK is never left in a
+    /// toggled-on state by the daemon's key suppression.
+    /// </summary>
+    internal static void ForceCapsLockOff()
+    {
+        const byte VK_CAPITAL = 0x14;
+        // Low-order bit of GetKeyState is 1 when the toggle is ON.
+        if ((PInvoke.GetKeyState(VK_CAPITAL) & 0x0001) != 0)
+        {
+            // Send synthetic CAPSLOCK down + up to toggle it OFF.
+            PInvoke.keybd_event(VK_CAPITAL, 0x45, 0, 0);
+            PInvoke.keybd_event(VK_CAPITAL, 0x45, KEYBD_EVENT_FLAGS.KEYEVENTF_KEYUP, 0);
+        }
     }
 }
