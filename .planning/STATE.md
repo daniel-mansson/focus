@@ -1,13 +1,13 @@
 ---
 gsd_state_version: 1.0
-milestone: v3.0
+milestone: v1.0
 milestone_name: Integrated Navigation
-status: executing
-last_updated: "2026-03-01T19:00:00.000Z"
+status: unknown
+last_updated: "2026-03-01T18:56:41.561Z"
 progress:
-  total_phases: 3
-  completed_phases: 0
-  total_plans: 6
+  total_phases: 1
+  completed_phases: 1
+  total_plans: 2
   completed_plans: 2
 ---
 
