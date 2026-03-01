@@ -27,3 +27,4 @@ CallNextHookEx
 GetModuleHandle
 FreeConsole
 GetKeyState
+KBDLLHOOKSTRUCT
