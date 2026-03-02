@@ -22,10 +22,16 @@ internal sealed class KeyboardHookHandler : IDisposable
     // CAPSLOCK state tracked in real-time from hook callbacks
     private bool _capsLockHeld;
 
+    // TAB held state: true when CAPS+TAB is held (Move mode master switch)
+    private bool _tabHeld;
+
     // Virtual key codes
-    private const uint VK_CAPITAL = 0x14;
-    private const uint VK_SHIFT   = 0x10;
-    private const uint VK_CONTROL = 0x11;
+    private const uint VK_CAPITAL  = 0x14;
+    private const uint VK_SHIFT    = 0x10;   // Generic shift — used for CAPS modifier filter
+    private const uint VK_CONTROL  = 0x11;   // Generic ctrl — used for CAPS modifier filter
+    private const uint VK_TAB      = 0x09;
+    private const uint VK_LSHIFT   = 0xA0;   // Left Shift only (MODE-02)
+    private const uint VK_LCONTROL = 0xA2;   // Left Ctrl only (MODE-03)
 
     // Direction key virtual key codes — arrows
     private const uint VK_LEFT  = 0x25;
@@ -112,6 +118,20 @@ internal sealed class KeyboardHookHandler : IDisposable
         if (((uint)kbd->flags & LLKHF_INJECTED) != 0)
             return PInvoke.CallNextHookEx(null, nCode, wParam, lParam);
 
+        // TAB key: suppress when CAPS held (MODE-01), pass through when CAPS not held (MODE-04)
+        if (kbd->vkCode == VK_TAB)
+        {
+            if (!_capsLockHeld)
+                return PInvoke.CallNextHookEx(null, nCode, wParam, lParam);  // MODE-04: bare TAB passes through
+
+            bool isKeyDown = (uint)wParam.Value == WM_KEYDOWN || (uint)wParam.Value == WM_SYSKEYDOWN;
+            _tabHeld = isKeyDown;
+
+            // Write TAB event so CapsLockMonitor can track mode transitions
+            _channelWriter.TryWrite(new KeyEvent(kbd->vkCode, isKeyDown, kbd->time, Mode: WindowMode.Move));
+            return (LRESULT)1;  // suppress TAB from reaching app
+        }
+
         // Number key interception (1-9): suppress and route through channel when CAPS held.
         if (IsNumberKey(kbd->vkCode))
         {
@@ -136,14 +156,24 @@ internal sealed class KeyboardHookHandler : IDisposable
             // CAPSLOCK is held — intercept and suppress the direction key (HOTKEY-03)
             bool isKeyDown = (uint)wParam.Value == WM_KEYDOWN || (uint)wParam.Value == WM_SYSKEYDOWN;
 
-            // Read modifier state for verbose logging (direction keys are suppressed regardless of modifiers)
-            bool shiftHeld = (PInvoke.GetKeyState((int)VK_SHIFT) & 0x8000) != 0;
-            bool ctrlHeld  = (PInvoke.GetKeyState((int)VK_CONTROL) & 0x8000) != 0;
-            bool altHeld   = ((uint)kbd->flags & LLKHF_ALTDOWN) != 0;
+            // Read left-side modifier state (MODE-02: LSHIFT=Grow, MODE-03: LCTRL=Shrink)
+            bool lShiftHeld = (PInvoke.GetKeyState((int)VK_LSHIFT)   & 0x8000) != 0;
+            bool lCtrlHeld  = (PInvoke.GetKeyState((int)VK_LCONTROL) & 0x8000) != 0;
+            bool altHeld    = ((uint)kbd->flags & LLKHF_ALTDOWN) != 0;
+
+            // Derive mode from _tabHeld + left-modifier state (MODE-01, MODE-02, MODE-03)
+            // TAB overrides modifiers; then LSHIFT (grow) takes priority over LCTRL (shrink)
+            WindowMode mode = (_tabHeld, lShiftHeld, lCtrlHeld) switch
+            {
+                (true, _, _)  => WindowMode.Move,     // CAPS+TAB = move
+                (_, true, _)  => WindowMode.Grow,     // CAPS+LSHIFT = grow
+                (_, _, true)  => WindowMode.Shrink,   // CAPS+LCTRL = shrink
+                _             => WindowMode.Navigate  // bare CAPS+direction = navigate
+            };
 
             // MUST use TryWrite (fire-and-forget) — NEVER use WriteAsync in hook callback.
             // Hook callback has a 1000ms total budget on Windows 10 1709+.
-            _channelWriter.TryWrite(new KeyEvent(kbd->vkCode, isKeyDown, kbd->time, shiftHeld, ctrlHeld, altHeld));
+            _channelWriter.TryWrite(new KeyEvent(kbd->vkCode, isKeyDown, kbd->time, lShiftHeld, lCtrlHeld, altHeld, mode));
 
             // Suppress the key — return non-zero so the focused app never sees it
             return (LRESULT)1;
@@ -169,6 +199,8 @@ internal sealed class KeyboardHookHandler : IDisposable
         // Update _capsLockHeld in real-time so direction key check above is accurate
         bool capsIsKeyDown = (uint)wParam.Value == WM_KEYDOWN || (uint)wParam.Value == WM_SYSKEYDOWN;
         _capsLockHeld = capsIsKeyDown;
+        if (!capsIsKeyDown)
+            _tabHeld = false;  // CAPS release = master switch off (clears all modes)
 
         // Post bare CAPSLOCK event to worker thread via Channel
         // MUST use TryWrite (fire-and-forget) — NEVER use WriteAsync in hook callback.
