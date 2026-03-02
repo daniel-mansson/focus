@@ -56,7 +56,11 @@
   3. Normal TAB with CAPS not held reaches the focused application unchanged
   4. Grid step for each monitor equals that monitor's work area width (or height) divided by gridFraction (default 16), expressed in physical pixels
   5. Config file accepts gridFraction and snapTolerancePercent keys; defaults apply when keys are absent
-**Plans**: TBD
+**Plans:** 2 plans
+
+Plans:
+- [ ] 10-01-PLAN.md — Type contracts (WindowMode enum, KeyEvent upgrade, FocusConfig grid properties) and GridCalculator service
+- [ ] 10-02-PLAN.md — TAB interception, left-modifier detection in hook, mode-qualified routing through CapsLockMonitor to OverlayOrchestrator
 
 ### Phase 11: Move and Resize (Single Monitor)
 **Goal**: Users can move the foreground window by grid steps in any direction and grow or shrink any window edge by grid steps, with correct coordinate handling, snap-first behavior, boundary clamping, and guards against maximized and elevated windows
@@ -94,7 +98,7 @@
 | 7. Hotkey Wiring | v3.0 | 2/2 | Complete | 2026-03-01 |
 | 8. In-Daemon Navigation | v3.0 | 1/1 | Complete | 2026-03-01 |
 | 9. Overlay Chaining | v3.0 | 0/0 | Complete | 2026-03-02 |
-| 10. Grid Infrastructure and Modifier Wiring | v3.1 | 0/? | Not started | - |
+| 10. Grid Infrastructure and Modifier Wiring | v3.1 | 0/2 | In Progress | - |
 | 11. Move and Resize (Single Monitor) | v3.1 | 0/? | Not started | - |
 | 12. Cross-Monitor and Overlay Integration | v3.1 | 0/? | Not started | - |
 
