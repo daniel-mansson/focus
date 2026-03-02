@@ -42,7 +42,7 @@
 
 - [x] **Phase 10: Grid Infrastructure and Modifier Wiring** — Config extensions, per-monitor grid calculation, TAB/LSHIFT/LCTRL detection in keyboard hook, modifier-aware routing through CapsLockMonitor
 - [x] **Phase 11: Move and Resize (Single Monitor)** — WindowManagerService with dual-rect coordinate handling, grid snap, move and grow/shrink operations, all guards (maximized, UIPI, clamp) (completed 2026-03-02)
-- [ ] **Phase 12: Cross-Monitor and Overlay Integration** — Adjacent monitor detection, cross-monitor move transitions, mode-specific overlay indicators, overlay reposition-in-place
+- [x] **Phase 12: Cross-Monitor and Overlay Integration** — Adjacent monitor detection, cross-monitor move transitions, mode-specific overlay indicators, overlay reposition-in-place (completed 2026-03-02)
 
 ## Phase Details
 
@@ -89,7 +89,7 @@ Plans:
   2. Grid step immediately recalculates to the target monitor's dimensions after a cross-monitor transition
   3. While in move mode (CAPS+LAlt held), the overlay shows amber-colored border and directional arrows at the window center; while in resize mode (CAPS+LWin held), cyan-colored border with axis-indicator arrows at right edge center (horizontal) and top edge center (vertical)
   4. The overlay tracks the window's actual position after each move or resize step with no visible flicker between steps
-**Plans:** 2 plans
+**Plans:** 2/2 plans complete
 
 Plans:
 - [x] 12-01-PLAN.md — Cross-monitor adjacency detection in MonitorHelper and cross-monitor move transition in WindowManagerService
@@ -110,7 +110,7 @@ Plans:
 | 9. Overlay Chaining | v3.0 | 0/0 | Complete | 2026-03-02 |
 | 10. Grid Infrastructure and Modifier Wiring | v3.1 | 3/3 | Complete | 2026-03-02 |
 | 11. Move and Resize (Single Monitor) | v3.1 | 3/3 | Complete | 2026-03-02 |
-| 12. Cross-Monitor and Overlay Integration | v3.1 | 1/2 | In progress | - |
+| 12. Cross-Monitor and Overlay Integration | 2/2 | Complete   | 2026-03-02 | - |
 
 ---
 *Full milestone details: See `.planning/milestones/` archives*

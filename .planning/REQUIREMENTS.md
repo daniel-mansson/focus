@@ -41,10 +41,10 @@ Requirements for the Window Management milestone. Each maps to roadmap phases.
 
 ### Overlay Indicators
 
-- [ ] **OVRL-01**: Move mode shows directional arrows in window center
-- [ ] **OVRL-02**: Grow mode shows outward-pointing arrows at center of each edge
-- [ ] **OVRL-03**: Shrink mode shows inward-pointing arrows at center of each edge
-- [ ] **OVRL-04**: Overlay transitions are instant (no animation)
+- [x] **OVRL-01**: Move mode shows directional arrows in window center
+- [x] **OVRL-02**: Grow mode shows outward-pointing arrows at center of each edge
+- [x] **OVRL-03**: Shrink mode shows inward-pointing arrows at center of each edge
+- [x] **OVRL-04**: Overlay transitions are instant (no animation)
 
 ## Future Requirements
 
@@ -98,10 +98,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SIZE-04 | Phase 11 | Complete |
 | XMON-01 | Phase 12 | Complete |
 | XMON-02 | Phase 12 | Complete |
-| OVRL-01 | Phase 12 | Pending |
-| OVRL-02 | Phase 12 | Pending |
-| OVRL-03 | Phase 12 | Pending |
-| OVRL-04 | Phase 12 | Pending |
+| OVRL-01 | Phase 12 | Complete |
+| OVRL-02 | Phase 12 | Complete |
+| OVRL-03 | Phase 12 | Complete |
+| OVRL-04 | Phase 12 | Complete |
 
 **Coverage:**
 - v3.1 requirements: 20 total (+ 1 recovered: OVRL-03 was missing from original traceability table)
