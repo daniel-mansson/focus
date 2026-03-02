@@ -204,7 +204,9 @@ internal sealed class KeyboardHookHandler : IDisposable
         // Update _capsLockHeld in real-time so direction key check above is accurate
         bool capsIsKeyDown = (uint)wParam.Value == WM_KEYDOWN || (uint)wParam.Value == WM_SYSKEYDOWN;
         _capsLockHeld = capsIsKeyDown;
-        if (!capsIsKeyDown)
+        if (capsIsKeyDown)
+            _tabHeld = (PInvoke.GetKeyState((int)VK_TAB) & 0x8000) != 0;  // Tab-first activation
+        else
             _tabHeld = false;  // CAPS release = master switch off (clears all modes)
 
         // Post bare CAPSLOCK event to worker thread via Channel
