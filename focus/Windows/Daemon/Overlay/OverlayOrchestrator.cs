@@ -122,6 +122,26 @@ internal sealed class OverlayOrchestrator : IDisposable
     }
 
     /// <summary>
+    /// Called when TAB is first pressed while CAPSLOCK is held (entering Move mode).
+    /// Hides navigate-target outlines immediately, keeping only the foreground border.
+    /// </summary>
+    public void OnTabDown()
+    {
+        if (_shutdownRequested) return;
+
+        try
+        {
+            _staDispatcher.Invoke(() =>
+            {
+                if (_capsLockHeld)
+                    RefreshForegroundOverlayOnly();
+            });
+        }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
+    }
+
+    /// <summary>
     /// Called when a direction key is pressed while CAPSLOCK is held.
     /// Marshals to the STA thread and performs the full navigation pipeline:
     /// parse direction, load fresh config, enumerate windows, score, activate.
