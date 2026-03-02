@@ -151,6 +151,24 @@ internal sealed class CapsLockMonitor
                 continue;
             }
 
+            // LSHIFT key event (VK_LSHIFT = 0xA0) -- Grow mode overlay transitions
+            if (evt.VkCode == 0xA0)
+            {
+                if (evt.IsKeyDown)
+                {
+                    if (_verbose)
+                        Console.Error.WriteLine($"[{DateTime.Now:HH:mm:ss.fff}] LSHIFT held -> Grow mode");
+                    _onTabDown?.Invoke();
+                }
+                else
+                {
+                    if (_verbose)
+                        Console.Error.WriteLine($"[{DateTime.Now:HH:mm:ss.fff}] LSHIFT released");
+                    _onTabReleased?.Invoke();
+                }
+                continue;
+            }
+
             // Number key event (1-9)
             int? number = GetNumberFromVkCode(evt.VkCode);
             if (number is not null)
