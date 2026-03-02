@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v3.1
 milestone_name: Window Management
 status: unknown
-last_updated: "2026-03-02T20:57:51.330Z"
+last_updated: "2026-03-02T21:36:08.493Z"
 progress:
   total_phases: 2
   completed_phases: 2
-  total_plans: 4
-  completed_plans: 4
+  total_plans: 6
+  completed_plans: 6
 ---
 
 ---
@@ -21,7 +21,7 @@ progress:
   total_phases: 3
   completed_phases: 1
   total_plans: 6
-  completed_plans: 4
+  completed_plans: 5
 ---
 
 # Project State
@@ -31,32 +31,33 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-02)
 
 **Core value:** Given a direction, reliably switch focus to the most intuitive window in that direction — fast enough for hotkey use, accurate enough to feel natural.
-**Current focus:** v3.1 Window Management — Phase 11 Plan 01 complete (WindowManagerService: Move, Grow, Shrink operations)
+**Current focus:** v3.1 Window Management — Phase 11 Plan 03 complete (OverlayOrchestrator: overlay refresh after Move/Grow/Shrink, navigate targets hidden during these modes)
 
 ## Current Position
 
 Phase: 11 of 12 (Move and Resize Single Monitor) — IN PROGRESS
-Plan: 1 of 1 (plan 01 complete)
-Status: Phase 11 Plan 01 complete
-Last activity: 2026-03-02 — Completed 11-01 (WindowManagerService: grid-snapped Move/Grow/Shrink wired into OverlayOrchestrator)
+Plan: 3 of 5 (plan 03 complete)
+Status: Phase 11 Plan 03 complete
+Last activity: 2026-03-02 — Completed 11-03 (OverlayOrchestrator: RefreshForegroundOverlayOnly after MoveOrResize, navigate-target outlines hidden during Move/Grow/Shrink)
 
-Progress: [███░░░░░░░] 30%
+Progress: [█████░░░░░] 50%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 4 (v3.1)
-- Average duration: 5 min
-- Total execution time: 19 min
+- Total plans completed: 5 (v3.1)
+- Average duration: 4 min
+- Total execution time: 20 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 10 - Grid Infrastructure | 3/3 | 12 min | 4 min |
-| 11 - Move and Resize | 1/1 | 7 min | 7 min |
+| 11 - Move and Resize | 3/5 | 8 min | 3 min |
 
 *Updated after each plan completion*
+| Phase 11 P02 | 2 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -78,6 +79,10 @@ Recent decisions affecting v3.1:
 - **Border offsets computed per-call**: From GetWindowRect vs DWMWA_EXTENDED_FRAME_BOUNDS difference — never hard-coded 7px (from 11-01).
 - **ComputeGrow/Shrink snap on moving edge**: Snap check applies to the EDGE being moved, not window origin; snap origin always work.left/work.top (from 11-01).
 - **Minimum size guard is pre-check**: if (visW <= stepX) return win unchanged — hard no-op, no SetWindowPos call (from 11-01).
+- **NearestGridLineFloor/Ceiling for directional snap**: GridCalculator gains Floor (for leftward/upward snap) and Ceiling (for rightward/downward snap); ComputeMove keeps bidirectional NearestGridLine (from 11-02).
+- **ComputeShrink edge mapping corrected**: shrink direction names the side that stays FIXED; opposite edge contracts — shrink-up moves bottom edge upward, shrink-down moves top edge downward, etc. (from 11-02).
+- **Post-computation no-op guard in ComputeShrink**: if newVisW >= visW && newVisH >= visH return win unchanged — prevents position-only SetWindowPos call at OS min-track size (from 11-02).
+- **Shift filter removed from CapsLock handler**: Shift+CapsLock now activates overlay, enabling Shift-first workflow for grow mode; Alt and Ctrl filters remain (from 11-02).
 
 ### Blockers/Concerns
 
@@ -89,5 +94,5 @@ Recent decisions affecting v3.1:
 ## Session Continuity
 
 Last session: 2026-03-02
-Stopped at: Completed 11-01-PLAN.md (WindowManagerService: grid-snapped Move/Grow/Shrink via dual-rect pattern, wired into OverlayOrchestrator)
+Stopped at: Completed 11-02-PLAN.md (bug fixes: grow directional snap, shrink edge inversion, OS min-size no-op guard, Shift-first+CapsLock activation)
 Resume file: None
