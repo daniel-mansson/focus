@@ -160,27 +160,126 @@ internal static class WindowManagerService
     /// <summary>
     /// Computes the new window rect for a Grow operation (CAPS+LSHIFT+direction).
     /// The edge in the pressed direction moves outward; the opposite edge is fixed.
-    /// Clamps the moving edge to the work area boundary (SIZE-04).
-    /// Stub: returns unchanged win rect — implemented in Task 2.
+    /// Snap-first on the moving edge. Clamps the moving edge to the work area boundary (SIZE-04).
+    /// When the edge is already at the boundary, the operation is a silent no-op.
     /// </summary>
     private static RECT ComputeGrow(string direction, RECT vis, RECT win, RECT work,
         int stepX, int stepY, int tolX, int tolY,
         int borderL, int borderT, int borderR, int borderB)
     {
-        // Stub: Task 2 will implement the full grow logic.
-        return win;
+        int newVisLeft   = vis.left;
+        int newVisTop    = vis.top;
+        int newVisRight  = vis.right;
+        int newVisBottom = vis.bottom;
+
+        switch (direction)
+        {
+            case "right":
+                // Right edge moves outward (rightward); left edge stays fixed
+                newVisRight = GridCalculator.IsAligned(vis.right, work.left, stepX, tolX)
+                    ? vis.right + stepX
+                    : GridCalculator.NearestGridLine(vis.right, work.left, stepX);
+                newVisRight = Math.Min(newVisRight, work.right);   // clamp to work area (SIZE-04)
+                break;
+
+            case "left":
+                // Left edge moves outward (leftward); right edge stays fixed
+                newVisLeft = GridCalculator.IsAligned(vis.left, work.left, stepX, tolX)
+                    ? vis.left - stepX
+                    : GridCalculator.NearestGridLine(vis.left, work.left, stepX);
+                newVisLeft = Math.Max(newVisLeft, work.left);      // clamp to work area (SIZE-04)
+                break;
+
+            case "down":
+                // Bottom edge moves outward (downward); top edge stays fixed
+                newVisBottom = GridCalculator.IsAligned(vis.bottom, work.top, stepY, tolY)
+                    ? vis.bottom + stepY
+                    : GridCalculator.NearestGridLine(vis.bottom, work.top, stepY);
+                newVisBottom = Math.Min(newVisBottom, work.bottom); // clamp to work area (SIZE-04)
+                break;
+
+            case "up":
+                // Top edge moves outward (upward); bottom edge stays fixed
+                newVisTop = GridCalculator.IsAligned(vis.top, work.top, stepY, tolY)
+                    ? vis.top - stepY
+                    : GridCalculator.NearestGridLine(vis.top, work.top, stepY);
+                newVisTop = Math.Max(newVisTop, work.top);          // clamp to work area (SIZE-04)
+                break;
+        }
+
+        // Translate visible coords back to GetWindowRect coordinate space
+        return new RECT
+        {
+            left   = newVisLeft  - borderL,
+            top    = newVisTop   - borderT,
+            right  = newVisRight + borderR,
+            bottom = newVisBottom + borderB
+        };
     }
 
     /// <summary>
     /// Computes the new window rect for a Shrink operation (CAPS+LCTRL+direction).
-    /// The edge in the pressed direction moves inward; minimum size = 1 grid step (SIZE-03).
-    /// Stub: returns unchanged win rect — implemented in Task 2.
+    /// The edge in the pressed direction moves inward. Minimum size = 1 grid step (SIZE-03).
+    /// At minimum size, the operation is a silent no-op (returns unchanged win rect).
+    /// Snap-first on the moving edge.
     /// </summary>
     private static RECT ComputeShrink(string direction, RECT vis, RECT win, RECT work,
         int stepX, int stepY, int tolX, int tolY,
         int borderL, int borderT, int borderR, int borderB)
     {
-        // Stub: Task 2 will implement the full shrink logic.
-        return win;
+        int newVisLeft   = vis.left;
+        int newVisTop    = vis.top;
+        int newVisRight  = vis.right;
+        int newVisBottom = vis.bottom;
+        int visW = vis.right  - vis.left;
+        int visH = vis.bottom - vis.top;
+
+        switch (direction)
+        {
+            case "right":
+                // Right edge moves inward (leftward); left edge stays fixed
+                if (visW <= stepX) return win;  // minimum size guard — silent no-op (SIZE-03)
+                newVisRight = GridCalculator.IsAligned(vis.right, work.left, stepX, tolX)
+                    ? vis.right - stepX
+                    : GridCalculator.NearestGridLine(vis.right, work.left, stepX);
+                newVisRight = Math.Max(newVisRight, newVisLeft + stepX); // min-size clamp (SIZE-03)
+                break;
+
+            case "left":
+                // Left edge moves inward (rightward); right edge stays fixed
+                if (visW <= stepX) return win;
+                newVisLeft = GridCalculator.IsAligned(vis.left, work.left, stepX, tolX)
+                    ? vis.left + stepX
+                    : GridCalculator.NearestGridLine(vis.left, work.left, stepX);
+                newVisLeft = Math.Min(newVisLeft, newVisRight - stepX); // min-size clamp (SIZE-03)
+                break;
+
+            case "down":
+                // Bottom edge moves inward (upward); top edge stays fixed
+                if (visH <= stepY) return win;
+                newVisBottom = GridCalculator.IsAligned(vis.bottom, work.top, stepY, tolY)
+                    ? vis.bottom - stepY
+                    : GridCalculator.NearestGridLine(vis.bottom, work.top, stepY);
+                newVisBottom = Math.Max(newVisBottom, newVisTop + stepY); // min-size clamp (SIZE-03)
+                break;
+
+            case "up":
+                // Top edge moves inward (downward); bottom edge stays fixed
+                if (visH <= stepY) return win;
+                newVisTop = GridCalculator.IsAligned(vis.top, work.top, stepY, tolY)
+                    ? vis.top + stepY
+                    : GridCalculator.NearestGridLine(vis.top, work.top, stepY);
+                newVisTop = Math.Min(newVisTop, newVisBottom - stepY); // min-size clamp (SIZE-03)
+                break;
+        }
+
+        // Translate visible coords back to GetWindowRect coordinate space
+        return new RECT
+        {
+            left   = newVisLeft  - borderL,
+            top    = newVisTop   - borderT,
+            right  = newVisRight + borderR,
+            bottom = newVisBottom + borderB
+        };
     }
 }
