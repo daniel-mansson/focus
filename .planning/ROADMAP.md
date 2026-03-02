@@ -73,7 +73,10 @@ Plans:
   3. Moving toward the monitor edge stops at the work area boundary (window does not go behind taskbar or off screen)
   4. CAPS+LSHIFT+direction grows the window edge in that direction by one grid step; CAPS+LCTRL+direction shrinks it; shrink stops at minimum window size and does not make the window smaller than one grid cell
   5. Attempting to move or resize an elevated (admin) window or a maximized window produces no visible error and no window change
-**Plans**: TBD
+**Plans:** 1 plan
+
+Plans:
+- [ ] 11-01-PLAN.md — WindowManagerService with grid-snapped move, grow, shrink operations and OverlayOrchestrator wiring
 
 ### Phase 12: Cross-Monitor and Overlay Integration
 **Goal**: Moving a window at a monitor boundary transitions it to the adjacent monitor at the correct grid position, and the overlay reflects the active mode (move/grow/shrink) with correct directional arrows throughout all operations
@@ -100,7 +103,7 @@ Plans:
 | 8. In-Daemon Navigation | v3.0 | 1/1 | Complete | 2026-03-01 |
 | 9. Overlay Chaining | v3.0 | 0/0 | Complete | 2026-03-02 |
 | 10. Grid Infrastructure and Modifier Wiring | 3/3 | Complete    | 2026-03-02 | 2026-03-02 |
-| 11. Move and Resize (Single Monitor) | v3.1 | 0/? | Not started | - |
+| 11. Move and Resize (Single Monitor) | v3.1 | 0/1 | Not started | - |
 | 12. Cross-Monitor and Overlay Integration | v3.1 | 0/? | Not started | - |
 
 ---
