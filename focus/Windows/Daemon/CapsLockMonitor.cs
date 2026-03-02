@@ -19,6 +19,7 @@ internal sealed class CapsLockMonitor
     private readonly Action? _onReleased;
     private readonly Action<string, WindowMode>? _onDirectionKeyDown;
     private readonly Action<int>? _onNumberKeyDown;
+    private readonly Action? _onTabDown;
 
     // Tracks which direction/number keys are currently pressed to suppress key repeats.
     // Cleared on keyup and on ResetState() to prevent stuck keys after sleep/wake.
@@ -28,7 +29,8 @@ internal sealed class CapsLockMonitor
     public CapsLockMonitor(ChannelReader<KeyEvent> reader, bool verbose,
         Action? onHeld = null, Action? onReleased = null,
         Action<string, WindowMode>? onDirectionKeyDown = null,
-        Action<int>? onNumberKeyDown = null)
+        Action<int>? onNumberKeyDown = null,
+        Action? onTabDown = null)
     {
         _reader = reader;
         _verbose = verbose;
@@ -36,6 +38,7 @@ internal sealed class CapsLockMonitor
         _onReleased = onReleased;
         _onDirectionKeyDown = onDirectionKeyDown;
         _onNumberKeyDown = onNumberKeyDown;
+        _onTabDown = onTabDown;
     }
 
     /// <summary>
@@ -131,6 +134,7 @@ internal sealed class CapsLockMonitor
                         _tabHeld = true;
                         if (_verbose)
                             Console.Error.WriteLine($"[{DateTime.Now:HH:mm:ss.fff}] TAB held -> Move mode");
+                        _onTabDown?.Invoke();
                     }
                     // else: auto-repeat, silently suppress
                 }
