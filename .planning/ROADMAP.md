@@ -40,7 +40,7 @@
 
 **Milestone Goal:** Grid-snapped window move and resize via CAPS+TAB/LSHIFT/LCTRL+direction combos, with per-monitor grid, cross-monitor transitions, and mode-specific overlay indicators.
 
-- [ ] **Phase 10: Grid Infrastructure and Modifier Wiring** — Config extensions, per-monitor grid calculation, TAB/LSHIFT/LCTRL detection in keyboard hook, modifier-aware routing through CapsLockMonitor
+- [x] **Phase 10: Grid Infrastructure and Modifier Wiring** — Config extensions, per-monitor grid calculation, TAB/LSHIFT/LCTRL detection in keyboard hook, modifier-aware routing through CapsLockMonitor
 - [ ] **Phase 11: Move and Resize (Single Monitor)** — WindowManagerService with dual-rect coordinate handling, grid snap, move and grow/shrink operations, all guards (maximized, UIPI, clamp)
 - [ ] **Phase 12: Cross-Monitor and Overlay Integration** — Adjacent monitor detection, cross-monitor move transitions, mode-specific overlay indicators, overlay reposition-in-place
 
@@ -60,7 +60,7 @@
 
 Plans:
 - [x] 10-01-PLAN.md — Type contracts (WindowMode enum, KeyEvent upgrade, FocusConfig grid properties) and GridCalculator service
-- [ ] 10-02-PLAN.md — TAB interception, left-modifier detection in hook, mode-qualified routing through CapsLockMonitor to OverlayOrchestrator
+- [x] 10-02-PLAN.md — TAB interception, left-modifier detection in hook, mode-qualified routing through CapsLockMonitor to OverlayOrchestrator
 
 ### Phase 11: Move and Resize (Single Monitor)
 **Goal**: Users can move the foreground window by grid steps in any direction and grow or shrink any window edge by grid steps, with correct coordinate handling, snap-first behavior, boundary clamping, and guards against maximized and elevated windows
@@ -98,7 +98,7 @@ Plans:
 | 7. Hotkey Wiring | v3.0 | 2/2 | Complete | 2026-03-01 |
 | 8. In-Daemon Navigation | v3.0 | 1/1 | Complete | 2026-03-01 |
 | 9. Overlay Chaining | v3.0 | 0/0 | Complete | 2026-03-02 |
-| 10. Grid Infrastructure and Modifier Wiring | v3.1 | 1/2 | In Progress | - |
+| 10. Grid Infrastructure and Modifier Wiring | v3.1 | 2/2 | Complete | 2026-03-02 |
 | 11. Move and Resize (Single Monitor) | v3.1 | 0/? | Not started | - |
 | 12. Cross-Monitor and Overlay Integration | v3.1 | 0/? | Not started | - |
 

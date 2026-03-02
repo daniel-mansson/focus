@@ -12,7 +12,7 @@ Requirements for the Window Management milestone. Each maps to roadmap phases.
 - [x] **MODE-01**: User holds CAPS+TAB to activate window move mode
 - [x] **MODE-02**: User holds CAPS+LSHIFT to activate window grow mode
 - [x] **MODE-03**: User holds CAPS+LCTRL to activate window shrink mode
-- [ ] **MODE-04**: Normal TAB key behavior preserved when CAPS is not held
+- [x] **MODE-04**: Normal TAB key behavior preserved when CAPS is not held
 
 ### Window Move
 
@@ -84,7 +84,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | MODE-01 | Phase 10 | Complete |
 | MODE-02 | Phase 10 | Complete |
 | MODE-03 | Phase 10 | Complete |
-| MODE-04 | Phase 10 | Pending |
+| MODE-04 | Phase 10 | Complete |
 | GRID-01 | Phase 10 | Complete |
 | GRID-02 | Phase 10 | Complete |
 | GRID-03 | Phase 10 | Complete |
@@ -110,4 +110,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-03-02*
-*Last updated: 2026-03-02 after roadmap creation (phases 10-12)*
+*Last updated: 2026-03-02 after 10-02 completion (MODE-04 marked complete)*
