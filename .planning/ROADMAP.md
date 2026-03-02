@@ -41,7 +41,7 @@
 **Milestone Goal:** Grid-snapped window move and resize via CAPS+TAB/LSHIFT/LCTRL+direction combos, with per-monitor grid, cross-monitor transitions, and mode-specific overlay indicators.
 
 - [x] **Phase 10: Grid Infrastructure and Modifier Wiring** — Config extensions, per-monitor grid calculation, TAB/LSHIFT/LCTRL detection in keyboard hook, modifier-aware routing through CapsLockMonitor
-- [x] **Phase 11: Move and Resize (Single Monitor)** — WindowManagerService with dual-rect coordinate handling, grid snap, move and grow/shrink operations, all guards (maximized, UIPI, clamp) (completed 2026-03-02)
+- [x] **Phase 11: Move and Resize (Single Monitor)** — WindowManagerService with dual-rect coordinate handling, grid snap, move and grow/shrink operations, all guards (maximized, UIPI, clamp) (completed 2026-03-02)
 - [ ] **Phase 12: Cross-Monitor and Overlay Integration** — Adjacent monitor detection, cross-monitor move transitions, mode-specific overlay indicators, overlay reposition-in-place
 
 ## Phase Details
@@ -81,15 +81,19 @@ Plans:
 - [ ] 11-03-PLAN.md — Gap closure: overlay refresh after move/resize operations
 
 ### Phase 12: Cross-Monitor and Overlay Integration
-**Goal**: Moving a window at a monitor boundary transitions it to the adjacent monitor at the correct grid position, and the overlay reflects the active mode (move/grow/shrink) with correct directional arrows throughout all operations
+**Goal**: Moving a window at a monitor boundary transitions it to the adjacent monitor at the correct grid position, and the overlay reflects the active mode (move/resize) with correct directional arrows throughout all operations
 **Depends on**: Phase 11
 **Requirements**: XMON-01, XMON-02, OVRL-01, OVRL-02, OVRL-03, OVRL-04
 **Success Criteria** (what must be TRUE):
-  1. When CAPS+TAB+direction pushes a window past the current monitor edge, the window appears on the adjacent monitor snapped to the first grid cell from that edge (not left at the boundary of the original monitor)
+  1. When CAPS+LAlt+direction pushes a window past the current monitor edge, the window appears on the adjacent monitor snapped to the first grid cell from that edge (not left at the boundary of the original monitor)
   2. Grid step immediately recalculates to the target monitor's dimensions after a cross-monitor transition
-  3. While in move mode (CAPS+TAB held), the overlay shows directional arrows at the window center; while in grow mode (CAPS+LSHIFT), outward arrows appear at each edge center; while in shrink mode (CAPS+LCTRL), inward arrows appear at each edge center
+  3. While in move mode (CAPS+LAlt held), the overlay shows amber-colored border and directional arrows at the window center; while in resize mode (CAPS+LWin held), cyan-colored border with axis-indicator arrows at right edge center (horizontal) and top edge center (vertical)
   4. The overlay tracks the window's actual position after each move or resize step with no visible flicker between steps
-**Plans**: TBD
+**Plans:** 2 plans
+
+Plans:
+- [ ] 12-01-PLAN.md — Cross-monitor adjacency detection in MonitorHelper and cross-monitor move transition in WindowManagerService
+- [ ] 12-02-PLAN.md — Mode-aware overlay plumbing (OnModeEntered signature), ArrowRenderer, mode-colored borders and arrow indicators in OverlayOrchestrator
 
 ## Progress
 
@@ -105,8 +109,8 @@ Plans:
 | 8. In-Daemon Navigation | v3.0 | 1/1 | Complete | 2026-03-01 |
 | 9. Overlay Chaining | v3.0 | 0/0 | Complete | 2026-03-02 |
 | 10. Grid Infrastructure and Modifier Wiring | v3.1 | 3/3 | Complete | 2026-03-02 |
-| 11. Move and Resize (Single Monitor) | 3/3 | Complete   | 2026-03-02 | - |
-| 12. Cross-Monitor and Overlay Integration | v3.1 | 0/? | Not started | - |
+| 11. Move and Resize (Single Monitor) | v3.1 | 3/3 | Complete | 2026-03-02 |
+| 12. Cross-Monitor and Overlay Integration | v3.1 | 0/2 | Not started | - |
 
 ---
 *Full milestone details: See `.planning/milestones/` archives*
