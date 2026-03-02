@@ -136,7 +136,12 @@ internal sealed class OverlayOrchestrator : IDisposable
         {
             try
             {
-                _staDispatcher.Invoke(() => WindowManagerService.MoveOrResize(direction, mode, _verbose));
+                _staDispatcher.Invoke(() =>
+                {
+                    WindowManagerService.MoveOrResize(direction, mode, _verbose);
+                    if (_capsLockHeld)
+                        RefreshForegroundOverlayOnly();
+                });
             }
             catch (ObjectDisposedException) { }
             catch (InvalidOperationException) { }
@@ -287,6 +292,32 @@ internal sealed class OverlayOrchestrator : IDisposable
     // -----------------------------------------------------------------------------------------
     // Core scoring and overlay positioning.
     // -----------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// Hides all overlays then shows only the active window border at its current position.
+    /// Used after Move/Grow/Shrink so navigate-target outlines are not visible — only the
+    /// active window outline tracks the window's new bounds.
+    /// Must be called on the STA thread (inside _staDispatcher.Invoke).
+    /// </summary>
+    private unsafe void RefreshForegroundOverlayOnly()
+    {
+        _overlayManager.HideAll();
+
+        var fgHwnd = PInvoke.GetForegroundWindow();
+        if (fgHwnd == default) return;
+
+        RECT fgBounds = default;
+        var boundsBytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref fgBounds, 1));
+        var hr = PInvoke.DwmGetWindowAttribute(
+            fgHwnd,
+            DWMWINDOWATTRIBUTE.DWMWA_EXTENDED_FRAME_BOUNDS,
+            boundsBytes);
+
+        if (hr.Succeeded && (fgBounds.right - fgBounds.left) > 0)
+        {
+            _overlayManager.ShowForegroundOverlay(fgBounds, ForegroundBorderColor);
+        }
+    }
 
     private unsafe void ShowOverlaysForCurrentForeground()
     {
