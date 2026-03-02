@@ -123,27 +123,30 @@ internal static class WindowManagerService
 
         switch (direction)
         {
-            case "left":
             case "right":
-            {
-                int sign = direction == "right" ? 1 : -1;
                 newVisLeft = GridCalculator.IsAligned(vis.left, work.left, stepX, tolX)
-                    ? vis.left + sign * stepX                                        // aligned → step
-                    : GridCalculator.NearestGridLine(vis.left, work.left, stepX);   // not aligned → snap
-                // Clamp: keep visible window within work area boundaries (MOVE-03)
+                    ? vis.left + stepX
+                    : GridCalculator.NearestGridLineCeiling(vis.left, work.left, stepX);
                 newVisLeft = Math.Clamp(newVisLeft, work.left, work.right - visW);
                 break;
-            }
-            case "up":
+            case "left":
+                newVisLeft = GridCalculator.IsAligned(vis.left, work.left, stepX, tolX)
+                    ? vis.left - stepX
+                    : GridCalculator.NearestGridLineFloor(vis.left, work.left, stepX);
+                newVisLeft = Math.Clamp(newVisLeft, work.left, work.right - visW);
+                break;
             case "down":
-            {
-                int sign = direction == "down" ? 1 : -1;
                 newVisTop = GridCalculator.IsAligned(vis.top, work.top, stepY, tolY)
-                    ? vis.top + sign * stepY
-                    : GridCalculator.NearestGridLine(vis.top, work.top, stepY);
+                    ? vis.top + stepY
+                    : GridCalculator.NearestGridLineCeiling(vis.top, work.top, stepY);
                 newVisTop = Math.Clamp(newVisTop, work.top, work.bottom - visH);
                 break;
-            }
+            case "up":
+                newVisTop = GridCalculator.IsAligned(vis.top, work.top, stepY, tolY)
+                    ? vis.top - stepY
+                    : GridCalculator.NearestGridLineFloor(vis.top, work.top, stepY);
+                newVisTop = Math.Clamp(newVisTop, work.top, work.bottom - visH);
+                break;
         }
 
         // Translate visible coords back to GetWindowRect coordinate space
