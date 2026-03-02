@@ -306,9 +306,10 @@ internal sealed class OverlayOrchestrator : IDisposable
     /// </summary>
     private void ShowOverlaysForActivation()
     {
-        // VK_LSHIFT = 0xA0; high bit set = key is down
+        // VK_LSHIFT = 0xA0, VK_TAB = 0x09; high bit set = key is down
         bool lShiftHeld = (PInvoke.GetKeyState(0xA0) & 0x8000) != 0;
-        if (lShiftHeld)
+        bool tabHeld    = (PInvoke.GetKeyState(0x09) & 0x8000) != 0;
+        if (lShiftHeld || tabHeld)
             RefreshForegroundOverlayOnly();
         else
             ShowOverlaysForCurrentForeground();
