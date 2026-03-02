@@ -1,7 +1,7 @@
 # Architecture Research
 
 **Domain:** Win32 Window Management — CLI + Daemon with Keyboard Hook and Overlay Rendering
-**Researched:** 2026-02-28
+**Researched:** 2026-02-28 (v1.0/v2.0), 2026-03-02 (v3.1 update)
 **Confidence:** HIGH (Win32 API documentation verified from official sources; keyboard hook and layered window APIs have remained stable since Windows 2000/Vista; overlay pattern verified against multiple sources)
 
 ---
@@ -656,6 +656,527 @@ Build order is dictated by the dependency graph. Items later in the list depend 
 
 ---
 
+## Part 11: v3.1 Architecture — Grid-Snapped Window Move and Resize
+
+This section documents the integration design for adding CAPS+TAB (move), CAPS+LSHIFT (grow), and CAPS+LCTRL (shrink) controls layered onto the existing v3.0 daemon architecture. Read this section in context of Parts 1-10 above which describe the already-implemented system.
+
+### What Already Exists (v3.0 Actual Implementation)
+
+The live codebase has evolved from the v2.0 design. The actual component structure as shipped:
+
+```
+focus/
+├── Program.cs
+└── Windows/
+    ├── Direction.cs                           # Direction enum + DirectionParser
+    ├── ExcludeFilter.cs
+    ├── FocusActivator.cs
+    ├── FocusConfig.cs                         # JSON config, runtime reload per keypress
+    ├── MonitorHelper.cs                       # EnumDisplayMonitors, GetMonitorIndex
+    ├── NavigationService.cs
+    ├── WindowEnumerator.cs
+    ├── WindowInfo.cs
+    ├── WindowSorter.cs
+    └── Daemon/
+        ├── CapsLockMonitor.cs                 # Channel consumer; CAPS + direction + number state machine
+        ├── DaemonCommand.cs                   # DaemonCommand.Run() — full daemon lifecycle
+        ├── DaemonMutex.cs
+        ├── KeyboardHookHandler.cs             # WH_KEYBOARD_LL hook; TryWrite to Channel<KeyEvent>
+        ├── KeyEvent.cs                        # readonly record struct: VkCode, IsKeyDown, Timestamp, ShiftHeld, CtrlHeld, AltHeld
+        ├── TrayIcon.cs
+        └── Overlay/
+            ├── BorderRenderer.cs              # IOverlayRenderer implementation (GDI pixel buffer)
+            ├── ForegroundMonitor.cs           # SetWinEventHook for foreground window changes
+            ├── IOverlayRenderer.cs
+            ├── NumberLabelRenderer.cs
+            ├── OverlayColors.cs
+            ├── OverlayManager.cs              # Manages 4 directional + 1 foreground + 9 number OverlayWindows
+            ├── OverlayOrchestrator.cs         # CAPS state + navigation dispatch; STA thread coordinator
+            └── OverlayWindow.cs               # Single layered HWND lifecycle
+```
+
+**Critical v3.0 data flow details for v3.1 integration:**
+
+The `KeyEvent` record already carries `ShiftHeld`, `CtrlHeld`, `AltHeld` modifier flags for direction key events. The `KeyboardHookHandler` already reads and transmits these modifier states through the channel. However, `CapsLockMonitor` currently discards modifier information — it maps direction keys to bare direction names and routes all to `_onDirectionKeyDown(directionName)` regardless of modifiers. This is the primary integration point.
+
+`OverlayOrchestrator` currently exposes:
+- `OnCapsLockHeld()` — triggers overlay show
+- `OnCapsLockReleased()` — hides all overlays
+- `OnDirectionKeyDown(string direction)` — performs focus navigation
+- `OnNumberKeyDown(int number)` — activates window by number
+
+The STA threading model is established: all Win32 calls happen on the STA thread via `Control.Invoke`. The `_staDispatcher` Control is already the cross-thread marshal point.
+
+### v3.1 System Overview
+
+The move/resize features add a **mode layer** between the existing keyboard event pipeline and the action dispatch layer. Three input modes are active simultaneously while CAPS is held: focus navigation (bare direction), move (TAB+direction), grow (LSHIFT+direction), shrink (LCTRL+direction).
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  KeyboardHookHandler (unchanged)                                             │
+│  WH_KEYBOARD_LL → TryWrite(KeyEvent{VkCode, IsKeyDown, Shift, Ctrl, Alt})   │
+│  Already intercepts TAB (VK_TAB=0x09) if CAPS held — needs wiring only      │
+└─────────────────────────────┬───────────────────────────────────────────────┘
+                               │ Channel<KeyEvent>
+                               v
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  CapsLockMonitor.HandleDirectionKeyEvent() — MODIFIED                        │
+│                                                                              │
+│  if ShiftHeld  → _onModifiedDirectionKeyDown?.Invoke("shift",   direction)  │
+│  if CtrlHeld   → _onModifiedDirectionKeyDown?.Invoke("ctrl",    direction)  │
+│  if TabHeld    → _onModifiedDirectionKeyDown?.Invoke("tab",     direction)  │
+│  else          → _onDirectionKeyDown?.Invoke(direction)  [existing path]    │
+└─────────────────────────────┬───────────────────────────────────────────────┘
+                               │ callback to OverlayOrchestrator
+                               v
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  OverlayOrchestrator — MODIFIED (new method + mode-aware overlay refresh)   │
+│                                                                              │
+│  OnModifiedDirectionKeyDown(modifier, direction)                            │
+│    → Invoke on STA thread                                                   │
+│    → tab+dir    → WindowManagerService.MoveWindow(fgHwnd, dir, config)     │
+│    → shift+dir  → WindowManagerService.GrowWindow(fgHwnd, dir, config)     │
+│    → ctrl+dir   → WindowManagerService.ShrinkWindow(fgHwnd, dir, config)   │
+│    → After action: refresh overlays for new foreground window bounds        │
+│                                                                              │
+│  ShowOverlaysForCurrentForeground() — MODIFIED                              │
+│    → Detects active modifier from _activeMode field                         │
+│    → Passes mode hint to OverlayManager for renderer selection              │
+└──────────────┬──────────────────────────────────────────────────────────────┘
+               │                                │
+               v                                v
+┌──────────────────────────┐    ┌───────────────────────────────────────────┐
+│  WindowManagerService    │    │  OverlayManager — MODIFIED (mode hints)   │
+│  NEW                     │    │                                            │
+│  MoveWindow(hwnd,dir,cfg)│    │  ShowOverlay(dir, bounds, mode)           │
+│  GrowWindow(hwnd,dir,cfg)│    │    → selects renderer by mode            │
+│  ShrinkWindow(hwnd,dir,  │    │    → BorderRenderer (navigate mode)      │
+│    cfg)                  │    │    → MoveArrowRenderer (move mode)       │
+│                          │    │    → GrowShrinkRenderer (grow/shrink)    │
+│  GridCalculator          │    │                                            │
+│  NEW (static helper)     │    │  or: passes mode to existing renderer     │
+│  GetGridStep(hmon, cfg)  │    │  via updated IOverlayRenderer.Paint()    │
+│  SnapToGrid(coord, step, │    └───────────────────────────────────────────┘
+│    tolerance)            │
+│  GetMonitorWorkArea(hmon)│
+│                          │
+│  Win32: MoveWindow or    │
+│  SetWindowPos            │
+└──────────────────────────┘
+```
+
+### New and Modified Components for v3.1
+
+#### Component: KeyboardHookHandler — minor extension
+
+**Status:** Minor modification
+
+The hook must intercept TAB (VK_TAB = 0x09) when CAPS is held, in addition to the existing direction and number key interception. LSHIFT (VK_LSHIFT = 0xA0) and LCTRL (VK_LCONTROL = 0xA2) are already tracked via `GetKeyState` and transmitted in `KeyEvent.ShiftHeld` and `KeyEvent.CtrlHeld`. TAB requires explicit interception and suppression (same pattern as direction keys).
+
+Changes needed:
+- Add `VK_TAB = 0x09` to the intercepted key set when CAPS is held
+- Include TAB hold state in `KeyEvent` as `TabHeld` flag, OR track TAB as a modifier state similar to how shift/ctrl are tracked
+- Alternative cleaner approach: track TAB hold state within `KeyboardHookHandler._capsLockHeld`-style state tracking, and report it as a modifier in direction key events (no new KeyEvent field needed — TAB is not a direction key itself, it signals which mode to use)
+
+The cleanest approach given the existing modifier pattern: add a `_tabHeld` field to `KeyboardHookHandler` (parallel to `_capsLockHeld`), set it on TAB keydown while CAPS held, clear on TAB keyup. Populate `KeyEvent.TabHeld` when writing direction key events. This requires adding `TabHeld = false` to the `KeyEvent` record.
+
+#### Component: KeyEvent — extend
+
+**Status:** Extend with one field
+
+```csharp
+internal readonly record struct KeyEvent(
+    uint VkCode,
+    bool IsKeyDown,
+    uint Timestamp,
+    bool ShiftHeld = false,
+    bool CtrlHeld = false,
+    bool AltHeld = false,
+    bool TabHeld = false);   // NEW: set when TAB is held while CAPS held
+```
+
+#### Component: CapsLockMonitor — routing logic change
+
+**Status:** Modified — add modifier-aware dispatch
+
+`HandleDirectionKeyEvent` currently ignores `evt.ShiftHeld`, `evt.CtrlHeld`, `evt.TabHeld` and always calls `_onDirectionKeyDown(directionName)`. For v3.1, it must route to a new callback based on which modifier is held.
+
+Three design options for the callback API:
+
+**Option A — Single callback with modifier parameter (recommended):**
+```csharp
+// New callback signature
+private readonly Action<string, string>? _onModifiedDirectionKeyDown;
+// modifier = "tab" | "shift" | "ctrl" | "" (bare = navigate)
+
+// In HandleDirectionKeyEvent:
+string modifier = evt.TabHeld ? "tab" : evt.ShiftHeld ? "shift" : evt.CtrlHeld ? "ctrl" : "";
+if (modifier == "")
+    _onDirectionKeyDown?.Invoke(directionName);   // existing path unchanged
+else
+    _onModifiedDirectionKeyDown?.Invoke(modifier, directionName);  // new path
+```
+
+**Option B — Separate callbacks per modifier:**
+```csharp
+private readonly Action<string>? _onMoveKeyDown;     // TAB+dir
+private readonly Action<string>? _onGrowKeyDown;     // SHIFT+dir
+private readonly Action<string>? _onShrinkKeyDown;   // CTRL+dir
+```
+
+Option A is recommended: fewer constructor parameters, easily extensible if a 4th modifier is ever needed, and the modifier string is self-documenting in verbose logs.
+
+Option A requires one new constructor parameter in `CapsLockMonitor` and one new lambda in `DaemonCommand.Run()`.
+
+#### Component: OverlayOrchestrator — new action dispatch method
+
+**Status:** Modified — add `OnModifiedDirectionKeyDown` + mode tracking
+
+New public method (mirroring the existing `OnDirectionKeyDown` pattern):
+
+```csharp
+public void OnModifiedDirectionKeyDown(string modifier, string direction)
+{
+    if (_shutdownRequested) return;
+    try { _staDispatcher.Invoke(() => ExecuteWindowActionSta(modifier, direction)); }
+    catch (ObjectDisposedException) { }
+    catch (InvalidOperationException) { }
+}
+
+private void ExecuteWindowActionSta(string modifier, string direction)
+{
+    var dir = DirectionParser.Parse(direction);
+    if (dir is null) return;
+
+    var config = FocusConfig.Load();
+    var fgHwnd = PInvoke.GetForegroundWindow();
+    if (fgHwnd == default) return;
+
+    switch (modifier)
+    {
+        case "tab":
+            WindowManagerService.MoveWindow(fgHwnd, dir.Value, config);
+            break;
+        case "shift":
+            WindowManagerService.GrowWindow(fgHwnd, dir.Value, config);
+            break;
+        case "ctrl":
+            WindowManagerService.ShrinkWindow(fgHwnd, dir.Value, config);
+            break;
+    }
+
+    // After moving/resizing, refresh overlays from new window position
+    ShowOverlaysForCurrentForeground();
+}
+```
+
+Mode tracking for overlay rendering: `OverlayOrchestrator` must track which modifier was last used while CAPS is held, so `ShowOverlaysForCurrentForeground()` can pass the active mode to `OverlayManager` for renderer selection. A simple `_activeMode` field (enum or string) suffices. It is set when a modified direction key fires and cleared when CAPS is released.
+
+#### Component: WindowManagerService — new
+
+**Status:** New class
+
+This is the primary new component for v3.1. It performs the actual window manipulation.
+
+```
+Windows/Daemon/WindowManagerService.cs   (new file)
+```
+
+**Responsibilities:**
+- Receive an HWND, a direction, and config
+- Determine the foreground window's current bounds via `DwmGetWindowAttribute(DWMWA_EXTENDED_FRAME_BOUNDS)`
+- Identify which monitor the window is primarily on via `MonitorFromWindow`
+- Calculate the grid step for that monitor (monitor work area / config.GridDivisions)
+- Snap the current position to the nearest grid point (within tolerance)
+- Compute the new position based on direction and operation (move, grow, shrink)
+- Apply cross-monitor logic if the window would move off the current monitor's edge
+- Call `SetWindowPos` with the computed bounds
+
+**Static design:** Like `NavigationService` and `FocusActivator`, this should be a `static class` with static methods. No instance state is needed between calls — all inputs come from parameters.
+
+```csharp
+internal static class WindowManagerService
+{
+    // Move foreground window one grid step in direction
+    public static void MoveWindow(HWND hwnd, Direction dir, FocusConfig config) { ... }
+
+    // Grow window edge outward by one grid step in direction
+    public static void GrowWindow(HWND hwnd, Direction dir, FocusConfig config) { ... }
+
+    // Shrink window edge inward by one grid step in direction
+    public static void ShrinkWindow(HWND hwnd, Direction dir, FocusConfig config) { ... }
+}
+```
+
+#### Component: GridCalculator — new (static helper or nested in WindowManagerService)
+
+**Status:** New static methods (can live inside WindowManagerService or as a sibling class)
+
+**Responsibilities:**
+- `GetMonitorWorkArea(HWND hwnd)` — returns the usable work area rect (excludes taskbar) via `GetMonitorInfo.rcWork`
+- `GetGridStep(RECT workArea, int divisions)` — computes (width/divisions, height/divisions) as the grid cell size
+- `SnapToGrid(int coordinate, int step, int tolerance)` — snaps to nearest grid line if within tolerance, else returns coordinate unchanged
+
+The snap tolerance (default ~10% of grid step) ensures that windows already near a grid line snap cleanly rather than jumping a full step. Without this, a window 5px off-grid would need two keystrokes to reach the next intended position.
+
+```csharp
+// GridCalculator logic (can be static methods on WindowManagerService)
+static int SnapToGrid(int coord, int step, double toleranceFraction = 0.1)
+{
+    int tolerance = (int)(step * toleranceFraction);
+    int remainder = coord % step;
+    if (remainder <= tolerance) return coord - remainder;           // snap down
+    if (remainder >= step - tolerance) return coord + (step - remainder); // snap up
+    return coord;  // no snap
+}
+```
+
+#### Component: FocusConfig — extend with grid settings
+
+**Status:** Modified — add grid configuration fields
+
+New fields:
+```csharp
+public int GridDivisions { get; set; } = 16;   // 1/16th of screen per step
+public bool GridSnap { get; set; } = true;      // whether to snap to grid on action
+public double GridSnapTolerance { get; set; } = 0.1;  // fraction of step = snap zone
+```
+
+These fields follow the existing pattern (defaults provided, missing fields in config files get defaults via JSON deserialization).
+
+#### Component: IOverlayRenderer / OverlayManager — mode-aware rendering
+
+**Status:** Decision point — two valid approaches
+
+**Approach A (extend IOverlayRenderer.Paint with mode parameter):**
+
+Add an `OverlayMode` enum parameter to `IOverlayRenderer.Paint()`. `BorderRenderer` ignores it (renders the same border for focus navigation). A new `ModeIconRenderer` uses it to draw directional arrows.
+
+Downside: changes the interface signature, requiring `BorderRenderer` to update its method signature.
+
+**Approach B (new overlay windows for mode icons, separate from directional overlays):**
+
+Keep the existing 4 directional overlay windows unchanged. Add a separate set of overlay windows (or a single HUD window) that appears in move/grow/shrink modes and shows the appropriate icon. `OverlayManager` shows/hides them based on the active mode.
+
+Downside: more overlay windows to manage.
+
+**Recommendation: Approach A**, specifically by making mode an optional parameter with a default (so `BorderRenderer.Paint` implementation does not change):
+
+```csharp
+// Updated interface — backwards compatible via default parameter
+internal interface IOverlayRenderer
+{
+    string Name { get; }
+    void Paint(HWND hwnd, RECT bounds, uint argbColor, Direction direction,
+               OverlayMode mode = OverlayMode.Navigate);  // NEW optional param
+}
+
+internal enum OverlayMode { Navigate, Move, Grow, Shrink }
+```
+
+`BorderRenderer.Paint` already matches this signature (default param = no change needed in calling code). A new `ModeIconRenderer` implements the interface and draws arrows or edge indicators based on mode and direction.
+
+Alternatively, the simplest first implementation uses the existing `BorderRenderer` for all modes (just the border, no arrows) and defers mode-specific icons to a later phase. The mode infrastructure (enum, parameter) should be added now so the overlay refresh path passes mode correctly, even if the initial renderer ignores it.
+
+### Data Flow — v3.1 Window Move
+
+```
+[User: CAPS held + TAB + Right arrow]
+    |
+    v
+[KeyboardHookHandler]
+    | VK_TAB keydown while CAPS held → sets _tabHeld = true
+    | VK_RIGHT keydown while CAPS held
+    | → TryWrite(KeyEvent{ VkCode=VK_RIGHT, IsKeyDown=true, TabHeld=true })
+    | → suppresses both keys (returns LRESULT 1)
+    v
+[Channel<KeyEvent>]
+    |
+    v
+[CapsLockMonitor.HandleDirectionKeyEvent]
+    | evt.TabHeld == true, directionName = "right"
+    | → _onModifiedDirectionKeyDown?.Invoke("tab", "right")
+    v
+[OverlayOrchestrator.OnModifiedDirectionKeyDown("tab", "right")]
+    | → _staDispatcher.Invoke(ExecuteWindowActionSta)
+    v
+[ExecuteWindowActionSta on STA thread]
+    | modifier = "tab", dir = Direction.Right
+    | fgHwnd = GetForegroundWindow()
+    | → WindowManagerService.MoveWindow(fgHwnd, Right, config)
+    v
+[WindowManagerService.MoveWindow]
+    | 1. DwmGetWindowAttribute(DWMWA_EXTENDED_FRAME_BOUNDS) → currentBounds
+    | 2. MonitorFromWindow(fgHwnd) → hMonitor
+    | 3. GetMonitorInfo(hMonitor).rcWork → workArea
+    | 4. step = workArea.Width / config.GridDivisions
+    | 5. snappedLeft = SnapToGrid(currentBounds.left, step, tolerance)
+    | 6. newLeft = snappedLeft + step
+    | 7. Cross-monitor check: if newLeft > workArea.right → find monitor to the right
+    | 8. SetWindowPos(fgHwnd, NULL, newLeft, newTop, width, height, SWP_NOZORDER|SWP_NOACTIVATE)
+    v
+[Back in ExecuteWindowActionSta]
+    | → ShowOverlaysForCurrentForeground()
+    |   (overlays reposition to reflect new window bounds)
+    v
+[Window is now one grid step to the right; overlays updated]
+```
+
+### Data Flow — v3.1 Grow Window Edge
+
+```
+[User: CAPS held + LSHIFT + Down arrow]
+    |
+    v
+[KeyboardHookHandler]
+    | LSHIFT already tracked via GetKeyState as ShiftHeld
+    | VK_DOWN keydown: TryWrite(KeyEvent{ VkCode=VK_DOWN, IsKeyDown=true, ShiftHeld=true })
+    v
+[CapsLockMonitor → _onModifiedDirectionKeyDown("shift", "down")]
+    v
+[OverlayOrchestrator → WindowManagerService.GrowWindow(fgHwnd, Down, config)]
+    v
+[WindowManagerService.GrowWindow]
+    | currentBounds via DwmGetWindowAttribute
+    | step = GetGridStep(workArea, config.GridDivisions).Height
+    | snappedBottom = SnapToGrid(currentBounds.bottom, step, tolerance)
+    | newBottom = snappedBottom + step       [grow bottom edge downward]
+    | Clamp to monitor work area bottom
+    | SetWindowPos(fgHwnd, left, top, width, newBottom - top, ...)
+    v
+[Window bottom edge moved one grid step down]
+```
+
+### Mode Switching Design
+
+Mode switching is implicit and stateless from the user's perspective: whichever modifier key is held when a direction key is pressed determines the action. There is no "enter move mode" command. The daemon's state machine only needs to track:
+
+1. Whether CAPS is held (existing `_capsLockHeld` / `_isHeld`)
+2. Which modifier was last used (for overlay rendering hint — `_activeMode` in `OverlayOrchestrator`)
+
+The `_activeMode` field in `OverlayOrchestrator` is updated on each modified direction key event and used by `ShowOverlaysForCurrentForeground()` to pass the correct `OverlayMode` to the renderer. On CAPS release, it is reset to `OverlayMode.Navigate`.
+
+This design means the overlay display transitions instantly between modes as the user holds/releases TAB, SHIFT, or CTRL while CAPS is held — no timer, no confirmation state.
+
+Modifier priority (if multiple modifiers somehow held simultaneously): TAB > SHIFT > CTRL. In practice, simultaneous modifier conflict is unlikely given the physical keyboard layout.
+
+### Cross-Monitor Movement
+
+When moving a window rightward and it would cross the right edge of its current monitor's work area, the service must:
+1. Find the monitor to the right (enumerate monitors, find the one whose left edge == current monitor's right edge, or the nearest)
+2. Compute a new position in the target monitor's coordinate space
+3. Apply the move in virtual screen coordinates (Win32 uses a single virtual screen coordinate system spanning all monitors)
+
+`MonitorHelper.EnumerateMonitors()` already exists and returns all monitor HMONITORs. A new `MonitorHelper.FindAdjacentMonitor(HMONITOR current, Direction dir)` method can search the list for the monitor adjacent in the given direction.
+
+If no adjacent monitor exists, the window snaps to the edge of its current monitor's work area (does not wrap). This matches the no-op wrap behavior for navigation.
+
+### Win32 APIs for Window Management
+
+`SetWindowPos` and `MoveWindow` are the primary APIs. `SetWindowPos` is preferred because it provides `SWP_NOZORDER` (preserve stacking order) and `SWP_NOACTIVATE` (do not steal focus from the foreground window being moved — critical: the window IS the foreground window, but we want to avoid any focus flicker).
+
+For resize (grow/shrink), `SetWindowPos` with new width/height is the correct API. Do not use `MoveWindow` for resize-only operations because `MoveWindow` always repaints; `SetWindowPos` with `SWP_NOMOVE` skips the move calculation.
+
+`DwmGetWindowAttribute(DWMWA_EXTENDED_FRAME_BOUNDS)` is already used throughout the codebase to get accurate visible bounds (excludes DWM drop shadows). This is the correct source for current window position in the grid calculator.
+
+For reading back the new position after `SetWindowPos` (needed to refresh overlays), call `DwmGetWindowAttribute` again or use the computed bounds directly. The computed bounds approach is simpler and avoids an extra Win32 round-trip.
+
+All `SetWindowPos` calls must be on the STA thread (consistent with all other Win32 calls in the codebase).
+
+### Suggested Build Order for v3.1
+
+Dependencies flow as follows: config must precede everything; the hook extension must precede the monitor routing change; the grid calculator must precede `WindowManagerService`; `WindowManagerService` must precede the orchestrator wiring; overlay mode must precede the renderer updates.
+
+**Step 1 — Extend `FocusConfig`**
+Add `GridDivisions`, `GridSnap`, `GridSnapTolerance` fields. Verify existing config files deserialize without error. Confirm defaults produce 1/16th screen steps with 10% snap tolerance.
+
+**Step 2 — Extend `KeyEvent` with `TabHeld` field**
+Add `bool TabHeld = false` to the record struct. This is a non-breaking change (default value, positional parameter with default). All existing `KeyEvent` construction is unchanged.
+
+**Step 3 — Extend `KeyboardHookHandler` for TAB interception**
+Add `VK_TAB` to the interception list when CAPS is held. Add `_tabHeld` tracking field. Populate `TabHeld` in direction key `KeyEvent` writes. Test: verify TAB + direction while CAPS held produces a `KeyEvent` with `TabHeld = true` and that TAB is suppressed (does not reach apps).
+
+**Step 4 — Add modifier routing to `CapsLockMonitor`**
+Add `_onModifiedDirectionKeyDown` callback parameter. Update `HandleDirectionKeyEvent` to route by modifier. Existing `_onDirectionKeyDown` path is unchanged (bare direction keys still navigate). Test: CAPS+direction still navigates; CAPS+SHIFT+direction calls new callback; CAPS+CTRL+direction calls new callback; CAPS+TAB+direction calls new callback.
+
+**Step 5 — Implement `GridCalculator` logic**
+Write static grid calculation methods: `GetMonitorWorkArea`, `GetGridStep`, `SnapToGrid`. These have no Win32 side effects beyond read-only `GetMonitorInfo`. Unit-test with hardcoded rect values to verify snap math.
+
+**Step 6 — Implement `WindowManagerService.MoveWindow`**
+Wire `GetForegroundWindow` bounds → grid calculator → `SetWindowPos`. Single-monitor only first. Test: CAPS+TAB+direction moves the foreground window by one grid step. Verify snap behavior with windows that start off-grid.
+
+**Step 7 — Implement `WindowManagerService.GrowWindow` and `ShrinkWindow`**
+Same pattern but modify only one edge per direction. Grow expands the edge in the given direction; shrink contracts it. Clamp to minimum window size (avoid zero or negative dimensions). Test: edge grows/shrinks correctly; size does not go below a minimum.
+
+**Step 8 — Wire `OverlayOrchestrator.OnModifiedDirectionKeyDown`**
+Add the method and `ExecuteWindowActionSta`. Add the lambda in `DaemonCommand.Run()` that connects `CapsLockMonitor` to the new orchestrator method. Test full flow: CAPS+TAB+direction moves window, overlay refreshes to new position.
+
+**Step 9 — Cross-monitor movement**
+Add `MonitorHelper.FindAdjacentMonitor`. Update `MoveWindow` to use it when the new position crosses a monitor boundary. Test with two-monitor setup.
+
+**Step 10 — Mode-aware overlay rendering** (can be deferred to a separate phase)
+Add `OverlayMode` enum to `IOverlayRenderer.Paint` as optional parameter. Implement `ModeIconRenderer` or extend `BorderRenderer` to show directional arrows when mode is non-navigate. Test: move mode shows arrow overlays; release TAB reverts to standard border overlays.
+
+### Integration Summary Table
+
+| Component | Status | Change Type | Primary Integration Point |
+|-----------|--------|-------------|--------------------------|
+| `KeyEvent` | Modify | Add `TabHeld` field | `KeyboardHookHandler` writes it |
+| `KeyboardHookHandler` | Modify | Intercept VK_TAB, track TAB hold state | Already intercepts direction keys; add TAB same pattern |
+| `CapsLockMonitor` | Modify | Modifier-aware dispatch | `HandleDirectionKeyEvent` routing logic |
+| `DaemonCommand` | Modify | Wire new callback lambda | `new CapsLockMonitor(...)` constructor call |
+| `FocusConfig` | Modify | Add grid config fields | `FocusConfig.Load()` — no callers change |
+| `OverlayOrchestrator` | Modify | Add `OnModifiedDirectionKeyDown`, `_activeMode` | Called from `CapsLockMonitor` callback; calls `WindowManagerService` |
+| `OverlayManager` | Modify (minor) | Accept mode hint for renderer selection | Called by `OverlayOrchestrator.ShowOverlaysForCurrentForeground()` |
+| `IOverlayRenderer` | Modify (minor) | Optional `OverlayMode` parameter | `BorderRenderer.Paint` signature change |
+| `WindowManagerService` | New | Move/grow/shrink logic | Called by `OverlayOrchestrator.ExecuteWindowActionSta` |
+| `GridCalculator` | New (or in WindowManagerService) | Grid step and snap math | Called by `WindowManagerService` |
+| `MonitorHelper` | Modify | Add `FindAdjacentMonitor` | Called by `WindowManagerService` for cross-monitor moves |
+| `ModeIconRenderer` | New (optional) | Arrow icon overlay painting | Registered in `OverlayManager.CreateRenderer()` |
+
+### Anti-Patterns Specific to v3.1
+
+#### Anti-Pattern 7: Using GetWindowRect Instead of DwmGetWindowAttribute for Grid Baseline
+
+**What people do:** Call `GetWindowRect(hwnd, &rect)` to get the current window position before computing the grid-snapped new position.
+
+**Why it's wrong:** `GetWindowRect` returns the window's frame rect including the invisible DWM resize border (8px on each side on Windows 11). Positioning based on this rect causes visual drift — windows appear to move less than one grid step because the frame extends outside the visible bounds. The rest of the codebase uses `DwmGetWindowAttribute(DWMWA_EXTENDED_FRAME_BOUNDS)` for accurate bounds.
+
+**Do this instead:** Use `DwmGetWindowAttribute(DWMWA_EXTENDED_FRAME_BOUNDS)` to read current visible bounds. When calling `SetWindowPos`, account for the frame inset to position the visible edge at the desired grid coordinate.
+
+**Frame inset calculation:**
+```csharp
+// Get both rects to compute inset
+RECT windowRect;   // GetWindowRect — frame rect
+RECT frameBounds;  // DwmGetWindowAttribute(DWMWA_EXTENDED_FRAME_BOUNDS) — visible rect
+
+int insetLeft   = frameBounds.left - windowRect.left;
+int insetTop    = frameBounds.top  - windowRect.top;
+int insetRight  = windowRect.right  - frameBounds.right;
+int insetBottom = windowRect.bottom - frameBounds.bottom;
+
+// Then SetWindowPos uses frame rect coordinates:
+// newFrameLeft = desiredVisibleLeft - insetLeft
+```
+
+#### Anti-Pattern 8: Calling SetWindowPos Without SWP_NOZORDER
+
+**What people do:** `SetWindowPos(hwnd, HWND_TOP, x, y, w, h, 0)` — using HWND_TOP (value 0) as the z-order sentinel.
+
+**Why it's wrong:** This moves the window to the top of the z-order (same as `BringWindowToTop`), reordering all windows. For a move/resize operation, the window's stacking order should not change.
+
+**Do this instead:** Pass `SWP_NOZORDER` flag and use `null` (HWND_NULL) as the hWndInsertAfter parameter. This preserves the window's current z-order.
+
+#### Anti-Pattern 9: Forgetting to Handle Already-Maximized Windows
+
+**What people do:** Call `SetWindowPos` unconditionally on the foreground window.
+
+**Why it's wrong:** If the window is maximized, `SetWindowPos` will not move or resize it (the OS ignores position/size for maximized windows). The user gets no feedback that the operation did nothing.
+
+**Do this instead:** Before calling `SetWindowPos`, check if the window is maximized via `GetWindowPlacement` or `IsZoomed`. If maximized, either restore it first (`ShowWindow(hwnd, SW_RESTORE)`) then move, or silently no-op. The correct behavior depends on user expectation — for v3.1, a silent no-op is the safest initial choice (consistent with navigation's silent no-op when no candidate exists).
+
+---
+
 ## Sources
 
 - [LowLevelKeyboardProc — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/winmsg/lowlevelkeyboardproc) — HIGH confidence, official API documentation (updated 2025-07)
@@ -666,8 +1187,12 @@ Build order is dictated by the dependency graph. Items later in the list depend 
 - [Window Features (Layered Windows) — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/winmsg/window-features) — HIGH confidence, official documentation on layered window patterns
 - [Extended Window Styles — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/winmsg/extended-window-styles) — HIGH confidence, official WS_EX_TOOLWINDOW/WS_EX_LAYERED/WS_EX_TRANSPARENT/WS_EX_TOPMOST documentation
 - [Using Messages and Message Queues — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/winmsg/using-messages-and-message-queues) — HIGH confidence, official documentation on message loop structure
+- [SetWindowPos — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setwindowpos) — HIGH confidence, official API for window move/resize
+- [DwmGetWindowAttribute — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/api/dwmapi/nf-dwmapi-dwmgetwindowattribute) — HIGH confidence, official API for accurate visible bounds
+- [MONITORINFO — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-monitorinfo) — HIGH confidence, rcWork field for usable monitor area excluding taskbar
 - [CsWin32 — Microsoft GitHub](https://github.com/microsoft/CsWin32) — MEDIUM confidence, P/Invoke source generator used by project
 
 ---
 *Architecture research for: Win32 directional window focus navigation — daemon + overlay preview mode*
-*Researched: 2026-02-28*
+*Parts 1-10 researched: 2026-02-28*
+*Part 11 (v3.1 window management) researched: 2026-03-02*

@@ -1,176 +1,221 @@
 # Project Research Summary
 
-**Project:** Window Focus Navigation — v2.0 Overlay Preview Daemon
-**Domain:** Win32 background daemon with global keyboard hook and transparent overlay rendering (.NET/C#)
-**Researched:** 2026-02-28
+**Project:** focus — Windows keyboard window navigation daemon (v3.1: grid-snapped move/resize)
+**Domain:** Win32 daemon — keyboard hook, overlay rendering, window move/resize
+**Researched:** 2026-03-02
 **Confidence:** HIGH
 
 ## Executive Summary
 
-This project extends an existing, validated v1.0 stateless CLI tool (directional window focus navigation via keyboard shortcuts) into a persistent v2.0 daemon that renders visual overlay previews when the user holds CAPSLOCK. The technical approach is well-understood and builds entirely on existing patterns: Win32 P/Invoke via CsWin32, no new NuGet dependencies, and direct reuse of the v1.0 `WindowEnumerator`, `NavigationService`, and `FocusConfig` components. The new work is additive — two new namespaces (`Daemon/` and `Overlay/`) that slot alongside the unchanged `Windows/` layer. Two files are modified: `Program.cs` gains a `daemon` subcommand, and `FocusConfig` gains overlay-specific config fields with defaults.
+The v3.1 milestone adds keyboard-driven, grid-snapped window move and resize to an already-shipped daemon (v3.0). The existing stack — .NET 8, CsWin32 P/Invoke source generator, WinForms message pump, WH_KEYBOARD_LL hook, GDI layered overlays — is the correct and sufficient foundation. Zero new NuGet packages are needed. The only additions are four new Win32 API entries in NativeMethods.txt (`GetWindowRect`, `GetDpiForWindow`, `GetDpiForMonitor`, `IsZoomed`) and a new static service class (`WindowManagerService`). The core implementation challenge is not "what technology" but "what coordinate space" — there are two distinct rect types in play, and mixing them silently produces a window that shrinks by approximately 8px on every move.
 
-The recommended implementation strategy is strict separation of concerns across three subsystems: a dedicated STA thread running a Win32 message loop (the only correct way to host `WH_KEYBOARD_LL`), a lightweight keyboard hook handler that does nothing in the callback except enqueue events and chain the hook, and an overlay manager that executes all window enumeration and rendering work on a worker thread. This three-part separation is not optional — it is the mandatory architecture imposed by Win32's `LowLevelHooksTimeout` constraint (default 300ms, hard cap 1000ms on Windows 10 1709+), which silently removes hooks that block too long. The failure mode — hook vanishes with no log, no error code — is invisible and catastrophic.
+The recommended approach is a two-phase implementation: Phase 1 establishes the move/resize mechanics with all critical guards (maximized window detection, coordinate space separation, UIPI handling, correct modifier tracking), and Phase 2 layers in cross-monitor support and overlay mode integration. Overlay mode indicators can be added with the existing `IOverlayRenderer` interface by adding an optional `OverlayMode` enum parameter — a backwards-compatible change that does not force rewrites of existing renderers. Non-modal modifier combos (CAPS+TAB+dir = move, CAPS+LSHIFT+dir = grow, CAPS+LCTRL+dir = shrink) are the correct design; modal resize-mode state would conflict with the existing navigation bindings.
 
-Key risks cluster around three areas: GC-related hook delegate lifetime (static field required, not local variable), layered window rendering mode exclusivity (`UpdateLayeredWindow` and `SetLayeredWindowAttributes` cannot be mixed on the same HWND), and overlay window exclusion from the navigation candidate set (mandatory `WS_EX_TOOLWINDOW` on all overlay HWNDs). All three are LOW-recovery-cost mistakes if caught early and HIGH-confusion mistakes if caught late. Research confidence is HIGH across all four domains — the Win32 APIs involved have been stable since Windows 2000 and are thoroughly documented by official Microsoft sources.
+The highest-risk area is the coordinate system: `DwmGetWindowAttribute(DWMWA_EXTENDED_FRAME_BOUNDS)` excludes the invisible DWM resize border (~7-8px per side on Windows 10/11) and is correct for overlay positioning and navigation scoring but must never be passed to `SetWindowPos`. `GetWindowRect` includes those borders and is the mandatory source for `SetWindowPos` inputs. Every move and resize operation must establish both rects, compute the border offsets once, and maintain the distinction throughout. The second major risk is UIPI: the daemon runs at medium integrity and will silently fail to move elevated windows (Task Manager, admin processes). Return-value checking on every `SetWindowPos` call is non-negotiable.
 
 ## Key Findings
 
 ### Recommended Stack
 
-The v2.0 stack requires no new NuGet packages. All new capability comes from Win32 APIs already accessible via the project's existing CsWin32 0.3.269 setup — specifically `WH_KEYBOARD_LL` (User32.dll) for the keyboard hook and the layered window API set (`CreateWindowEx`, `UpdateLayeredWindow`, `CreateDIBSection`, etc.) for transparent overlays. The only required change is appending approximately 20 API names to `NativeMethods.txt` so CsWin32 generates their bindings at build time. The existing `.NET 8` target, `System.CommandLine 2.0.3`, and `System.Text.Json` are all unchanged.
+The existing stack is unchanged and fully sufficient. All new Win32 APIs are standard Win32 system DLLs accessible through the existing CsWin32 setup; the only work is adding four entries to `NativeMethods.txt`. The app.manifest already declares `PerMonitorV2, PerMonitor` DPI awareness, which means all Win32 coordinates are physical pixels — this simplifies grid math because no DPI conversion is needed. Grid step should be expressed as a fraction of the monitor's physical dimensions (default: 1/16th), not in DPI-scaled logical units.
 
-**Core technologies (new for v2.0):**
-- `WH_KEYBOARD_LL` via CsWin32: global low-level keyboard hook — the only Win32 mechanism for system-wide key interception without a foreground window; requires a dedicated STA thread running `GetMessage`/`DispatchMessage`
-- `WS_EX_LAYERED` + `UpdateLayeredWindow` + `CreateDIBSection` via CsWin32: per-pixel-alpha transparent overlay windows — draw directly into a 32-bit ARGB pixel buffer with premultiplied alpha; no third-party rendering library
-- Win32 message loop (`GetMessage`/`DispatchMessage`/`PostThreadMessage`): explicit pump on the hook thread; not `Application.Run()`, not `Thread.Sleep`, not WinForms or WPF
+`SetWindowPos` with `SWP_NOZORDER | SWP_NOACTIVATE` is the single correct API for both move and resize. `MoveWindow` is a weaker alternative and should not be used. All `SetWindowPos` calls run on the STA thread via the existing `_staDispatcher.Invoke()` pattern — no threading model changes are needed.
 
-**What NOT to add:** WPF, WinForms, WinUI 3, GDI+, `Microsoft.Extensions.Hosting`, Named Pipes, `Thread.Sleep` polling, `SetLayeredWindowAttributes`+`UpdateLayeredWindow` mixed on the same window. All are incompatible with the existing CLI-first no-GUI-framework constraint.
-
-**Critical CsWin32 friction point:** `RegisterClassEx` requires `Marshal.GetHINSTANCE(typeof(YourType).Module)` as the HINSTANCE — passing `new HINSTANCE(0)` causes error 87 (parameter incorrect). Confirmed in CsWin32 Discussion #750.
+**Core technologies:**
+- `.NET 8 / net8.0-windows`: runtime — unchanged, no update required
+- `CsWin32 0.3.269`: P/Invoke source generator — add 4 new entries to NativeMethods.txt only
+- `WinForms Application.Run` (STA message pump): hook thread — unchanged
+- `SetWindowPos (User32.dll)`: move and resize — already in NativeMethods.txt
+- `GetWindowRect (User32.dll)`: read current frame rect for SetWindowPos inputs — new NativeMethods.txt entry; round-trip safe with SetWindowPos
+- `DwmGetWindowAttribute / DWMWA_EXTENDED_FRAME_BOUNDS`: visible bounds for overlay and grid snap baseline — already in codebase; must NOT be passed to SetWindowPos
+- `GetDpiForWindow (User32.dll)`: per-monitor DPI query — new entry, Windows 10 1607+; preferred over GetDpiForMonitor when querying by window
+- `GetDpiForMonitor (Shcore.dll)`: DPI for destination monitor during cross-monitor move — new entry, Windows 8.1+
+- `IsZoomed (User32.dll)`: maximized state guard — new entry; universal Win32
 
 ### Expected Features
 
-The v2.0 MVP has one non-negotiable goal: colored border overlays appear on the top-ranked directional candidate windows while CAPSLOCK is held, and disappear when CAPSLOCK is released. All table-stakes features flow from this, and they are fully enumerated and dependency-mapped in FEATURES.md.
+The feature set is bounded and well-understood. Every keyboard window manager (i3, Hyprland, dwm, Rectangle) provides the same three primitives (move, grow, shrink) with the same edge-direction semantics. The snap-first-then-step pattern is the most important differentiator from simple tools: on first keypress, align the window to the nearest grid line; on subsequent keypresses, step by one grid cell. Without this, manually-positioned windows accumulate drift on every operation.
 
-**Must have (table stakes — v2.0 launch):**
-- Daemon process with dedicated message loop and `WH_KEYBOARD_LL` hook — nothing else works without this
-- CAPSLOCK hold detection with auto-repeat suppression (first WM_KEYDOWN only; ignore repeats until WM_KEYUP)
-- 4 simultaneous overlay windows (one per direction), each positioned on the top-ranked candidate from `NavigationService`
-- Colored border rendering via GDI DIB section (4 border strips; transparent interior at 0x00000000)
-- Per-direction configurable colors in JSON config (additive `FocusConfig` extension, backwards-compatible defaults)
-- Overlay dismissal on CAPSLOCK release
-- Overlay exclusion from navigation candidates (`WS_EX_TOOLWINDOW` mandatory; no `WS_EX_APPWINDOW`)
-- Click-through behavior (`WS_EX_TRANSPARENT`) and no focus theft (`WS_EX_NOACTIVATE`)
-- No taskbar or Alt+Tab entry (`WS_EX_TOOLWINDOW`)
-- Clean daemon shutdown (destroy overlays, unhook, exit on Ctrl+C/SIGTERM)
-- Single-instance guard (named mutex: `Global\FocusDaemon-<GUID>`)
-- `LLKHF_INJECTED` filtering to ignore AHK-synthesized key events
-- Configurable activation delay/debounce (~150ms default, prevents accidental triggers)
-- `IOverlayRenderer` interface with `DefaultBorderRenderer` — enables per-strategy renderers in v2.x without interface changes
-- Foreground window change detection — update overlay while CAPSLOCK held if foreground switches
+**Must have (table stakes):**
+- CAPS+TAB+direction: move foreground window by one grid step — users of any keyboard WM expect this as baseline
+- CAPS+LSHIFT+direction: grow the edge in that direction outward by one grid step — standard grow semantics
+- CAPS+LCTRL+direction: shrink the edge in that direction inward by one grid step — paired with grow
+- Grid step = monitor work area / `gridFraction` (default 16), computed per monitor — fraction-of-screen unit works across all DPI/resolution combinations
+- Clamp move to monitor work area (hard boundary at screen edge, excluding taskbar)
+- Clamp shrink to minimum window size (let SetWindowPos enforce app minimum; add floor of one grid cell)
+- Smart snap: snap to nearest grid line on first press if outside tolerance, step on subsequent presses
+- Cross-monitor move: when move would push window off current monitor edge, transition to adjacent monitor
+- Mode-specific overlay indicators: directional arrows reflecting active mode during CAPS hold
+- All operations instant via SetWindowPos with no animation
+- JSON config: `gridFraction` (default 16), `gridSnapTolerance` (default 10%)
 
-**Should have (add in v2.x):**
-- Per-strategy custom renderers (edge-matching visualizer, axis-only visualizer)
-- Configurable border thickness (default 4-6px is sufficient for v2.0)
-- Live overlay update on window layout change (new windows opened/closed while held)
+**Should have (competitive):**
+- Per-monitor grid step (reuses existing MonitorFromWindow — effectively free to implement)
+- Configurable snap tolerance (`snapTolerancePercent` in JSON config)
+- Mode icon renderer showing directional arrows in overlay (extend IOverlayRenderer with optional OverlayMode parameter)
 
-**Defer (v3+):**
-- DPI-aware border thickness scaling for mixed-DPI multi-monitor setups
-- Edge-matching and axis-only strategy-specific visual renderers
-
-**Confirmed anti-features (do not build):** animated transitions, window content thumbnails, system tray icon/context menu, auto-start management, interactive overlay elements (click to focus), WPF/WinUI rendering layer.
+**Defer (v4+):**
+- Per-monitor `gridFraction` override in config (low demand, adds config complexity)
+- Snap-to-edge on hold vs. tap variant
+- `focus snap-all` CLI command (single-shot grid alignment, no persistent state)
+- Window position memory/restore per app (tiling manager territory; out of scope)
+- Animated window movement (validated as worse UX than instant in v2.0 testing; do not add)
+- Pixel-exact move without grid (defeats the grid discipline value proposition)
 
 ### Architecture Approach
 
-The architecture is a clean extension of the existing layered CLI. `Program.cs` gains a `daemon` subcommand that calls `DaemonHost.Run()` instead of the stateless pipeline. Two new folders (`Daemon/` and `Overlay/`) contain all new code; the `Windows/` folder is untouched except for additive fields on `FocusConfig`. All v1.0 components — `WindowEnumerator`, `NavigationService`, `ExcludeFilter`, `FocusActivator`, `MonitorHelper`, `WindowInfo`, `Direction` — are used unchanged by the daemon path.
+The v3.0 codebase is well-structured for this extension. The critical integration points are: (1) `KeyboardHookHandler` gains TAB interception and a `_tabHeld` state flag; (2) `KeyEvent` gains a `TabHeld` field (non-breaking, default false); (3) `CapsLockMonitor.HandleDirectionKeyEvent` gains modifier-aware routing to a new `_onModifiedDirectionKeyDown` callback; (4) `OverlayOrchestrator` gains an `OnModifiedDirectionKeyDown` method that dispatches to a new `WindowManagerService` on the STA thread; and (5) a new `WindowManagerService` static class handles the actual move/resize logic. The new `GridCalculator` logic can live as static methods inside `WindowManagerService`.
 
-**Major components (new for v2.0):**
-1. `DaemonHost` — owns the STA hook thread, message loop lifecycle, and process shutdown (Ctrl+C handler calls `PostThreadMessage(hookThreadId, WM_QUIT)`; unhook runs on hook thread after GetMessage returns 0)
-2. `KeyboardHookHandler` — decodes `KBDLLHOOKSTRUCT`; filters `LLKHF_INJECTED` events; tracks held state with a boolean to suppress auto-repeat; enqueues `KeyEvent` to `Channel<KeyEvent>`; returns from callback in microseconds; always calls `CallNextHookEx`
-3. `OverlayManager` — worker thread consumes from `Channel<KeyEvent>`; on CapsLockDown calls `WindowEnumerator` + `ExcludeFilter` + `NavigationService.GetRankedCandidates` for all 4 directions; positions/shows pre-created `OverlayWindow` instances; on CapsLockUp hides them
-4. `OverlayWindow` — owns one HWND created at daemon startup with style `WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE`; manages a reusable GDI DIB section; delegates painting to `IOverlayRenderer`; exposes `Position()`, `Show()`, `Hide()`
-5. `DefaultBorderRenderer` — fills 4 border strips in the DIB pixel buffer with premultiplied ARGB values; interior pixels set to 0x00000000 (fully transparent); calls `UpdateLayeredWindow` with `ULW_ALPHA`
+The `IOverlayRenderer` interface should gain an optional `OverlayMode` enum parameter to support mode-specific rendering without breaking existing `BorderRenderer`. The mode-aware overlay update must avoid the existing `HideAll() + ShowAll()` pattern during move/resize operations — instead, use reposition-in-place to prevent per-keypress flicker.
 
-**Critical pattern:** Pre-create all 4 overlay HWNDs at daemon startup and reuse them across CAPSLOCK cycles via `ShowWindow`/`SetWindowPos`, not create/destroy on each press. `CreateWindowEx` + DIB setup takes tens of milliseconds — perceptible latency on every keypress if done cold.
+**Major components:**
+1. `KeyboardHookHandler` (modify) — add VK_TAB (0x09) intercept and `_tabHeld` tracking; use VK_LSHIFT (0xA0) and VK_LCONTROL (0xA2) directly for left-side modifier distinction
+2. `CapsLockMonitor` (modify) — modifier-aware dispatch via single `_onModifiedDirectionKeyDown(modifier, direction)` callback; existing `_onDirectionKeyDown` path unchanged
+3. `OverlayOrchestrator` (modify) — add `OnModifiedDirectionKeyDown`, `_activeMode` field, `_moveOrResizeInProgress` guard for ForegroundMonitor conflict
+4. `WindowManagerService` (new, static class) — `MoveWindow`, `GrowWindow`, `ShrinkWindow`; reads both `GetWindowRect` and `DwmGetWindowAttribute` to maintain border offsets; calls `SetWindowPos` with compensated coordinates
+5. `GridCalculator` (new, static methods in WindowManagerService) — `GetMonitorWorkArea`, `GetGridStep`, `SnapToGrid`; uses `rcWork` exclusively for all grid boundaries
+6. `FocusConfig` (modify) — add `GridDivisions` (int, default 16), `GridSnap` (bool, default true), `GridSnapTolerance` (double, default 0.1)
+7. `IOverlayRenderer` / `OverlayManager` (minor modify) — add optional `OverlayMode` enum parameter; implement `ModeIconRenderer` or extend `BorderRenderer` with mode awareness
+8. `MonitorHelper` (modify) — add `FindAdjacentMonitor(HMONITOR current, Direction dir)` for cross-monitor moves
 
 ### Critical Pitfalls
 
-Pitfalls are fully catalogued in PITFALLS.md. The seven that must be addressed before any testing begins:
+1. **DWM bounds used as SetWindowPos input — window shrinks ~8px per side per move** — Always use `GetWindowRect` as the source for `SetWindowPos` coordinates. Use `DwmGetWindowAttribute(DWMWA_EXTENDED_FRAME_BOUNDS)` only for overlay positioning and grid snap baseline. Compute the border offset (`visibleRect - windowRect`) once per operation and add it back when building the SetWindowPos arguments. This is the most common and most invisible failure mode — the window appears to move correctly but slowly shrinks over repeated presses.
 
-1. **Hook delegate GC collection** — store the `HOOKPROC` delegate in a `static` field; a local variable becomes GC-eligible after the installing method returns and the hook silently stops working after 30-90 seconds with no error
-2. **No message loop on hook thread** — `WH_KEYBOARD_LL` callbacks are delivered as Win32 messages to the installing thread's queue; `GetMessage`/`DispatchMessage` is required; `Console.ReadLine`, `Thread.Sleep`, or `CancellationToken.WaitHandle` are NOT sufficient
-3. **Hook callback timeout** — Windows silently uninstalls the hook after ~10 consecutive timeouts (default 300ms limit); do zero substantial work in the callback; enqueue to `Channel<KeyEvent>` and return; there is no API to detect silent removal
-4. **Layered window API mode exclusivity** — `SetLayeredWindowAttributes` and `UpdateLayeredWindow` cannot be mixed on the same HWND; choose `UpdateLayeredWindow` + premultiplied-alpha DIB at window creation and never call the other; mixing produces silent failures or wrong rendering
-5. **Overlay focus theft** — overlays steal focus from the active application unless `WS_EX_NOACTIVATE` is applied at creation and `SWP_NOACTIVATE` is passed to every `SetWindowPos` call; use `ShowWindow(SW_SHOWNOACTIVATE)`, not `SW_SHOW`
-6. **Multiple daemon instances** — two instances install two hooks and show double-borders; a named mutex (`Global\FocusDaemon-<GUID>`) at daemon entry is mandatory; keep the `Mutex` object in a static field (GC can collect a `using`-scoped `Mutex` while the daemon is running)
-7. **AHK injected keystrokes** — `SendInput` from AHK hotkey actions and from `focus.exe` itself (ALT key for `SetForegroundWindow`) both set `LLKHF_INJECTED` (bit 4) in `KBDLLHOOKSTRUCT.flags`; filter this flag in the callback to prevent overlay flickering from synthetic events
+2. **TAB unconditionally suppressed while CAPS held — breaks dialog, browser, and IDE navigation** — Do NOT return `(LRESULT)1` on TAB keydown. Set `_tabHeld = true` and forward the TAB keydown via `CallNextHookEx`. Only suppress direction key events (arrow keys) when `_tabHeld` is true. The suppression policy for TAB must be decided before writing any hook logic — retrofitting it after the fact is error-prone.
+
+3. **VK_SHIFT used instead of VK_LSHIFT for mode selection — right Shift triggers grow mode** — In the WH_KEYBOARD_LL hook, `KBDLLHOOKSTRUCT.vkCode` distinguishes VK_LSHIFT (0xA0) from VK_RSHIFT (0xA1). Use these specific codes. The existing hook uses generic VK_SHIFT — that path must be updated for grow/shrink mode selection.
+
+4. **SetWindowPos called on maximized window without guard — silent no-op, no user feedback** — Check `IsZoomed` before every move/resize call. Either restore-then-move (for move mode) or silently skip (for grow/shrink mode). SetWindowPos returns true on maximized windows but makes no change.
+
+5. **UIPI blocks SetWindowPos on elevated windows — ERROR_ACCESS_DENIED (5) silently swallowed** — Check the return value of every `SetWindowPos` call. Error code 5 (elevated target) and UWP windows (class `ApplicationFrameWindow`) must be detected and silently skipped. Do not log as error or propagate as exception.
+
+6. **Overlay not refreshed after move — shows pre-move window position** — After every `SetWindowPos` call, read back the actual new bounds via `GetWindowRect` and immediately reposition the overlay to the actual post-move rect. Never use the computed intended position — UIPI, min/max constraints, or snap may have changed the actual result.
+
+7. **Grid calculated from `rcMonitor` instead of `rcWork` — windows end up behind taskbar** — Use `GetMonitorInfo.rcWork` (work area excluding taskbar) as the grid origin and boundary for all grid math. Use `rcMonitor` only for monitor identity checks during cross-monitor detection.
 
 ## Implications for Roadmap
 
-Research reveals a strict dependency ordering: daemon infrastructure must exist and be validated before overlay code can be tested, and overlay window creation must be validated in isolation before the end-to-end CAPSLOCK-to-overlay flow is assembled. The build order in ARCHITECTURE.md maps cleanly to 4 phases.
+Based on the combined research, the work naturally splits into two phases with a clear dependency boundary: Phase 1 establishes all single-monitor move/resize mechanics with correct guards, and Phase 2 adds cross-monitor support and overlay mode integration. A third optional phase covers mode-icon rendering if it was deferred.
 
-### Phase 1: Daemon Infrastructure and Keyboard Hook
-**Rationale:** Everything depends on a working message loop and keyboard hook. This is the highest-risk phase — Win32 message loop threading in a .NET console app is unfamiliar territory, and the failure modes (hook silently removed, callback never fires) are invisible. Validate the hook fires and is cleaned up correctly before adding any overlay code.
-**Delivers:** `focus daemon` subcommand that starts, installs the hook, logs CAPSLOCK press/release to console (debug output), and shuts down cleanly on Ctrl+C. Zero overlay code. Passes "looks-done-but-isn't" checklist: hook still fires after 2+ minutes idle, hook fires under fullscreen-app focus, callback returns in under 50ms.
-**Addresses features:** Daemon process with message loop, CAPSLOCK hold detection (with auto-repeat suppression), injected-key filtering, single-instance mutex, console window suppression (`FreeConsole()` at daemon entry)
-**Avoids pitfalls:** A-1 (GC delegate — static field), A-2 (no message loop — dedicated STA thread), A-3 (callback timeout — Channel pattern from day one), A-7 (CAPSLOCK toggle pass-through — do not suppress), A-8 (AHK injected keys — LLKHF_INJECTED filter), A-11 (console window), A-12 (multiple instances)
-**Research flag:** CsWin32-specific HOOKPROC delegate interop and hmod parameter handling have community but not official documentation. Recommend a 30-minute spike to validate hook fires on first keypress before building KeyboardHookHandler fully.
+### Phase 1: Core Move/Resize Mechanics (Single Monitor)
 
-### Phase 2: Overlay Window Creation
-**Rationale:** Before wiring overlays to real navigation data, validate that a layered window appears correctly — transparent, click-through, no focus theft, excluded from Alt+Tab, aligned correctly on multi-DPI monitors. These are independent of the scoring logic and must be verified in isolation.
-**Delivers:** A single hardcoded overlay HWND positioned at a fixed screen rectangle with a visible colored border. Manual validation: show overlay while typing in Notepad (no interruption), click through overlay to window beneath, verify absent from Alt+Tab, verify aligned on 150% DPI secondary monitor.
-**Uses:** `CreateWindowEx` + `UpdateLayeredWindow` + `CreateDIBSection` via CsWin32; `IOverlayRenderer` + `DefaultBorderRenderer`; full required style combination
-**Avoids pitfalls:** A-4 (focus theft — WS_EX_NOACTIVATE + SWP_NOACTIVATE), A-5 (toolwindow exclusion — WS_EX_TOOLWINDOW mandatory), A-6 (DPI mismatch — verify on unequal-DPI multi-monitor), A-9 (layered mode exclusivity — choose UpdateLayeredWindow exclusively), A-10 (Z-order re-assertion on each show)
-**Research flag:** Premultiplied alpha requirement for `UpdateLayeredWindow` is subtle; incorrect values produce wrong compositing that is not immediately obvious. A rendering spike against a known ARGB value is recommended.
+**Rationale:** All Phase 2 work depends on the core move/resize pipeline being correct. The coordinate system pitfalls (A-2, A-3), modifier tracking pitfalls (A-5, A-6, A-7), and grid math pitfalls (A-8, A-9) must be resolved before layering in cross-monitor complexity or overlay integration. This phase carries the highest technical risk — it involves the most non-obvious Win32 behavior and the most consequences if gotten wrong.
 
-### Phase 3: Overlay-Navigation Integration
-**Rationale:** Wire `OverlayManager` to call `NavigationService.GetRankedCandidates` for all 4 directions and position the pre-created overlay HWNDs on the real top-ranked candidates. This reuses all v1.0 logic unchanged — the only new code is the coordination in `OverlayManager`.
-**Delivers:** Full CAPSLOCK-hold → colored borders on directional candidates → CAPSLOCK-release → borders hide. Per-direction color config in JSON. Foreground window change detection (polling at ~100ms or `SetWinEventHook`). Passes: `focus --debug enumerate` shows zero rows with daemon process name while daemon is running.
-**Implements:** `OverlayManager`, `FocusConfig` extension with overlay fields and defaults, foreground window change detection
-**Avoids pitfalls:** A-5/A-13 (overlay in own candidates — verify with enumerate debug command), A-3 (all enumeration/scoring runs on worker thread consuming from Channel, not in hook callback)
+**Delivers:** CAPS+TAB+direction moves the foreground window. CAPS+LSHIFT+direction grows an edge. CAPS+LCTRL+direction shrinks an edge. All operations are grid-snapped, clamped to work area, guarded against maximized/minimized/elevated windows, and tested on a single monitor.
 
-### Phase 4: Robustness and End-to-End Validation
-**Rationale:** End-to-end works but edge cases and UX details need attention before the daemon is daily-driver ready. No new APIs required — this phase is entirely about correctness under real conditions.
-**Delivers:** Activation delay/debounce (~150ms), graceful handling of "no candidate in a direction" (overlay absent for that direction, no crash), complete "looks-done-but-isn't" checklist verification, AHK launch integration (`Run, focus.exe daemon,, Hide`)
-**Validates:** GC delegate lifetime (2+ minute idle test), hook callback timing (debug instrumentation, must stay under 50ms), DPI overlay alignment on unequal-DPI multi-monitor setup, CAPSLOCK pass-through for typing (LED and uppercase behavior unaffected), single-instance mutex under AHK restart, kill-and-restart leaves no stuck hook remnants
+**Addresses features:** All P1 must-haves except cross-monitor move; grid config keys; smart snap; minimum window size clamping; all operations instant.
+
+**Avoids pitfalls:** A-1 (maximized guard), A-2 (coordinate space separation — establish dual-rect pattern before any grid math), A-3 (DPI context — verify on mixed-DPI setup as acceptance criterion), A-4 (UIPI — return-value check from day one), A-5 (TAB passthrough policy — decide before writing hook logic), A-6 (VK_LSHIFT specificity), A-7 (modifier state reset on CAPSLOCK release), A-8 (rcWork grid boundaries), A-9 (integer rounding — unit test with non-divisible resolutions), A-13 (min/max clamp with post-call read-back)
+
+**Build order within phase:**
+1. Extend `FocusConfig` with `GridDivisions`, `GridSnap`, `GridSnapTolerance`
+2. Add `TabHeld` to `KeyEvent` record (non-breaking default)
+3. Extend `KeyboardHookHandler`: VK_TAB intercept, `_tabHeld` state, VK_LSHIFT/VK_LCONTROL specificity
+4. Add modifier routing to `CapsLockMonitor` (Option A: single callback with modifier string parameter)
+5. Implement `GridCalculator` static methods with unit tests covering non-divisible resolutions
+6. Implement `WindowManagerService.MoveWindow` (single monitor, all guards)
+7. Implement `WindowManagerService.GrowWindow` and `ShrinkWindow`
+8. Wire `OverlayOrchestrator.OnModifiedDirectionKeyDown`
+
+### Phase 2: Cross-Monitor Support and Overlay Integration
+
+**Rationale:** Cross-monitor move requires `MonitorHelper.FindAdjacentMonitor`, which depends on the core move pipeline being proven correct first. Overlay mode integration (reposition-in-place, ForegroundMonitor guard, mode indicators) requires the STA dispatch path to be stable before adding the `_moveOrResizeInProgress` flag and mode-aware render paths.
+
+**Delivers:** Move across monitor boundaries lands window at the correct grid cell on the adjacent monitor. Overlays track window position after each move step without flicker. Mode-specific overlay icons (move arrows, grow/shrink edge indicators) reflect the active modifier.
+
+**Addresses features:** Cross-monitor move transition (P1 feature); mode-specific overlay indicators (P1 differentiator).
+
+**Avoids pitfalls:** A-10 (cross-monitor jump — detect monitor transition and snap to first grid cell of new monitor), A-11 (overlay flicker — use reposition-in-place, not HideAll+ShowAll), A-12 (overlay tracks window after each step), A-14 (ForegroundMonitor refresh loop during move — add `_moveOrResizeInProgress` guard)
+
+**Build order within phase:**
+1. Add `MonitorHelper.FindAdjacentMonitor`
+2. Extend `WindowManagerService.MoveWindow` for cross-monitor detection
+3. Add `_moveOrResizeInProgress` guard to `OverlayOrchestrator`
+4. Implement overlay reposition-in-place (avoid HideAll+ShowAll per keypress)
+5. Add `OverlayMode` enum to `IOverlayRenderer.Paint` as optional parameter
+6. Implement `ModeIconRenderer` or extend `BorderRenderer` with mode awareness
+
+### Phase 3: Configuration Extensions (Optional)
+
+**Rationale:** Power-user features that add value but do not block core functionality. Defer until Phase 1 and Phase 2 are validated against real usage.
+
+**Delivers:** Per-monitor grid fraction overrides in config; snap-to-edge-on-hold variant; `focus snap-all` CLI command.
+
+**Addresses features:** P2 features from FEATURES.md prioritization matrix; future considerations.
 
 ### Phase Ordering Rationale
 
-- Phase 1 before Phase 2: the hook infrastructure must exist and be validated for overlay integration to be testable in any meaningful context
-- Phase 2 before Phase 3: overlay rendering correctness (focus theft, DPI, transparency, mode exclusivity) is much easier to debug in isolation than entangled with real navigation data
-- Phase 3 before Phase 4: the core feature must be functionally complete before robustness hardening
-- `IOverlayRenderer` and `DefaultBorderRenderer` introduced in Phase 2 so Phase 3 and beyond can add per-strategy renderers without interface changes — the interface establishes a seam that costs nothing now and prevents breaking changes later
+- Phase 1 before Phase 2: the coordinate system and modifier state machine must be correct before overlay integration can be correct. Cross-monitor behavior is hard to test without a stable same-monitor baseline.
+- Guard-first within Phase 1: all pitfall mitigations (maximized check, UIPI check, coordinate space separation) must be implemented before the happy path, not bolted on afterward. Testing a simple-cases implementation and adding guards later always requires refactoring the core path.
+- Config extension first within Phase 1: `FocusConfig` is a dependency of every other Phase 1 component.
+- `KeyEvent` / `KeyboardHookHandler` before `CapsLockMonitor` before `OverlayOrchestrator` before `WindowManagerService`: this is the dependency chain; building out of order leaves placeholder wiring that is error-prone.
+- The `OverlayMode` enum parameter is introduced in Phase 2 even if the initial implementation ignores the value — this establishes the seam at the correct time and avoids a breaking interface change in Phase 3.
 
 ### Research Flags
 
-Phases likely needing deeper research during planning:
-- **Phase 1:** WH_KEYBOARD_LL + .NET console app threading has CsWin32-specific friction (HOOKPROC type, hmod parameter correctness, `new HWND(0)` vs `HWND.Null` in GetMessage). Validate hook fires before building higher-level abstractions.
-- **Phase 2:** `RegisterClassEx` HINSTANCE is a documented CsWin32 friction point (Discussion #750). Premultiplied alpha compositing failure is subtle. A rendering spike recommended before full `OverlayWindow` implementation.
+Phases with standard patterns that need no additional research:
+- **Phase 1, steps 1-4** (config extension, KeyEvent extension, hook modifier tracking, CapsLockMonitor routing): established patterns matching existing code
+- **Phase 1, steps 5-8** (GridCalculator, WindowManagerService, orchestrator wiring): all APIs verified from official Microsoft Learn docs at HIGH confidence
+- **Phase 2, steps 1-2** (cross-monitor move): `MonitorHelper.EnumerateMonitors` already exists; geometry over existing monitor list
 
-Phases with standard patterns (skip research-phase):
-- **Phase 3:** `NavigationService.GetRankedCandidates` is proven and unchanged. `FocusConfig` JSON extension is additive. `OverlayManager` coordination is straightforward given working Phase 1 and Phase 2 primitives.
-- **Phase 4:** No new APIs — tactical robustness work only.
+Phases that may need investigation during implementation:
+- **Phase 1 — DPI context for external windows (A-3, MEDIUM confidence):** `SetWindowPos` behavior when moving a DPI-unaware target window from a PerMonitorV2 daemon process needs empirical validation on a mixed-DPI setup with a legacy DPI-unaware app. If position is wrong by a scaling factor, `SetThreadDpiAwarenessContext` override will be needed in the move handler.
+- **Phase 1 — min/max size enforcement (A-13, MEDIUM confidence):** Whether `SetWindowPos` automatically clamps to external window `WM_GETMINMAXINFO` ptMinTrackSize needs testing with an app that has a known minimum size (e.g., Calculator) before shipping the shrink feature.
+- **Phase 1 — TAB chord system-level interaction (A-5, LOW confidence):** Whether CAPS+TAB at the LL hook level triggers any Windows system behavior before the hook can suppress it needs empirical testing before writing suppression logic. Test this chord manually at Phase 1 start.
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | All APIs are official Win32; CsWin32 0.3.269 is current stable (Jan 2026); no new NuGet dependencies required; MEDIUM confidence on two specific CsWin32 friction points (HOOKPROC delegate, RegisterClassEx HINSTANCE) addressed explicitly in research |
-| Features | HIGH | Feature boundaries are clear and well-motivated; competitor analysis (PowerToys Shortcut Guide, Komorebi, FancyZones) confirms table-stakes set; anti-features are well-reasoned; dependency graph is explicit and complete |
-| Architecture | HIGH | Component breakdown is specific with pseudocode for all critical patterns; build order is dependency-driven; Win32 threading constraints are officially documented; all integration points between new and existing components are named |
-| Pitfalls | HIGH | 13 v2.0-specific pitfalls with concrete code fixes and phase assignments; 5 v1.0 pitfalls confirmed already mitigated in existing code; failure modes categorized by detection difficulty; "looks done but isn't" checklist provided |
+| Stack | HIGH | All new APIs verified against official Microsoft Learn docs. No new packages. CsWin32 generates all required declarations automatically. Version constraints already satisfied by existing app.manifest. |
+| Features | MEDIUM-HIGH | Core move/grow/shrink patterns verified against i3, Hyprland, dwm, Rectangle, and Win32 docs. Smart snap pattern verified from FancyZones and retracile.net grid WM implementations. Cross-monitor behavior extrapolated from Rectangle; Win32 mechanics verified. Edge-direction semantics confirmed from multiple independent WM sources. |
+| Architecture | HIGH | Existing architecture is documented against the live v3.0 codebase, not against a design doc. Integration points are precise: specific class names, method names, and field names are identified. No unknown components. Component status table (new/modify/extend) is explicit. |
+| Pitfalls | HIGH | Majority verified against official Microsoft documentation. Coordinate space pitfall (A-2) is empirically confirmed in multiple sources and is consistent with the existing codebase's own usage pattern. UIPI (A-4) documented in official security overview. TAB passthrough (A-5) is empirically unconfirmed at LOW confidence — only gap in the pitfall set. |
 
 **Overall confidence:** HIGH
 
 ### Gaps to Address
 
-- **CsWin32 HOOKPROC delegate interop specifics:** Research rates this MEDIUM — hmod parameter behavior and delegate type details have community but not official documentation. Resolve with a focused spike (install hook, fire callback, verify on first keypress) at the start of Phase 1 before building anything else.
-- **`UpdateLayeredWindow` vs `SetLayeredWindowAttributes` rendering approach:** PITFALLS.md notes `SetLayeredWindowAttributes` + color key is simpler and lower-risk for an initial implementation; STACK.md and ARCHITECTURE.md recommend `UpdateLayeredWindow` + DIB for per-pixel alpha correctness. Recommendation: choose `UpdateLayeredWindow` at Phase 2 start and commit — starting with the correct approach avoids a later migration that would require destroying and recreating overlay HWNDs.
-- **Foreground window change detection method:** Two options mentioned across research (polling at ~100ms vs. `SetWinEventHook` EVENT_SYSTEM_FOREGROUND). Polling is simpler for Phase 3; `SetWinEventHook` is more efficient for long-term. Decide at Phase 3 planning based on observed CPU impact of the polling approach.
-- **.NET 10 upgrade:** Currently targeting `net8.0`. Stack research confirms all v2.0 APIs work on both .NET 8 and .NET 10. If upgrading, verify `System.CommandLine 2.0.3` compatibility with .NET 10 RTM before committing.
+- **DPI virtualization for DPI-unaware target windows (A-3):** Research concludes the daemon's PerMonitorV2 context provides physical pixels, but interaction with a DPI-unaware target window's coordinate interpretation is not fully verified. Address by building a mixed-DPI test scenario (move a Notepad or 32-bit legacy app on a non-100% DPI monitor) as part of Phase 1 acceptance testing. If wrong, add `SetThreadDpiAwarenessContext` override.
+
+- **TAB chord system-level interaction (A-5 corollary):** Whether CAPS held while TAB is pressed triggers any Windows system behavior at the keyboard hook level is empirically unknown. Address by testing this specific chord at Phase 1 start — before writing suppression logic — to confirm what the chord does without any hook intervention.
+
+- **SetWindowPos auto-clamp of external window min-size (A-13):** Whether calling `SetWindowPos` with dimensions smaller than an external window's `WM_GETMINMAXINFO` ptMinTrackSize silently clamps (returns true, window stays at min) or requires explicit pre-clamping is MEDIUM confidence. Address with a concrete test (shrink Calculator, compare actual vs. requested rect) before shipping the shrink feature.
+
+- **Overlay flicker threshold (A-11):** Whether the existing HideAll+ShowAll pattern produces visible flicker during rapid move key presses is unknown without testing. The reposition-in-place solution is implemented only if flicker is confirmed user-visible during Phase 2 testing. This is an accept/defer decision, not a design gap.
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- [SetWindowsHookExA — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setwindowshookexa) — WH_KEYBOARD_LL constraints, hmod rules, global-only scope
-- [LowLevelKeyboardProc — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/winmsg/lowlevelkeyboardproc) — callback invocation model, nCode values, timeout behavior
-- [KBDLLHOOKSTRUCT — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-kbdllhookstruct) — vkCode, flags bit layout (LLKHF_UP bit 7, LLKHF_INJECTED bit 4)
-- [UpdateLayeredWindow — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-updatelayeredwindow) — ULW_ALPHA, BLENDFUNCTION, premultiplied alpha requirement
-- [SetLayeredWindowAttributes — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setlayeredwindowattributes) — WS_EX_LAYERED creation, mode exclusivity with UpdateLayeredWindow
-- [Window Features (Layered Windows) — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/winmsg/window-features) — layered window rendering modes and constraints
-- [Extended Window Styles — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/winmsg/extended-window-styles) — WS_EX_TOOLWINDOW, WS_EX_NOACTIVATE, WS_EX_LAYERED, WS_EX_TRANSPARENT, WS_EX_TOPMOST
-- [Hooks Overview — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/winmsg/about-hooks) — hook types, thread message loop requirements, hook chain behavior
-- [Using Messages and Message Queues — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/winmsg/using-messages-and-message-queues) — GetMessage/DispatchMessage loop structure
-- [PowerToys Shortcut Guide — Microsoft Learn](https://learn.microsoft.com/en-us/windows/powertoys/shortcut-guide) — hold-modifier overlay pattern precedent
-- [Komorebi Borders docs](https://lgug2z.github.io/komorebi/common-workflows/borders.html) — colored border per-state pattern
-- [Microsoft.Windows.CsWin32 on NuGet](https://www.nuget.org/packages/Microsoft.Windows.CsWin32) — version 0.3.269 current stable (Jan 16, 2026)
+- [SetWindowPos — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setwindowpos) — coordinate system, SWP_ flags, maximized window behavior
+- [GetWindowRect — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getwindowrect) — invisible border inclusion, DPI virtualization behavior, round-trip safety with SetWindowPos
+- [DwmGetWindowAttribute — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/api/dwmapi/nf-dwmapi-dwmgetwindowattribute) — DWMWA_EXTENDED_FRAME_BOUNDS behavior vs. GetWindowRect
+- [GetDpiForWindow — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getdpiforwindow) — Windows 10 1607+ requirement, per-monitor DPI
+- [GetDpiForMonitor — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/api/shellscalingapi/nf-shellscalingapi-getdpiformonitor) — MDT_EFFECTIVE_DPI, Shcore.dll, Windows 8.1+
+- [High DPI Desktop Application Development — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/hidpi/high-dpi-desktop-application-development-on-windows) — per-monitor v2 physical pixel model
+- [Virtual-Key Codes — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes) — VK_LSHIFT=0xA0, VK_LCONTROL=0xA2, VK_TAB=0x09
+- [LowLevelKeyboardProc — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/winmsg/lowlevelkeyboardproc) — hook callback constraints, 1-second timeout
+- [KBDLLHOOKSTRUCT — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-kbdllhookstruct) — vkCode left/right distinction, LLKHF_UP flag
+- [MONITORINFO / GetMonitorInfo — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-monitorinfo) — rcWork vs. rcMonitor, taskbar exclusion
+- [Security Considerations for Assistive Technologies (UIPI) — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/winauto/uiauto-securityoverview) — integrity level restrictions on SetWindowPos
+- [WM_GETMINMAXINFO — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/winmsg/wm-getminmaxinfo) — minimum window size enforcement
+- [Hyprland Dispatchers](https://wiki.hypr.land/Configuring/Dispatchers/) — moveactive/resizeactive semantics (feature validation)
+- [i3 User's Guide](https://i3wm.org/docs/userguide.html) — move/resize direction semantics (feature validation)
+- [dwm moveresize patch](https://dwm.suckless.org/patches/moveresize/) — pixel-step resize pattern (feature validation)
+- [Rectangle — rxhanson/Rectangle](https://github.com/rxhanson/Rectangle) — cross-monitor traverse behavior (feature validation)
 
 ### Secondary (MEDIUM confidence)
-- [CsWin32 Issue #245 — SetWindowsHookEx difficulty](https://github.com/microsoft/CsWin32/issues/245) — message loop requirement confirmed by maintainer
-- [CsWin32 Discussion #248 — SetWindowsHookEx](https://github.com/microsoft/CsWin32/discussions/248) — message pump architecture, delegate lifetime guidance
-- [CsWin32 Discussion #750 — RegisterClassEx error 87](https://github.com/microsoft/CsWin32/discussions/750) — HINSTANCE must use Marshal.GetHINSTANCE, not zero (community-confirmed fix)
-- [FancyZones — Microsoft Learn](https://learn.microsoft.com/en-us/windows/powertoys/fancyzones) — hold-Shift zone preview pattern
+- [FancyZones — PowerToys — Microsoft Learn](https://learn.microsoft.com/en-us/windows/powertoys/fancyzones) — snap tolerance default (10%) and zone merge behavior
+- [Grid-based Tiling Window Management, Mark II — retracile.net](https://retracile.net/blog/2022/08/27/00.00) — snap-first-then-step pattern from real implementation
+- [GetWindowRect — invisible borders reference](https://www.w3tutorials.net/blog/getwindowrect-returns-a-size-including-invisible-borders/) — border offset values (~7-8px), consistent with DWM docs
+- [Determining modifier key state when hooking keyboard input — Jon Egerton](https://jonegerton.com/dotnet/determining-the-state-of-modifier-keys-when-hooking-keyboard-input/) — GetKeyState(VK_LSHIFT) from hook callback pattern
+- [EmacsWiki: Grow Shrink Windows](https://www.emacswiki.org/emacs/GrowShrinkWindows) — edge-direction semantics confirmation
+- [Moving and Resizing Windows — Sawfish WM manual](https://www.sawfish.tuxfamily.org/sawfish.html/Moving-and-Resizing-Windows.html) — keyboard resize direction semantics
+
+### Tertiary (LOW confidence)
+- TAB chord system-level behavior (CAPS+TAB at LL hook level) — no authoritative documentation found; requires empirical testing before Phase 1 implementation
 
 ---
-*Research completed: 2026-02-28*
+*Research completed: 2026-03-02*
 *Ready for roadmap: yes*

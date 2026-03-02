@@ -1,500 +1,572 @@
 # Pitfalls Research
 
-**Domain:** Win32 window management — directional focus navigation CLI tool + daemon overlay (v2.0)
-**Researched:** 2026-02-28
-**Confidence:** HIGH (majority of findings verified against official Microsoft documentation and confirmed against existing codebase)
+**Domain:** Win32 window management — grid-snapped move/resize added to existing keyboard hook daemon (v3.1)
+**Researched:** 2026-03-02
+**Confidence:** HIGH (majority verified against official Microsoft documentation and existing codebase inspection)
 
 ---
 
-## Section A: v2.0 New Pitfalls — Daemon, Keyboard Hook, and Overlay
+## About This Document
 
-These pitfalls are specific to the v2.0 milestone: adding `focus daemon` (persistent process with `WH_KEYBOARD_LL`) and transparent overlay windows showing directional previews.
+This document covers pitfalls specific to **v3.1: adding window move and resize**. It supersedes the prior v2.0 edition by preserving all previously documented pitfalls (Section C) and adding the new v3.1-specific section (Section B).
+
+Pitfalls already solved in the codebase are marked "(already mitigated)" and retained for regression-test reference only.
 
 ---
 
-### Pitfall A-1: Hook Delegate Garbage Collected — Hook Fires into Freed Memory
+## Section A: v3.1 New Pitfalls — Window Move/Resize, New Modifiers, Grid, Overlay Updates
+
+---
+
+### Pitfall A-1: MoveWindow/SetWindowPos Ignores Requests on Maximized Windows — No Error Returned
 
 **What goes wrong:**
-The `WH_KEYBOARD_LL` hook is installed by passing a managed delegate as an unmanaged function pointer. The .NET garbage collector has no visibility into the hook table that Windows maintains. Once the delegate object has no managed references, the GC may collect it. The next time a key is pressed, Windows tries to call the now-freed pointer, resulting in an `AccessViolationException` or a silent crash. The hook appears to "stop working" after approximately 30–60 seconds.
+Calling `MoveWindow` or `SetWindowPos` on a maximized window succeeds (returns nonzero) but the window stays maximized and does not move. The call is silently discarded. If the move/resize code does not detect the maximized state before calling, the user presses CAPS+TAB+direction and nothing visibly happens, creating a confusing "it silently failed" experience.
 
 **Why it happens:**
-When a delegate is marshaled to unmanaged code via P/Invoke, the GC cannot track the pointer held by Windows. If the delegate is created as a local variable or an anonymous lambda captured in a temporary context, it becomes eligible for collection as soon as the method returns. This is documented by the `callbackOnCollectedDelegate` MDA in .NET Framework and remains equally applicable in .NET 10.
+Windows treats maximized windows specially: their position is owned by the window manager's maximize placement logic. Sending a `MoveWindow` call while `IsZoomed` is true triggers an internal path that ignores the coordinates. The function returns success because no error occurred — the request was simply overridden by the window's own state. `MoveWindow` documentation says "desktop apps only" and does not document that maximized state blocks the call.
 
 **How to avoid:**
-Store the hook delegate in a `static` field or an instance field on an object with process lifetime. Do not create the delegate as a local variable or inline lambda. The field must remain reachable through the hook's entire installed lifetime.
+Before moving or resizing, detect maximized state:
 
 ```csharp
-// WRONG — local variable, GC-eligible after InstallHook() returns
-void InstallHook()
+// Check IsZoomed (maximized) and SW_SHOWMINIMIZED (minimized) — both block MoveWindow
+SHOW_WINDOW_CMD placement = PInvoke.GetWindowPlacement(hwnd, out var wp) ? wp.showCmd : SHOW_WINDOW_CMD.SW_NORMAL;
+
+if (placement == SHOW_WINDOW_CMD.SW_MAXIMIZE || placement == SHOW_WINDOW_CMD.SW_SHOWMAXIMIZED)
 {
-    var proc = new HookProc(HookCallback); // collected after this method exits
-    _hookHandle = SetWindowsHookEx(WH_KEYBOARD_LL, proc, ...);
+    // Option A: restore first, then move.
+    PInvoke.ShowWindow(hwnd, SHOW_WINDOW_CMD.SW_RESTORE);
+    // ... now call MoveWindow/SetWindowPos with new coordinates
 }
-
-// CORRECT — static or long-lived instance field
-private static HookProc _hookProc = new HookProc(HookCallback); // stays alive
-private IntPtr _hookHandle;
-
-void InstallHook()
+else if (placement == SHOW_WINDOW_CMD.SW_MINIMIZE || placement == SHOW_WINDOW_CMD.SW_SHOWMINIMIZED)
 {
-    _hookHandle = SetWindowsHookEx(WH_KEYBOARD_LL, _hookProc, ...);
-}
-```
-
-**Warning signs:**
-- Hook fires reliably immediately after startup but stops responding after 30–90 seconds
-- Hook stops working under memory pressure
-- `AccessViolationException` appearing from native frames in crash dumps
-
-**Phase to address:**
-Phase 1 (Daemon core — keyboard hook installation). Must be reviewed as part of hook implementation code review before any other testing occurs.
-
----
-
-### Pitfall A-2: No Message Loop — Hook Never Fires
-
-**What goes wrong:**
-`WH_KEYBOARD_LL` is a "global" hook but is not injected into other processes. Instead, Windows delivers hook notifications by posting messages to the thread that called `SetWindowsHookEx`. If that thread has no Win32 message loop (no `GetMessage`/`DispatchMessage` pump), the messages never arrive and the hook callback is never called. The hook installs without error but appears completely inert.
-
-**Why it happens:**
-This is a documented requirement: "The thread that installed the hook must have a message loop." A .NET console application's main thread does not have a Win32 message loop by default — it runs a `Main()` method synchronously. Simply blocking with `Thread.Sleep`, `Console.ReadLine`, or a `CancellationToken.WaitHandle` is not sufficient; those do not process Win32 messages.
-
-**How to avoid:**
-Run the hook on a dedicated STA thread that runs a Win32 message loop. The simplest approach in a console app is a dedicated thread calling `Application.Run()` (System.Windows.Forms) or a manual `GetMessage`/`TranslateMessage`/`DispatchMessage` loop via P/Invoke. The hook callback itself must be fast (see Pitfall A-3) and post any work to a separate thread via a `ConcurrentQueue` or `Channel<T>`.
-
-```csharp
-// Minimal manual message loop pattern for a daemon thread
-Thread hookThread = new Thread(() =>
-{
-    _hookProc = new HookProc(HookCallback); // assign to field, not local
-    _hookHandle = SetWindowsHookEx(WH_KEYBOARD_LL, _hookProc, IntPtr.Zero, 0);
-
-    MSG msg;
-    while (GetMessage(out msg, IntPtr.Zero, 0, 0) > 0)
-    {
-        TranslateMessage(ref msg);
-        DispatchMessage(ref msg);
-    }
-
-    UnhookWindowsHookEx(_hookHandle);
-}) { IsBackground = true };
-hookThread.SetApartmentState(ApartmentState.STA);
-hookThread.Start();
-```
-
-**Warning signs:**
-- `SetWindowsHookEx` returns a non-null handle but the callback is never invoked
-- Manually pumping messages (e.g., calling `Application.DoEvents` or `Thread.Sleep` in a loop) does not work
-- Hook works from a WPF/WinForms test app but not from the converted console daemon
-
-**Phase to address:**
-Phase 1 (Daemon core — message loop setup). Must be the first thing validated with a "key press received" log line before any overlay logic is added.
-
----
-
-### Pitfall A-3: Hook Callback Exceeds Timeout — Hook Silently Removed
-
-**What goes wrong:**
-Windows enforces a timeout on `WH_KEYBOARD_LL` callbacks via the registry key `HKEY_CURRENT_USER\Control Panel\Desktop\LowLevelHooksTimeout` (default: 300ms, capped at 1000ms on Windows 10 1709+). If the callback exceeds this limit, Windows skips it for that keypress. On Windows 7 and later, after approximately 10 consecutive timeouts, **the hook is silently uninstalled without notification**. The daemon loses its ability to detect key presses with no log output and no error code.
-
-**Why it happens:**
-The callback runs synchronously on the thread's message loop, blocking all subsequent key delivery until it returns. Anything slow in the callback — overlay window creation, `EnumWindows`, scoring logic, any I/O — can cause a timeout. With the default 300ms budget, even a single slow window enumeration (~50ms+) under load can trigger the timeout.
-
-**How to avoid:**
-The callback must do minimal work and return immediately. All rendering, enumeration, and scoring must be offloaded to a separate thread via a non-blocking queue. The callback should only check the key code and post a message to the worker thread.
-
-```csharp
-// Correct pattern: callback enqueues, worker thread processes
-private static readonly Channel<KeyEvent> _keyChannel = Channel.CreateBounded<KeyEvent>(10);
-
-IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
-{
-    if (nCode >= 0)
-    {
-        var kbData = Marshal.PtrToStructure<KBDLLHOOKSTRUCT>(lParam);
-        _keyChannel.Writer.TryWrite(new KeyEvent((int)wParam, kbData.vkCode));
-    }
-    return CallNextHookEx(_hookHandle, nCode, wParam, lParam); // always call immediately
-}
-```
-
-There is no way to detect that the hook has been silently removed (confirmed in official docs: "There is no way for the application to know whether the hook is removed"). Implement a heartbeat mechanism: record the last callback timestamp and alert/restart the hook if no event is received for an unexpected duration while keys are known to be pressed.
-
-**Warning signs:**
-- Hook works normally during light typing but fails during rapid key sequences
-- Hook stops responding after a period of heavy UI activity
-- No log entries in callback despite keys being pressed
-
-**Phase to address:**
-Phase 1 (Daemon core — keyboard hook). The worker-thread pattern must be established from the start. The overlay pipeline goes on the worker thread; the callback is strictly a pass-through.
-
----
-
-### Pitfall A-4: Overlay Window Steals Focus from Target Applications
-
-**What goes wrong:**
-When an overlay window is created or shown, Windows sets it as the new foreground window by default. This means that when the daemon shows overlay borders on candidate windows while CAPSLOCK is held, it may steal focus from the current application — causing text input to be interrupted, menus to close, or modal dialogs to dismiss.
-
-**Why it happens:**
-Any window that becomes visible without explicit suppression of activation is a candidate for receiving focus. `WS_EX_TOPMOST` alone does not prevent focus theft. `ShowWindow(SW_SHOW)` on a newly created window triggers an implicit activation.
-
-**How to avoid:**
-Apply `WS_EX_NOACTIVATE` extended style to all overlay windows. This prevents them from being activated on click or show. For WPF, also set `Focusable="False"` and handle `WM_MOUSEACTIVATE` to return `MA_NOACTIVATE`. For a P/Invoke overlay window, set the style at creation time and additionally intercept `WM_ACTIVATE` to send `WM_ACTIVATE` with `WA_INACTIVE` back.
-
-```csharp
-// When creating the overlay window via CreateWindowEx:
-const int WS_EX_NOACTIVATE   = 0x08000000;
-const int WS_EX_TOOLWINDOW   = 0x00000080;
-const int WS_EX_TOPMOST      = 0x00000008;
-const int WS_EX_LAYERED      = 0x00080000;
-const int WS_EX_TRANSPARENT  = 0x00000020;
-
-int exStyle = WS_EX_TOPMOST | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW | WS_EX_LAYERED | WS_EX_TRANSPARENT;
-```
-
-Use `SetWindowPos` with `SWP_NOACTIVATE` flag when repositioning. Never use `SetForegroundWindow` on overlay windows.
-
-**Warning signs:**
-- Current application loses focus when CAPSLOCK is pressed and overlays appear
-- Text editor cursor moves away from its current position
-- Menu bars in applications close when overlay is shown
-
-**Phase to address:**
-Phase 2 (Overlay window creation). Must be validated as the first manual test: show overlay while typing in Notepad, verify no interruption.
-
----
-
-### Pitfall A-5: Overlay Windows Appear in EnumWindows Navigation Candidates
-
-**What goes wrong:**
-The overlay windows created for the preview display are real Win32 top-level windows. If they have visible extents and the `WS_VISIBLE` flag set, they will be returned by `EnumWindows` and may pass the Alt+Tab filter, appearing as navigation candidates alongside real user windows. When the user navigates left, the overlay border window itself may be selected as the target.
-
-**Why it happens:**
-The existing `WindowEnumerator` correctly filters `WS_EX_TOOLWINDOW` windows — but only if the overlay windows are actually created with that style. If the daemon creates overlay windows without `WS_EX_TOOLWINDOW`, or if it creates them with `WS_EX_APPWINDOW` (which overrides the toolwindow exclusion), they slip through the filter. This is a closed loop: the enumeration that drives the overlay calculation would itself be influenced by the overlay windows.
-
-**How to avoid:**
-All overlay windows must be created with `WS_EX_TOOLWINDOW` as a mandatory extended style. This is already checked by the existing `WindowEnumerator` filter at line 109: `if (isToolWindow) continue`. Verify that the overlay window class has `WS_EX_TOOLWINDOW` and does NOT have `WS_EX_APPWINDOW`. Add an assertion in the `GetNavigableWindows` path (debug mode) that verifies no window with the daemon's own process ID appears in the result set.
-
-```csharp
-// Required: WS_EX_TOOLWINDOW ensures overlay windows are excluded from Alt+Tab and focus enumeration
-// Required: WS_EX_NOACTIVATE prevents focus theft
-// Required: WS_EX_LAYERED enables per-pixel transparency
-// WS_EX_APPWINDOW must NOT be set (it would override the toolwindow exclusion)
-```
-
-**Warning signs:**
-- Debug enumeration (`focus --debug enumerate`) shows windows with the daemon's process name in the list
-- Navigation selects an invisible or translucent window that is the overlay itself
-- Overlay window titles appear in score debug output
-
-**Phase to address:**
-Phase 2 (Overlay window creation). Add a debug-mode assertion in `WindowEnumerator` that verifies the current daemon process ID never appears in results. Run this assertion during overlay development.
-
----
-
-### Pitfall A-6: DPI Mismatch Between DWMWA_EXTENDED_FRAME_BOUNDS and Overlay Window Positioning
-
-**What goes wrong:**
-The existing code correctly reads target window bounds via `DWMWA_EXTENDED_FRAME_BOUNDS`, which returns physical pixel coordinates. However, when creating and positioning overlay windows with `SetWindowPos`, Windows applies DPI scaling to the coordinates based on the DPI context of the thread calling `SetWindowPos`. If the calling thread has a different DPI context than the physical pixel space used by `DWMWA_EXTENDED_FRAME_BOUNDS`, the overlay window will appear offset — often by a consistent pixel amount proportional to the DPI scale factor.
-
-**Why it happens:**
-`DWMWA_EXTENDED_FRAME_BOUNDS` is documented as returning values "not adjusted for DPI" — meaning it always returns physical (raw pixel) coordinates. `SetWindowPos`, in contrast, operates in logical coordinates relative to the calling thread's DPI context. When the process declares `PerMonitorV2` awareness (as this project does via `app.manifest`), `SetWindowPos` accepts physical coordinates on the primary monitor but may apply per-monitor scaling adjustments on secondary monitors. The exact behavior depends on which monitor the overlay is being placed on.
-
-**How to avoid:**
-When calling `SetWindowPos` to position an overlay, use `SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)` on the thread that creates the overlay windows. Since the project already declares `PerMonitorV2` in the manifest, coordinates from `DWMWA_EXTENDED_FRAME_BOUNDS` should align with `SetWindowPos` on all monitors — but this must be verified explicitly on a multi-monitor setup with different DPI scales per monitor (e.g., primary at 100%, secondary at 150%).
-
-The existing `app.manifest` already sets `PerMonitorV2` for the process. Ensure overlay window creation threads do not change the DPI context with `SetThreadDpiAwarenessContext` in a way that diverges from the process manifest.
-
-**Warning signs:**
-- Overlay borders are offset from target windows, especially on secondary monitors
-- Offset is proportional to the DPI scaling percentage of the secondary monitor
-- Overlay aligns correctly on the primary monitor but not on monitors with different DPI settings
-
-**Phase to address:**
-Phase 2 (Overlay window creation + positioning). Test on a two-monitor configuration with unequal DPI (100% primary, 150% secondary) before declaring overlay positioning complete.
-
----
-
-### Pitfall A-7: CAPSLOCK Key State Ambiguity — Hook Sees Both Down and Toggle-Released Events
-
-**What goes wrong:**
-CAPSLOCK is a toggle key. When handling it with `WH_KEYBOARD_LL`, the daemon receives `WM_KEYDOWN` when the key is pressed and `WM_KEYUP` when it is released — identical to any other key. However, if the daemon suppresses the key (returns non-zero from the callback instead of calling `CallNextHookEx`), the toggle state of the CAPSLOCK LED and the system caps lock state may become inconsistent. Additionally, `GetAsyncKeyState` cannot be used inside the hook callback to check the current toggle state (official docs: "the asynchronous state of the key cannot be determined by calling `GetAsyncKeyState` from within the callback function").
-
-**Why it happens:**
-CAPSLOCK has dual semantics: it is a momentary physical key press (`WM_KEYDOWN`/`WM_KEYUP`) and a toggle that changes system state. Suppressing the key prevents the toggle state from changing, but the keyboard LED may still flip. Users relying on CAPSLOCK for typing will find their typing state unpredictable if the daemon suppresses CAPSLOCK unconditionally.
-
-**How to avoid:**
-Do not suppress CAPSLOCK. Let `CallNextHookEx` propagate the key normally. Track the held/released state in the hook callback using a boolean field toggled on `WM_KEYDOWN` (`VK_CAPITAL`) and cleared on `WM_KEYUP` (`VK_CAPITAL`). Show the overlay on keydown, hide it on keyup. This approach preserves the toggle behavior for users who actually use CAPSLOCK for typing.
-
-If suppression is required for a future requirement, use `GetKeyState(VK_CAPITAL)` (not `GetAsyncKeyState`) on the worker thread to query the toggle state after the callback returns, as `GetKeyState` reads the thread's message-queue state (which is updated before the callback is called).
-
-**Warning signs:**
-- Users report that CAPSLOCK stops toggling uppercase after the daemon runs
-- The daemon shows the overlay on first CAPSLOCK press but not on subsequent presses
-- Overlay appears stuck (shown when it should be hidden, or vice versa)
-
-**Phase to address:**
-Phase 1 (Daemon core — CAPSLOCK detection). Define the key state tracking pattern before overlay integration to avoid debugging compound problems.
-
----
-
-### Pitfall A-8: AHK's SendInput Suppresses the Daemon's Keyboard Hook
-
-**What goes wrong:**
-AutoHotkey uses `SendInput` to simulate key presses when executing hotkey actions. When AHK sends the CAPSLOCK+Arrow combination or sends the ALT key (as used by `focus.exe` for `SetForegroundWindow`), the `WH_KEYBOARD_LL` hook in the daemon will also receive these synthesized events — flagged with `LLKHF_INJECTED` in `KBDLLHOOKSTRUCT.flags`. Additionally, AHK temporarily removes its own low-level hooks during `SendInput` to allow uninterrupted injection, but this does not affect other processes' hooks. The daemon will see the AHK-injected keystrokes and may incorrectly interpret them as real user input.
-
-**Why it happens:**
-`SendInput` bypasses AHK's own hooks during injection, but `WH_KEYBOARD_LL` hooks in other processes still receive all input including injected events. The `LLKHF_INJECTED` flag (bit 4 of `KBDLLHOOKSTRUCT.flags`) is set on all events generated by `keybd_event` or `SendInput` to distinguish them from real hardware input. Most hook implementations ignore this flag and treat injected events identically to real keystrokes.
-
-**How to avoid:**
-Filter events in the hook callback by checking the `LLKHF_INJECTED` flag. If the daemon's purpose is to react to real hardware key presses only (specifically the physical CAPSLOCK key), reject events where `(flags & LLKHF_INJECTED) != 0`.
-
-```csharp
-IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
-{
-    if (nCode >= 0)
-    {
-        var data = Marshal.PtrToStructure<KBDLLHOOKSTRUCT>(lParam);
-        const int LLKHF_INJECTED = 0x10;
-        bool isInjected = (data.flags & LLKHF_INJECTED) != 0;
-
-        if (!isInjected && data.vkCode == VK_CAPITAL)
-        {
-            // Real physical CAPSLOCK key press
-            _keyChannel.Writer.TryWrite(new KeyEvent((int)wParam, data.vkCode));
-        }
-    }
-    return CallNextHookEx(_hookHandle, nCode, wParam, lParam);
-}
-```
-
-Note: AHK also has its own `WH_KEYBOARD_LL` hook. Both hooks coexist in a hook chain. Neither hook can "remove" the other. The order of notification depends on which process installed its hook last (last-in, first-notified). This is generally harmless for reading-only hooks like this daemon.
-
-**Warning signs:**
-- The overlay flickers when AHK executes a hotkey that involves SendInput
-- The overlay appears during `focus.exe` activation (when it sends ALT key via SendInput)
-- CAPSLOCK hold detection triggers on non-CAPSLOCK key events during AHK hotkey execution
-
-**Phase to address:**
-Phase 1 (Daemon core — hook filtering). Add the injected-flag check alongside the CAPSLOCK vkCode check from the start.
-
----
-
-### Pitfall A-9: Layered Window API Modes Are Mutually Exclusive and Cannot Be Switched
-
-**What goes wrong:**
-Windows provides two distinct APIs for layered (transparent) window drawing: `SetLayeredWindowAttributes` (whole-window opacity or color key) and `UpdateLayeredWindow` (per-pixel alpha bitmap). Once `SetLayeredWindowAttributes` has been called on a window, subsequent calls to `UpdateLayeredWindow` silently fail. Attempting to switch modes without resetting the `WS_EX_LAYERED` style bit causes the window to draw incorrectly or not at all.
-
-**Why it happens:**
-The two APIs are documented as mutually exclusive. `SetLayeredWindowAttributes` puts the window into "attribute mode" and `UpdateLayeredWindow` puts it into "window mode." Once in one mode, the window cannot switch without explicitly clearing and re-setting `WS_EX_LAYERED` via `SetWindowLong`. The official docs state: "Once `SetLayeredWindowAttributes` has been called for a layered window, subsequent `UpdateLayeredWindow` calls will fail until the layering style bit is cleared and set again."
-
-**How to avoid:**
-Pick one approach and use it exclusively. For colored border overlays, `SetLayeredWindowAttributes` with a transparency color key is the simplest approach: paint the window with a background color (the key color) and the border color, then call `SetLayeredWindowAttributes(hwnd, keyColor, 0, LWA_COLORKEY)` so the key color becomes transparent. This avoids per-pixel alpha complexity.
-
-For the initial implementation, use `SetLayeredWindowAttributes` only. If per-pixel compositing is needed in a later phase, create new overlay windows rather than switching modes on existing ones.
-
-**Warning signs:**
-- Overlay window appears solid black or solid colored rather than transparent
-- `UpdateLayeredWindow` returns false after `SetLayeredWindowAttributes` was called at startup
-- Overlay transparency works initially but breaks after a resize or repositioning
-
-**Phase to address:**
-Phase 2 (Overlay window creation). Decide the rendering approach during design. Document the chosen mode in code comments to prevent accidental mixing.
-
----
-
-### Pitfall A-10: WS_EX_TOPMOST Overlay Falls Behind Other Topmost Windows
-
-**What goes wrong:**
-The overlay windows use `WS_EX_TOPMOST` to stay above normal windows. However, other applications also use `WS_EX_TOPMOST` — task managers, game overlays, screen recorders, notification systems. When another topmost window is activated, it may move above the overlay windows in the Z-order, causing the overlay borders to be hidden behind another app's UI. The overlay appears to "disappear" even though it is still logically shown.
-
-**Why it happens:**
-`WS_EX_TOPMOST` is not an absolute guarantee of being the topmost visible window. Multiple topmost windows compete based on Z-order within the topmost layer. When a topmost window is activated or brought to front, it becomes the top of the topmost stack, and the focus overlay windows drop below it.
-
-**How to avoid:**
-This is partially unavoidable by design — the operating system owns Z-order within the topmost layer. The practical mitigation is: when the CAPSLOCK hold state changes (overlay is being shown), call `SetWindowPos(hwnd, HWND_TOPMOST, ...)` with `SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE` on each overlay window to re-assert their position at the top of the topmost stack. Do this on the worker thread each time the overlay is refreshed.
-
-Do not call `SetWindowPos` with `HWND_TOPMOST` from the hook callback itself — that must remain fast (see Pitfall A-3).
-
-**Warning signs:**
-- Overlay borders disappear when a notification popup appears
-- Overlay is visible in isolation but hidden by game overlay tools when present
-- Overlay is inconsistently visible depending on what other apps are running
-
-**Phase to address:**
-Phase 2 (Overlay lifecycle management). Consider this a known limitation and document it. The mitigation (re-assert HWND_TOPMOST on each refresh) is sufficient for normal use cases.
-
----
-
-### Pitfall A-11: Daemon Process Has No Console Window But Allocates One Implicitly
-
-**What goes wrong:**
-The existing `focus.exe` is a console application (`OutputType: Exe` in `.csproj`). When launched in daemon mode, it will either: (a) inherit and keep the terminal window it was started from, making the daemon visually disruptive; or (b) if launched by AHK with `Run, focus.exe daemon, , Hide`, still briefly flash a console window. Additionally, the daemon mode needs to suppress all `Console.WriteLine` output that the CLI mode emits.
-
-**Why it happens:**
-.NET console applications always have a console subsystem bit set in the PE header. Even when no terminal is attached, Windows may allocate a console on launch unless the project is configured as a Windows GUI application (`OutputType: WinExe`) or the console is explicitly freed via `FreeConsole()`. The existing codebase uses `Console.Error.WriteLine` for verbose/debug output throughout.
-
-**How to avoid:**
-Two viable approaches:
-
-Option A: Change `OutputType` to `WinExe` in the `.csproj`. This produces a GUI subsystem binary that does not allocate a console. The daemon will be completely silent on launch. CLI mode can re-attach a console with `AllocConsole()` when needed, or accept that debug output requires a separate terminal. This is the cleanest approach for a daemon.
-
-Option B: Keep `OutputType: Exe` but call `FreeConsole()` at the start of the daemon subcommand before starting the message loop. The existing console window (from the parent terminal) is freed but the terminal that launched the daemon is not affected.
-
-For v2.0, Option B (FreeConsole at daemon entry) is the lower-risk change because it does not require refactoring the existing CLI output paths.
-
-**Warning signs:**
-- Launching `focus daemon` from AHK shows a brief console flash
-- The terminal that ran `focus daemon` is blocked / waiting for the process to exit
-- `Console.ReadKey` calls in daemon code block the message loop thread
-
-**Phase to address:**
-Phase 1 (Daemon infrastructure). Must be decided before building any other daemon functionality, as it affects how the daemon is launched and tested.
-
----
-
-### Pitfall A-12: Daemon Has No Single-Instance Guarantee — Multiple Daemons Fight Over the Same Hook
-
-**What goes wrong:**
-If the user launches `focus daemon` twice (e.g., AHK script restarts it on crash), two daemon instances both install `WH_KEYBOARD_LL` hooks. Both receive all key events. Both may show overlay windows at the same time, doubling the borders and causing visual corruption. Each daemon's overlay windows may interfere with the other's enumeration (see Pitfall A-5). The user has no way to know two instances are running.
-
-**Why it happens:**
-There is no mechanism preventing multiple instances. The existing CLI tool is stateless and designed to allow concurrent invocations. A daemon mode changes this constraint entirely.
-
-**How to avoid:**
-Implement a named mutex at daemon entry. Use a GUID-derived name to avoid collision with other apps:
-
-```csharp
-using var mutex = new Mutex(true, "Global\\FocusDaemon-{your-project-guid}", out bool isNewInstance);
-if (!isNewInstance)
-{
-    // Another instance is running — exit silently or signal the existing instance
+    // Silently no-op — moving a minimized window is not useful for this feature
     return;
 }
-// Proceed with daemon setup
-// Keep 'mutex' variable in scope for process lifetime
 ```
 
-Use `Global\\` prefix (Global kernel namespace) so the mutex works across session boundaries if needed. Keep the `Mutex` object referenced for the full process lifetime — do not dispose it early. The GC can collect a `Mutex` even in a `using` block if the compiler optimizes it out; assign to a field if daemon is long-lived.
+For "move maximized window" semantics, restore-then-move is the correct pattern. Confirm the move completed by reading back `GetWindowRect` and comparing.
 
 **Warning signs:**
-- Double borders visible on target windows when CAPSLOCK is held
-- System performance degrades over time (multiple hook chains)
-- Two `focus.exe` processes visible in Task Manager
+- CAPS+TAB+direction on a maximized window produces no visible change and no error log
+- MoveWindow returns `true` but the window position is unchanged
 
 **Phase to address:**
-Phase 1 (Daemon infrastructure). Must be in place before any end-to-end testing begins.
+Phase 1 (Window move implementation). Add maximized/minimized state detection as the first guard in the move handler, before any grid math.
 
 ---
 
-### Pitfall A-13: Overlay Not Excluded From Its Own Window Scoring
+### Pitfall A-2: Using DwmGetWindowAttribute Bounds for MoveWindow Coordinates — Window Shrinks on Each Move
 
 **What goes wrong:**
-When the daemon re-runs the window enumeration and scoring logic (to determine which window to highlight per direction), the overlay windows may appear as candidates in the directional score results. The scoring logic then picks the overlay border window as the best candidate in a given direction, causing a nonsensical selection. Since `GetNavigableWindows` filters by `WS_EX_TOOLWINDOW`, this only fails if the overlay window is not correctly flagged.
+The existing codebase correctly uses `DWMWA_EXTENDED_FRAME_BOUNDS` (DWM visible bounds) for overlay positioning and navigation scoring. However, those bounds **cannot** be directly passed to `MoveWindow`. `DWMWA_EXTENDED_FRAME_BOUNDS` strips the invisible 8px resize shadow from each edge. If those coordinates are used as the new position in `MoveWindow`, the window loses 8px on each side every time it is moved, visually shrinking by ~16px per move operation. The effect is progressive: repeated moves cause the window to drift and shrink.
 
 **Why it happens:**
-This is the same root cause as Pitfall A-5, framed from the scoring perspective. The overlay windows are real `HWND`s with real screen coordinates. If they pass the tool-window filter (due to a missing style flag), they will have coordinates that place them exactly on top of their host windows — exactly where a navigation candidate might legitimately be. The scoring algorithm has no concept of "this window is mine."
+`GetWindowRect` returns the full window rect including the invisible shadow border. `DWMWA_EXTENDED_FRAME_BOUNDS` returns the visible content rect (shadow excluded). `MoveWindow` and `SetWindowPos` operate in `GetWindowRect` coordinate space — they expect the full rect including shadow. If you feed them the trimmed DWM bounds, you are specifying a position and size that excludes the shadow the window will still render, causing it to appear at the wrong position with the wrong size.
 
 **How to avoid:**
-Ensure all overlay HWNDs are created with `WS_EX_TOOLWINDOW`. Additionally, track the HWNDs of all created overlay windows in a `HashSet<nint>` and add an explicit exclusion pass in `GetNavigableWindows` for any HWND that belongs to the daemon process. This defense-in-depth approach catches both the style flag omission and any edge cases:
+Use `GetWindowRect` for the current position when computing move/resize deltas. Use `DWMWA_EXTENDED_FRAME_BOUNDS` only for display (overlay positioning, navigation scoring). Maintain the delta between the two at measurement time:
 
 ```csharp
-// In WindowEnumerator.GetNavigableWindows, add after the filter pipeline:
-uint currentPid = (uint)Environment.ProcessId;
-PInvoke.GetWindowThreadProcessId(hwnd, out uint windowPid);
-if (windowPid == currentPid) continue; // never include our own windows
+RECT fullRect = default;
+PInvoke.GetWindowRect(hwnd, out fullRect);
+
+RECT visibleRect = default;
+PInvoke.DwmGetWindowAttribute(hwnd, DWMWINDOWATTRIBUTE.DWMWA_EXTENDED_FRAME_BOUNDS, ...);
+
+// Shadow offsets (typically ~8px on each side on Windows 10/11):
+int shadowLeft   = visibleRect.left   - fullRect.left;   // positive value, e.g., 7
+int shadowTop    = visibleRect.top    - fullRect.top;     // 0 on Windows 11 with rounded corners
+int shadowRight  = fullRect.right     - visibleRect.right;
+int shadowBottom = fullRect.bottom    - visibleRect.bottom;
+
+// For a grid move of +gridStep in X, the new full rect left = fullRect.left + gridStep
+// Do NOT use visibleRect.left + gridStep as the new X for MoveWindow
 ```
 
 **Warning signs:**
-- Score table shows windows with the daemon process name as candidates
-- Navigation targets the overlay border window instead of the real window behind it
+- Window appears to shrink slightly after each CAPS+TAB+direction press
+- After several moves, window is noticeably smaller than it started
+- Window position drifts relative to expected grid alignment
 
 **Phase to address:**
-Phase 2 (Overlay integration with enumeration). Verify with `focus --debug enumerate` while the daemon is running; zero rows with the daemon process name must appear.
+Phase 1 (Window move implementation). Establish which rect is used for what purpose in a code comment at the top of the move handler before writing any grid math.
 
 ---
 
-## Section B: Retained v1.0 Critical Pitfalls
-
-These pitfalls from the original research remain fully applicable in v2.0. The daemon reuses the same `WindowEnumerator`, `NavigationService`, and `FocusActivator` subsystems.
-
----
-
-### Pitfall B-1: DPI Virtualization Corrupts Window Coordinates
+### Pitfall A-3: GetWindowRect Coordinate Space Differs from SetWindowPos Coordinate Space for External Windows
 
 **What goes wrong:**
-When the process is not declared per-monitor DPI aware, Windows virtualizes coordinates returned by `GetWindowRect`. A window that is physically 800x600px at 150% DPI on a secondary monitor may be reported as ~533x400px (scaled to 96 DPI). Comparing coordinates across monitors with different DPI settings will produce completely wrong directional distances.
+When the daemon calls `GetWindowRect` on the foreground window to get current position, the returned coordinates are in the coordinate space of the caller (the daemon process), not the target window. If the daemon is declared `PerMonitorV2` but the target window is DPI-unaware or System-DPI-aware, Windows virtualizes the coordinates returned to the daemon. The daemon receives scaled coordinates, computes a grid step, then calls `SetWindowPos` with coordinates in the daemon's coordinate space — but the target window's message handler receives the values in its own space. The window ends up at the wrong position.
 
 **Why it happens:**
-By default, .NET console apps have no DPI awareness manifest entry. Windows detects this and silently scales all coordinate values to 96 DPI logical units before returning them.
+`GetWindowRect` returns coordinates that are DPI-adjusted based on the calling process's DPI awareness context, not the window's own context. A PerMonitorV2 process calling `GetWindowRect` on a System-DPI-aware window on a 150% monitor will get physical pixel coordinates. But `SetWindowPos` targeting an external window sends coordinates to the window's own WM_WINDOWPOSCHANGING handler, which may receive virtualized values. This is one of the most confusing DPI edge cases in Win32.
 
 **How to avoid:**
-The project already has an `app.manifest` declaring `PerMonitorV2` DPI awareness — this pitfall is **already mitigated**. Verify that the daemon mode does not create any windows on threads where `SetThreadDpiAwarenessContext` has changed the DPI context away from `PerMonitorV2`.
+Use `SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)` before calling `GetWindowRect` to ensure you always get physical pixel coordinates. Then use `LogicalToPhysicalPointForPerMonitorDPI` if you need to convert. Alternatively, use `SetWindowPos` with `SWP_ASYNCWINDOWPOS` flag which posts the message asynchronously so the target window processes it in its own DPI context.
+
+The safest pattern for this daemon: always work in physical pixels (the daemon is already PerMonitorV2). Call `GetWindowRect` and `SetWindowPos` from the same STA thread with unchanged DPI context. Verify on a dual-monitor setup with mixed DPI using a DPI-unaware target (e.g., older 32-bit apps, legacy dialogs).
 
 **Warning signs:**
-- Navigation works on the developer machine but fails on machines with non-100% display scaling
-- Overlay borders appear offset from their target windows on secondary monitors
+- Window moves correctly on 100% DPI monitor but ends up at wrong position on 150% DPI monitor
+- Move distance is 1.5x or 0.67x expected amount on secondary monitor
+- Effect is consistent (always wrong by the same factor)
 
 **Phase to address:**
-v2.0 Phase 2 (Overlay positioning) — specifically verify DPI context of the thread that positions overlay windows.
+Phase 1 (Window move implementation). Include a multi-DPI integration test scenario in the acceptance criteria.
 
 ---
 
-### Pitfall B-2: Cloaked Windows Appear Visible
+### Pitfall A-4: UIPI Blocks SetWindowPos on Elevated and UIAccess Windows — Silent Failure
 
 **What goes wrong:**
-`IsWindowVisible()` returns `TRUE` for cloaked windows (windows on other virtual desktops, UWP frames). They appear as navigation candidates and can receive unwanted focus attempts.
+Calling `SetWindowPos` or `MoveWindow` on a window owned by an elevated process (Task Manager, administrator-run applications, UAC consent dialog) fails with `ERROR_ACCESS_DENIED` (5) when the daemon runs at medium integrity level (the default). The function returns `false`, `GetLastError` returns 5, but without checking the return value, the failure is invisible. The user presses CAPS+TAB+direction on an elevated window and nothing happens.
+
+**Why it happens:**
+Windows Vista+ enforces User Interface Privilege Isolation (UIPI). Processes at lower integrity levels cannot send certain messages or call window-manipulation functions on higher-integrity windows. `SetWindowPos` internally sends `WM_WINDOWPOSCHANGING` to the target window; UIPI blocks this cross-integrity message delivery. The same restriction applies to `MoveWindow`, which is a wrapper around `SetWindowPos`.
+
+UWP apps (running in the `ApplicationFrameHost` container) may also silently ignore external `SetWindowPos` calls even from processes at the same integrity level, because the `CoreWindow` inside the frame is managed by the UWP compositor.
 
 **How to avoid:**
-Already implemented in `WindowEnumerator` — `DwmGetWindowAttribute(DWMWA_CLOAKED)` check at line 69. This pitfall is **already mitigated**.
+Detect elevated windows before attempting move/resize. Use `OpenProcess` + `GetTokenInformation` to check the target window's process integrity level:
+
+```csharp
+bool IsWindowElevated(nint hwnd)
+{
+    uint pid;
+    PInvoke.GetWindowThreadProcessId(new HWND((nint)hwnd), out pid);
+    using var hProcess = PInvoke.OpenProcess(PROCESS_ACCESS_RIGHTS.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+    // ... GetTokenInformation with TokenIntegrityLevel
+    // Return true if level >= SECURITY_MANDATORY_HIGH_RID
+}
+```
+
+For elevated windows, either silently skip the operation or show a brief overlay notification that move/resize is not available for this window. Do not raise an exception or log an error — this is expected behavior.
+
+For UWP specifically, `IsWindowElevated` will return false (UWP is medium integrity) but `SetWindowPos` will still fail. Detect UWP by checking if the window class is `ApplicationFrameWindow` and handle accordingly.
 
 **Warning signs:**
-- Navigation switches focus to a window the user cannot see (flashes in taskbar only)
+- `SetWindowPos` returns `false` with `GetLastError` == 5 (ERROR_ACCESS_DENIED)
+- Move/resize silently fails only on Task Manager, elevated command prompts, or Windows settings windows
+- Move/resize works on regular apps but not on apps launched with "Run as administrator"
 
 **Phase to address:**
-Already addressed. Regression-test in v2.0 after any changes to `WindowEnumerator`.
+Phase 1 (Window move implementation). Add return-value checking with `GetLastError` logging from the start. Add elevated-window detection as a guard.
 
 ---
 
-### Pitfall B-3: SetForegroundWindow Silently Fails Due to Foreground Lock
+### Pitfall A-5: TAB Key (VK_TAB = 0x09) Has System-Level Focus Traversal Semantics — Suppression Breaks App Navigation
 
 **What goes wrong:**
-`SetForegroundWindow()` returns `TRUE` even when it does not actually change focus. Windows flashes the taskbar button instead.
+CAPS+TAB is planned as the move modifier. TAB is VK_TAB (0x09). The existing hook already intercepts CAPSLOCK+direction. When TAB is added to the suppressed key set while CAPSLOCK is held, every application that relies on TAB for internal focus traversal (dialog boxes, IDE tab switching, terminal input, web browser tab navigation) will have TAB suppressed from receiving it. The suppression will silently break intra-app navigation in the foreground application while CAPSLOCK is held.
+
+**Why it happens:**
+The current hook suppresses all intercepted keys by returning `(LRESULT)1` — the key never reaches the focused window. Direction keys (arrows, WASD) are acceptable to suppress because they are unambiguously navigation keys. TAB is different: virtually every interactive application uses TAB for focus traversal, form navigation, or input. Suppressing it while CAPSLOCK is held means the user cannot TAB through a form or IDE while in navigation mode.
 
 **How to avoid:**
-Already implemented in `FocusActivator` — the `SendInput` ALT-key bypass at lines 22-50. This pitfall is **already mitigated**.
+TAB must only be suppressed when CAPSLOCK is actually held AND the user is actively using the move-mode combo (i.e., TAB is being held down as part of the CAPS+TAB+direction chord). The suppression logic must track:
+
+1. CAPSLOCK is held (already tracked in `_capsLockHeld`)
+2. TAB was pressed while CAPSLOCK was held (track `_tabHeld` boolean)
+3. A direction key was pressed while both CAPSLOCK and TAB were held → suppress direction, trigger move
+4. TAB keyup → clear `_tabHeld`; do not suppress the TAB keyup itself
+
+Critically: do not suppress TAB's keydown event itself. TAB down should set `_tabHeld = true` and be passed through (CallNextHookEx). Only direction keys are suppressed. This way, if the user presses CAPS+TAB but then releases TAB without pressing a direction, the TAB keydown has already been forwarded and the app receives normal focus traversal.
 
 **Warning signs:**
-- Focus switching works from terminal but fails via AHK hotkey invocation
+- Dialog boxes cannot be navigated with TAB while the daemon is running
+- Browser tab switching (Ctrl+TAB) is broken when CAPSLOCK is held
+- IDE editor loses ability to insert tabs in code while CAPSLOCK is held
 
 **Phase to address:**
-Already addressed. In daemon mode, when AHK triggers actual navigation (`focus left`, etc.), this path is unchanged.
+Phase 1 (Modifier tracking and key dispatch). This is the most important UX correctness decision for the new modifier scheme. Design the suppression policy for TAB before writing hook logic.
 
 ---
 
-### Pitfall B-4: GetWindowRect Includes Invisible 8px Shadow Borders
+### Pitfall A-6: GetKeyState vs VK_LSHIFT/VK_LCONTROL — Right-Side Modifier Keys Incorrectly Trigger Move Mode
 
 **What goes wrong:**
-`GetWindowRect()` includes an invisible resize shadow border on Windows 10/11. Distance calculations are off by ~8px per side.
+The feature spec uses LSHIFT (left Shift) and LCTRL (left Ctrl) as the grow/shrink modifiers. If the hook checks `VK_SHIFT` (0x10) instead of `VK_LSHIFT` (0xA0), pressing right Shift also enters grow mode. This is unexpected: a user typing with right Shift while CAPSLOCK is briefly held would accidentally trigger grow/shrink instead of typing. Similarly, right Ctrl would trigger shrink mode.
+
+**Why it happens:**
+`GetKeyState(VK_SHIFT)` returns true for either left or right Shift. The existing code already uses `VK_SHIFT` (0x10) for modifier detection (line 141 in `KeyboardHookHandler.cs`). For the navigation use case this was acceptable — direction keys suppressed regardless of modifier. For LSHIFT specifically as a mode selector, the left/right distinction matters.
+
+`WM_KEYDOWN` messages do not carry left/right distinction directly — the VK code for both left and right Shift is `VK_SHIFT`. However, in the `WH_KEYBOARD_LL` hook's `KBDLLHOOKSTRUCT`, the `vkCode` field **does** distinguish: `VK_LSHIFT` (0xA0) vs `VK_RSHIFT` (0xA1). The LL hook receives the actual left/right VK code, unlike `WM_KEYDOWN`.
 
 **How to avoid:**
-Already implemented — `DWMWA_EXTENDED_FRAME_BOUNDS` used exclusively at line 158. This pitfall is **already mitigated**.
+Track LSHIFT and LCTRL state by intercepting their specific VK codes in the hook callback:
+
+```csharp
+private const uint VK_LSHIFT   = 0xA0;
+private const uint VK_RSHIFT   = 0xA1;
+private const uint VK_LCONTROL = 0xA2;
+private const uint VK_RCONTROL = 0xA3;
+private const uint VK_TAB      = 0x09;
+
+// In HookCallback, track these while CAPSLOCK is held:
+if (kbd->vkCode == VK_LSHIFT)   _lShiftHeld = capsIsKeyDown;
+if (kbd->vkCode == VK_LCONTROL) _lCtrlHeld  = capsIsKeyDown;
+if (kbd->vkCode == VK_TAB)      _tabHeld    = capsIsKeyDown;
+```
+
+Do not use `GetKeyState(VK_SHIFT)` for mode selection — it does not distinguish left from right.
+
+**Warning signs:**
+- Pressing right Shift while CAPSLOCK is held enters grow mode instead of typing normally
+- `GetKeyState(VK_LSHIFT) & 0x8000` correctly distinguishes — but only call it from the hook callback, not from a worker thread
+- Right Ctrl accidentally triggers shrink mode during normal editing
 
 **Phase to address:**
-Already addressed. Overlay positioning must also use `DWMWA_EXTENDED_FRAME_BOUNDS` bounds, not `GetWindowRect`.
+Phase 1 (Modifier tracking). Add VK_LSHIFT and VK_LCONTROL constants from the start. Do not use the generic VK_SHIFT/VK_CONTROL for mode selection.
 
 ---
 
-### Pitfall B-5: Window Filter Misses UWP App Host Windows
+### Pitfall A-7: Modifier State Desync After CAPSLOCK Release — Sticky Modifier Problem
 
 **What goes wrong:**
-UWP apps have two HWNDs (frame + CoreWindow). Simple filtering returns the wrong one.
+The user presses CAPSLOCK, then LSHIFT, then releases CAPSLOCK. In the current design, CAPSLOCK release causes the overlay to dismiss and tracking state to reset. However, if LSHIFT or TAB are still physically held when CAPSLOCK releases, their `_lShiftHeld` / `_tabHeld` flags remain `true` in the hook state machine. On the next CAPSLOCK press, the system may immediately think LSHIFT is held (grow mode is active) even though the user only pressed CAPSLOCK.
+
+**Why it happens:**
+The hook state machine tracks modifier state via boolean flags that are set on keydown and cleared on keyup. If CAPSLOCK releases before LSHIFT (a rapid chord), the LSHIFT-up event is still forwarded but the consumer (CapsLockMonitor) has already seen the CAPSLOCK release and dismissed overlays. The `_lShiftHeld` flag set by the hook thread is not automatically cleared when CAPSLOCK releases.
 
 **How to avoid:**
-Already implemented — Raymond Chen Alt+Tab algorithm with UWP dedup at lines 116-133 of `WindowEnumerator`. This pitfall is **already mitigated**.
+On CAPSLOCK release (or on `ResetState()` which is already called on sleep/wake), clear all auxiliary modifier flags:
+
+```csharp
+public void ResetState()
+{
+    _isHeld = false;
+    _lShiftHeld = false;
+    _lCtrlHeld = false;
+    _tabHeld = false;
+    _directionKeysHeld.Clear();
+}
+```
+
+Additionally, re-read the actual physical key state when CAPSLOCK is pressed (not when it is released) using `GetKeyState(VK_LSHIFT)` to initialize the flag from ground truth at chord-start time, rather than relying purely on the tracked flag value.
+
+**Warning signs:**
+- After a rapid CAPS+SHIFT release sequence, the next CAPS hold immediately enters grow mode without pressing SHIFT
+- Overlay shows grow-mode indicator without the user pressing LSHIFT
 
 **Phase to address:**
-Already addressed. Verify overlays render on `ApplicationFrameWindow` bounds, not `CoreWindow` bounds.
+Phase 1 (Modifier state machine). Add `ResetState` extension to clear the new modifier flags alongside the existing `_directionKeysHeld.Clear()`.
+
+---
+
+### Pitfall A-8: Grid Step Calculation Using Monitor Work Area vs Full Monitor Area — Taskbar Exclusion Error
+
+**What goes wrong:**
+Grid step size is calculated as a fraction of the monitor area (e.g., 1/16th of screen width). If the code uses `rcMonitor` (full physical monitor rect) instead of `rcWork` (work area excluding taskbar), windows moved to the bottom row of the grid may be positioned partially behind the taskbar. The grid does not align to what the user perceives as the "usable" screen.
+
+Additionally, if grid calculations use the full monitor area but the taskbar is at the top or left, the grid origin is off — windows moved to the "top-left grid cell" will be partially behind the taskbar.
+
+**Why it happens:**
+`GetMonitorInfo` returns both `rcMonitor` (full hardware screen bounds) and `rcWork` (work area after subtracting taskbar/docked toolbars). Applications that manage windows should use `rcWork` for usable-area calculations. Using `rcMonitor` gives a larger grid but positions windows in physically inaccessible areas.
+
+**How to avoid:**
+```csharp
+MONITORINFO mi = default;
+mi.cbSize = (uint)sizeof(MONITORINFO);
+PInvoke.GetMonitorInfo(hMon, ref mi);
+
+// Use rcWork for grid boundaries — excludes taskbar
+RECT workArea = mi.rcWork;
+int gridWidth  = workArea.right  - workArea.left;
+int gridHeight = workArea.bottom - workArea.top;
+
+int stepX = gridWidth  / gridDivisor;  // e.g., gridDivisor = 16
+int stepY = gridHeight / gridDivisor;
+
+// Grid origin is workArea.left, workArea.top — not 0,0 and not rcMonitor.left, rcMonitor.top
+```
+
+Use `rcWork` for grid cell boundaries. Use `rcMonitor` only for cross-monitor detection (checking which monitor a window belongs to).
+
+**Warning signs:**
+- Windows moved to the bottom of the screen partially hide behind the taskbar
+- Windows moved to the top overlap with a top-docked taskbar
+- Grid appears correct when taskbar is on the primary monitor but wrong when it is on a secondary monitor
+
+**Phase to address:**
+Phase 1 (Grid calculation). Establish the `rcWork` pattern before any grid step math is written.
+
+---
+
+### Pitfall A-9: Integer Rounding in Grid Step Calculations Causes Cumulative Drift
+
+**What goes wrong:**
+Grid step is computed as `monitorWidth / gridDivisor`. If `monitorWidth` is not evenly divisible (e.g., 1920 / 16 = 120 exactly, but 2560 / 16 = 160 exactly — these divide cleanly; however 3440 / 16 = 215.0, and 1366 / 16 = 85.375), integer division truncates the remainder. When snapping is applied, a window snapped to position `k * stepX` will be at `k * 85` pixels, not `k * 85.375`. Over multiple moves, the accumulated error is small but the grid cells are not uniform.
+
+A more serious problem: the "smart snap with tolerance (~10% of grid step)" may fail to snap a window that is just outside tolerance because the snap target position was calculated with truncated step size while the window's actual position was based on a different rounding.
+
+**Why it happens:**
+Win32 window coordinates are integers. Grid steps must be integers. Floating-point intermediate calculations lose precision when cast back to `int`. If the snap target and the window position are computed with different rounding (one uses `Math.Round`, one uses integer truncation), they can differ by 1–2 pixels, causing snap to miss.
+
+**How to avoid:**
+Use a consistent rounding policy throughout: choose `(int)Math.Round(monitorWidth / (double)gridDivisor)` for step calculation and use the same rounding everywhere. When computing snap targets, snap to `(int)Math.Round(position / step) * step` rather than `(position / step) * step` (integer division loses remainder). Test with 3440x1440 (16:9 ultrawide), 2560x1440, and 1366x768 to confirm consistent behavior.
+
+Alternatively, avoid snap-to-grid entirely if the move itself always moves by exactly `step` pixels from the snapped starting position — but only if the initial position is already snapped.
+
+**Warning signs:**
+- Window does not snap to expected grid position after move — ends up 1–2 pixels off
+- Snap tolerance test passes in unit tests but fails on real monitors with odd resolutions
+- Grid cells visually appear unequal in width
+
+**Phase to address:**
+Phase 1 (Grid calculation). Write a unit test for step calculation with non-divisible resolutions before integrating into the move handler.
+
+---
+
+### Pitfall A-10: Cross-Monitor Move — Window Jumps to Wrong Position When Crossing Monitor Boundary
+
+**What goes wrong:**
+When a window is moved off the right edge of monitor A onto monitor B, the grid step for monitor B differs (different resolution). If the code calculates the new position as `currentLeft + stepA` but monitor B starts at an offset in virtual screen coordinates, the window ends up at an arbitrary position on monitor B rather than at the leftmost grid cell. The cross-monitor boundary is invisible to the grid math.
+
+**Why it happens:**
+Each monitor has its own work area and its own grid. Virtual screen coordinates are a single continuous coordinate space, but the "grid" is monitor-local. When a window crosses from monitor A to monitor B, the correct behavior is: detect the boundary crossing, place the window at the first grid cell of monitor B that is logically "adjacent" to where it was on monitor A. Without this detection, the math simply continues adding `stepA` past the monitor boundary, landing at a non-grid-aligned position on monitor B.
+
+**How to avoid:**
+Detect monitor transition during move:
+
+```csharp
+// After computing the proposed new position:
+HMONITOR newMon = PInvoke.MonitorFromRect(proposedRect, MONITOR_FROM_FLAGS.MONITOR_DEFAULTTONEAREST);
+
+if (newMon != currentMon)
+{
+    // Window is crossing to a new monitor — snap to the adjacent grid cell on the new monitor
+    MONITORINFO newMi = GetMonitorInfo(newMon);
+    RECT newWork = newMi.rcWork;
+    int newStepX = (newWork.right - newWork.left) / gridDivisor;
+    int newStepY = (newWork.bottom - newWork.top) / gridDivisor;
+
+    // For a rightward move: snap to left edge of new monitor's first column
+    proposedRect.left = newWork.left;
+    proposedRect.right = proposedRect.left + windowWidth; // preserve window width
+}
+```
+
+**Warning signs:**
+- Moving a window past the right edge of monitor A places it at an arbitrary position on monitor B
+- Moving back left from monitor B places it in a different column on monitor A than expected
+- Cross-monitor move is "lossy" — information about grid alignment is lost on each crossing
+
+**Phase to address:**
+Phase 2 (Cross-monitor move support). Implement same-monitor move first, then layer in cross-monitor detection separately.
+
+---
+
+### Pitfall A-11: Overlay Flicker During Rapid Move/Resize Keystrokes — HideAll + ShowAll on Every KeyDown
+
+**What goes wrong:**
+The existing `ShowOverlaysForCurrentForeground` calls `HideAll()` at the start (to clear stale positions) then rebuilds and shows all overlays. For navigation this is acceptable — overlays update once per CAPSLOCK hold. For move/resize, the overlay must update after **every keypress** (every CAPS+TAB+direction shows the new position). With the current pattern, each keypress causes a HideAll (all overlays disappear for one frame) followed by ShowAll (overlays reappear in new positions). At 60Hz, this is a 1-frame flicker visible as a brief blink.
+
+**Why it happens:**
+The hide-then-show sequence is not atomic. Between the `HideAll()` call and the subsequent `ShowOverlay()` calls, the STA message pump may process a WM_PAINT, causing a rendered frame where no overlays are visible. On a 16ms frame budget, even a few microseconds of "all hidden" state can produce a visible flash.
+
+**How to avoid:**
+For move/resize overlay updates, use the `Reposition` + `Paint` + `Show` pattern that updates position and content without first hiding. Since the overlay bounds change every keypress, update each overlay window in-place:
+
+```csharp
+// Instead of:
+_overlayManager.HideAll();
+// ... compute new bounds ...
+_overlayManager.ShowOverlay(direction, newBounds);
+
+// Do:
+// Only hide overlays that are no longer needed; reposition+repaint those that remain
+_overlayManager.UpdateOverlay(direction, newBounds); // Reposition + Paint without Hide
+```
+
+Or: accept the flicker as a known UX tradeoff and document it. For a single-pixel border on a fast monitor, the flicker may be imperceptible in practice.
+
+Alternatively, use `BeginDeferWindowPos` / `DeferWindowPos` / `EndDeferWindowPos` to batch multiple overlay repositions atomically within a single compositor frame.
+
+**Warning signs:**
+- Overlays visibly blink during rapid CAPS+TAB+direction key presses
+- Flicker is more noticeable on high-refresh-rate monitors (where a single dropped frame is more visible)
+- User reports overlays "stuttering" during move mode
+
+**Phase to address:**
+Phase 2 (Overlay update during move/resize). Start with the simple HideAll+ShowAll pattern. Profile and address flicker only if user testing confirms it is noticeable.
+
+---
+
+### Pitfall A-12: Overlay Does Not Track Window During Move — Shows Pre-Move Position
+
+**What goes wrong:**
+After calling `SetWindowPos` to move the foreground window, the overlay still shows the window's original position (pre-move). The overlay was positioned based on the bounds read before the move command. The overlay must be repositioned to the new bounds after each move step.
+
+**Why it happens:**
+The existing overlay update flow is: `ForegroundMonitor` detects foreground change → overlay refreshes. A move command does not change the foreground window — the same window remains foreground. The `ForegroundMonitor`-based refresh does not fire. The overlay stays at the old position until CAPSLOCK is released and re-held.
+
+**How to avoid:**
+After each successful `SetWindowPos` call, immediately re-read the window's new bounds and refresh the overlay:
+
+```csharp
+void MoveWindowBySta(HWND hwnd, Direction direction)
+{
+    // 1. Read current bounds
+    // 2. Compute new bounds
+    // 3. SetWindowPos
+    // 4. Read back actual new bounds (in case the move was partially constrained)
+    PInvoke.GetWindowRect(hwnd, out RECT actualNewRect);
+    // 5. Update overlays to new position
+    UpdateMoveOverlay(actualNewRect);
+}
+```
+
+Step 4 (read-back) is important because the window may not have moved to exactly the requested position — UIPI restrictions, min/max size constraints, or snap resistance may have constrained the move. Always work from the actual post-move bounds.
+
+**Warning signs:**
+- Overlay shows old window position while the window has moved to a new position
+- Overlay "catches up" to window position only when CAPSLOCK is released and re-held
+- Mode indicator (move arrows) is visible at the wrong screen position
+
+**Phase to address:**
+Phase 2 (Overlay integration for move/resize). The post-move overlay refresh must be part of the same STA-thread operation as the move itself.
+
+---
+
+### Pitfall A-13: Window Min/Max Size Constraints Silently Clamp Resize Operations
+
+**What goes wrong:**
+When shrinking a window with CAPS+LCTRL+direction, the window may hit its minimum allowed size (set via `WM_GETMINMAXINFO` or `SetWindowPos` constraints). `SetWindowPos` returns true but the window does not shrink further. If the code re-uses the requested size for subsequent calculations, each shrink step appears to take effect (size decrements by `step` in the stored value) but the window stays at min-size. Eventually the stored size and the actual window size diverge.
+
+**Why it happens:**
+Windows enforces minimum/maximum window dimensions silently. The `WM_GETMINMAXINFO` message handler in the target window's WndProc sets minimum dimensions; `SetWindowPos` respects these without informing the caller. The caller receives a success return but the actual position/size clamped by the target.
+
+**How to avoid:**
+Always read back the actual window dimensions after calling `SetWindowPos` (same pattern as A-12). Use the actual post-call rect for all subsequent calculations, not the requested rect:
+
+```csharp
+PInvoke.SetWindowPos(hwnd, HWND.Null, newLeft, newTop, newWidth, newHeight,
+    SET_WINDOW_POS_FLAGS.SWP_NOZORDER | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
+
+// Always read back the actual result
+PInvoke.GetWindowRect(hwnd, out RECT actualRect);
+// Use actualRect, not newLeft/newTop/newWidth/newHeight, for overlay positioning
+```
+
+If the read-back dimensions match the pre-call dimensions (no change occurred), treat this as "at minimum/maximum size" and suppress further requests in that direction until a reverse operation is attempted.
+
+**Warning signs:**
+- Shrink mode appears to work for first few key presses but stops visually at some point
+- The overlay shows a size smaller than the actual window
+- Repeated shrink presses make no visual change after a certain point
+
+**Phase to address:**
+Phase 1 (Resize implementation). Establish the post-call read-back pattern for all move/resize operations from the start.
+
+---
+
+### Pitfall A-14: WINEVENT_OUTOFCONTEXT ForegroundMonitor Fires During Move — Causes Overlay Refresh Loop
+
+**What goes wrong:**
+The `ForegroundMonitor` fires an event via `SetWinEventHook(EVENT_SYSTEM_FOREGROUND, ...)` when the foreground window changes. During a window move, if the daemon's own move code calls `SetWindowPos` on the target window, Windows may send `EVENT_SYSTEM_FOREGROUND` again (depending on whether focus was re-asserted). This triggers a full overlay refresh from `ShowOverlaysForCurrentForeground` at the same time the move handler is also updating overlays — resulting in two concurrent overlay update sequences on the STA thread.
+
+**Why it happens:**
+Both paths (ForegroundMonitor callback and move-complete overlay update) run on the STA thread, so they do not race. However, if the ForegroundMonitor fires during a move and triggers `ShowOverlaysForCurrentForeground`, it calls `HideAll()` first — which hides the move-mode overlay mid-operation. The result is overlay flicker and potentially inconsistent overlay state (move-mode indicator disappears, then navigation-mode indicator appears briefly).
+
+**How to avoid:**
+Add a `_moveOrResizeInProgress` flag on the STA thread. In `ForegroundMonitor`'s callback, skip the full overlay refresh if a move/resize is in progress:
+
+```csharp
+private void OnForegroundChanged(HWND hwnd)
+{
+    if (!_capsLockHeld) return;
+    if (_moveOrResizeInProgress) return; // skip — move handler owns overlay during move
+    ShowOverlaysForCurrentForeground();
+}
+```
+
+Set `_moveOrResizeInProgress = true` before the first `SetWindowPos` call and `= false` after the post-call overlay update completes.
+
+**Warning signs:**
+- Overlay flickers between "move mode" and "navigation mode" indicator during move
+- `ShowOverlaysForCurrentForeground` logs show during move operations
+- Overlay appears to briefly reset to navigation mode between move steps
+
+**Phase to address:**
+Phase 2 (Overlay integration for move/resize). Add the `_moveOrResizeInProgress` guard when connecting the move handler to the STA dispatch path.
+
+---
+
+## Section B: v3.0 Pitfalls (Retained from Previous Research — Still Applicable)
+
+The following pitfalls were documented for v2.0 and v3.0. They remain applicable throughout v3.1 development. All have been addressed in the existing codebase; retain for regression testing.
+
+---
+
+### Pitfall B-1: Hook Delegate Garbage Collected — Hook Fires into Freed Memory
+
+**(Already mitigated — `static s_hookProc` field in `KeyboardHookHandler.cs`)**
+
+The `WH_KEYBOARD_LL` delegate must be stored in a static or long-lived instance field. GC can collect a delegate held only in a local variable after the method returns, crashing the process.
+
+**Phase to address:** Already addressed. Regression-test after any refactoring of `KeyboardHookHandler`.
+
+---
+
+### Pitfall B-2: No Message Loop — Hook Never Fires
+
+**(Already mitigated — WinForms `Application.Run` on STA thread in daemon)**
+
+`WH_KEYBOARD_LL` requires a Win32 message loop on the installing thread. The daemon uses WinForms `Application.Run` for this purpose.
+
+**Phase to address:** Already addressed.
+
+---
+
+### Pitfall B-3: Hook Callback Exceeds 300ms/1000ms Timeout — Silently Removed
+
+**(Already mitigated — `TryWrite` to Channel; all work on worker thread)**
+
+The hook callback must return in under the `LowLevelHooksTimeout` registry value. All non-trivial work is on the worker thread.
+
+**Phase to address:** Already addressed. Verify that the new move/resize dispatch path (`_staDispatcher.Invoke`) does not block the STA message pump for long enough to back up hook callbacks. Move/resize operations must complete within ~80ms on the STA thread.
+
+---
+
+### Pitfall B-4: Overlay Window Steals Focus
+
+**(Already mitigated — `WS_EX_NOACTIVATE`, `SWP_NOACTIVATE` on all overlay operations)**
+
+**Phase to address:** Already addressed. New move-mode overlay windows (if any are added) must also carry `WS_EX_NOACTIVATE`.
+
+---
+
+### Pitfall B-5: AHK Injected Keys Trigger Hook — Overlay Flickers
+
+**(Already mitigated — `LLKHF_INJECTED` filter at hook callback entry)**
+
+**Phase to address:** Already addressed. Verify the new TAB/LSHIFT/LCTRL paths also filter injected keys.
+
+---
+
+### Pitfall B-6: Layered Window API Modes Mutually Exclusive
+
+**(Already mitigated — `UpdateLayeredWindow` + premultiplied alpha DIB used exclusively)**
+
+**Phase to address:** Already addressed. Any new overlay content for move/resize mode must use the same `UpdateLayeredWindow` path, not `SetLayeredWindowAttributes`.
+
+---
+
+### Pitfall B-7: DPI Mismatch Between DWMWA_EXTENDED_FRAME_BOUNDS and Overlay Positioning
+
+**(Already mitigated — PerMonitorV2 manifest; STA thread DPI context unchanged)**
+
+**Phase to address:** Already addressed. See also new Pitfall A-3 for the new wrinkle introduced by moving external windows.
+
+---
+
+### Pitfall B-8: CAPSLOCK State Ambiguity and Toggle Preservation
+
+**(Already mitigated — CAPSLOCK is suppressed; bare CAPSLOCK toggle also suppressed)**
+
+**Phase to address:** Already addressed. The new modifier keys (TAB, LSHIFT, LCTRL) must NOT be unconditionally suppressed — only direction keys during active move/resize mode.
 
 ---
 
@@ -502,15 +574,14 @@ Already addressed. Verify overlays render on `ApplicationFrameWindow` bounds, no
 
 | Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
 |----------|-------------------|----------------|-----------------|
-| Hook delegate as local variable | Simpler code | GC collection causes hook to stop after 30-60s | Never |
-| Doing work in hook callback | Avoids worker thread complexity | Hook timeout → silent removal after 10 consecutive timeouts | Never |
-| Not checking `LLKHF_INJECTED` | Simpler callback logic | Overlay flickers when AHK sends synthetic keys | Never for this project |
-| `SetLayeredWindowAttributes` and `UpdateLayeredWindow` mixed | Access to both APIs | `UpdateLayeredWindow` silently fails; mode switch requires style reset | Never |
-| Omitting `WS_EX_NOACTIVATE` on overlay | Easier window creation | Overlay steals focus from user's active application | Never |
-| Omitting `WS_EX_TOOLWINDOW` on overlay | One less style flag | Overlay appears in navigation candidates; self-referential enumeration | Never |
-| Omitting single-instance mutex | No daemon coordination code | Two daemons fight over the same hook; double-overlays shown | Never |
-| Using `GetWindowRect` instead of `DWMWA_EXTENDED_FRAME_BOUNDS` | Simpler P/Invoke | 8px coordinate errors on Windows 10/11 | Never |
-| Skipping cloaked-window check | Fewer API calls | Selects invisible windows on virtual desktops | Never |
+| Using DWM extended bounds for MoveWindow coordinates | Same variable already computed | Window shrinks by ~8px per side on each move | Never |
+| Skipping post-SetWindowPos read-back | Simpler code | Stored size diverges from actual; overlay at wrong position | Never |
+| Not checking SetWindowPos return value | One less error path | Silent failures on elevated windows invisible; no diagnostic | Never |
+| Using VK_SHIFT instead of VK_LSHIFT for mode selection | Simpler VK code | Right Shift accidentally activates grow mode | Never |
+| Suppressing TAB unconditionally while CAPSLOCK held | Simpler hook logic | All dialog/browser/IDE tab navigation broken during CAPS hold | Never |
+| Computing grid step from rcMonitor instead of rcWork | Simpler GetMonitorInfo usage | Windows moved to bottom/top row partially behind taskbar | Never |
+| Skipping cross-monitor transition detection | Less geometry code | Window placed at arbitrary position when crossing monitor boundary | Acceptable for MVP if cross-monitor is deferred to Phase 2 |
+| HideAll+ShowAll pattern for overlay during move | Reuses existing refresh path | 1-frame overlay flicker per keypress during rapid move | Acceptable if user testing confirms imperceptible |
 
 ---
 
@@ -518,13 +589,14 @@ Already addressed. Verify overlays render on `ApplicationFrameWindow` bounds, no
 
 | Integration | Common Mistake | Correct Approach |
 |-------------|----------------|------------------|
-| AHK + Daemon | AHK hotkeys send keys via SendInput which the hook receives as injected events | Check `LLKHF_INJECTED` flag in hook callback; only respond to physical hardware events |
-| AHK + Daemon | Running `focus.exe daemon` without Hide flag creates a visible console window | Launch with `Run, focus.exe daemon,, Hide` or change output type to WinExe |
-| AHK + Daemon | No mechanism to restart daemon if it crashes | Use AHK `OnExit` or a watchdog script to detect and restart the daemon process |
-| WH_KEYBOARD_LL + Console App | Console app has no message loop; hook never fires | Dedicated STA thread with `GetMessage`/`DispatchMessage` loop required |
-| Overlay + EnumWindows | Overlay HWNDs appear in navigation candidates | `WS_EX_TOOLWINDOW` required on all overlay windows; verify with `focus --debug enumerate` |
-| Overlay + DPI | `SetWindowPos` on secondary monitor with different DPI places overlay at wrong position | Use physical pixel coordinates throughout; verify on unequal DPI multi-monitor setup |
-| SetForegroundWindow + Daemon's SendInput | The daemon sends ALT via SendInput for focus switching, which its own hook will receive | Filter `LLKHF_INJECTED` in hook callback |
+| SetWindowPos + DWM bounds | Using DWMWA_EXTENDED_FRAME_BOUNDS coordinates in MoveWindow | Use GetWindowRect for move targets; DWM bounds only for overlays and navigation scoring |
+| SetWindowPos + maximized window | Calling MoveWindow without checking IsZoomed | Detect ShowWindowCmd state; call SW_RESTORE before moving if maximized |
+| UIPI + elevated window | Ignoring SetWindowPos return value | Check return + GetLastError; silently skip move on ERROR_ACCESS_DENIED (5) |
+| GetKeyState + left/right modifiers | Using VK_SHIFT (0x10) for LSHIFT detection | Use VK_LSHIFT (0xA0) directly in LL hook vkCode checks; GetKeyState(VK_LSHIFT) from hook callback |
+| TAB interception + app focus traversal | Suppressing TAB keydown while CAPSLOCK held | Only suppress direction keys; TAB sets _tabHeld flag and is forwarded through CallNextHookEx |
+| Overlay update + window move | ForegroundMonitor triggering full refresh during move | Gate ForegroundMonitor refresh on !_moveOrResizeInProgress flag |
+| Grid calculation + work area | Using rcMonitor for grid boundaries | Use rcWork from GetMonitorInfo for all grid cell and origin calculations |
+| Min/max size + shrink mode | Trusting requested size after SetWindowPos | Read back actual size with GetWindowRect; treat no-change as "at limit" |
 
 ---
 
@@ -532,48 +604,27 @@ Already addressed. Verify overlays render on `ApplicationFrameWindow` bounds, no
 
 | Trap | Symptoms | Prevention | When It Breaks |
 |------|----------|------------|----------------|
-| Window enumeration in hook callback | Hook timeout → silent removal after ~10 timeouts | Move all enumeration to worker thread; callback only enqueues key events | First keypress when enumeration takes >300ms |
-| Creating overlay windows on CAPSLOCK press (cold path) | Visible lag between CAPSLOCK press and overlay appearing | Pre-create overlay windows at daemon startup; hide/show them rather than create/destroy | Every CAPSLOCK press if windows are created lazily |
-| Calling `GetWindowText` in enumeration for all windows | Hangs for 2-5 seconds when a hung app is open | Only call for windows that pass all other filters | Any session with a hung application |
-| Full re-enumeration on every overlay refresh | CPU spike; overlay flickers | Cache window list and invalidate only on shell notifications (WinEventHook for window create/destroy) | Sessions with rapidly changing window sets |
-
----
-
-## Security Mistakes
-
-| Mistake | Risk | Prevention |
-|---------|------|------------|
-| Injecting simulated ALT key globally without cleanup | Sticky ALT key state if daemon crashes between key-down and key-up | Use try/finally to always send ALT-up; send ALT-up before `SetForegroundWindow` |
-| Named mutex without Global\\ prefix | Multiple daemon instances across user sessions can coexist | Use `Global\\` prefix in mutex name |
-| Accepting arbitrary window class names in exclude config without validation | Config injection causes unexpected behavior | Validate config values as simple strings; do not pass to Win32 format strings |
-
----
-
-## UX Pitfalls
-
-| Pitfall | User Impact | Better Approach |
-|---------|-------------|-----------------|
-| Overlay shows on CAPSLOCK press but CAPSLOCK is used for typing | Typing is interrupted every time CAPSLOCK is used | Pass through CAPSLOCK normally (do not suppress); overlay appears while held, disappears on release — minimal disruption to toggle behavior |
-| Overlay appears with a frame delay (enumeration latency) | CAPSLOCK pressed but overlay appears 100-200ms later | Pre-enumerate and cache on a background thread; update cache on shell events |
-| Overlay border covers window content obscuring context | User cannot see what is in the overlaid window | Border only (outer 4-6px); interior must be fully transparent via `WS_EX_TRANSPARENT` |
-| Navigation direction selected after overlay shown is wrong direction | User releases CAPSLOCK and presses arrow expecting overlay's highlighted window | Overlay must update in real time as scoring changes (e.g., foreground window changes) |
-| Selecting wrong window due to off-axis bias | User presses "right" and diagonal window is selected | Configurable axis bias strategies (already implemented in v1.0) |
+| STA Invoke for move/resize blocking hook callbacks | Hook timeout → silent removal after ~10 consecutive slow callbacks | Keep STA move handler under 50ms total; use async dispatch if window has cross-thread ownership | Any move operation taking >200ms on STA thread |
+| Full overlay HideAll+ShowAll on every keypress | Visible blink per move step at >4 keys/sec | Batch overlay updates; use Reposition+Paint in-place | Rapid move mode (held direction key with key repeat) |
+| GetWindowRect called repeatedly in grid snap loop | Minor but unnecessary API overhead | Call once, store result, compute all grid values from one snapshot | Unlikely to matter; cosmetic concern only |
+| Reading config fresh on every move step | File I/O adds 1-5ms per step | Cache grid config for duration of CAPSLOCK hold; reload only on new CAPSLOCK press | High-frequency moves with config read on each step |
 
 ---
 
 ## "Looks Done But Isn't" Checklist
 
-- [ ] **Hook delegate lifetime:** Hook installed and fires on first key — verify it still fires after 2+ minutes of no input (GC test)
-- [ ] **Message loop:** Hook callback fires in all keyboard focus contexts — verify it fires when a game or fullscreen app has focus
-- [ ] **Hook timeout:** Callback returns < 50ms in all cases — add timing instrumentation in debug builds
-- [ ] **Focus theft:** Overlay appears — verify active window (via `GetForegroundWindow`) is unchanged before and after overlay display
-- [ ] **Enumeration exclusion:** `focus --debug enumerate` run while daemon is running — verify zero rows with daemon process name
-- [ ] **Single instance:** Start two daemon instances — verify second exits immediately via mutex
-- [ ] **DPI overlay alignment:** Overlay borders align with target window visual edges — verify on 150% DPI secondary monitor
-- [ ] **CAPSLOCK pass-through:** CAPSLOCK toggles normally for typing — verify caps lock LED and uppercase behavior unaffected by daemon
-- [ ] **AHK injected key filtering:** AHK SendInput during hotkey action — verify overlay does not flicker or trigger spuriously
-- [ ] **Daemon shutdown:** Kill daemon via Task Manager — verify no stuck keyboard hook remnants; re-install daemon restarts cleanly
-- [ ] **Layered window mode:** Overlay renders transparently — verify `UpdateLayeredWindow` is never called if `SetLayeredWindowAttributes` was used (or vice versa)
+- [ ] **Maximized window**: CAPS+TAB+direction on a maximized window — verify it either no-ops cleanly or restores then moves (not silently fails with no effect)
+- [ ] **Elevated window**: CAPS+TAB+direction on Task Manager — verify ERROR_ACCESS_DENIED is detected and handled silently (no crash, no log spam)
+- [ ] **UWP window**: CAPS+TAB+direction on a Windows Settings window — verify graceful no-op
+- [ ] **TAB passthrough**: With daemon running and CAPSLOCK held, press Tab in a dialog box — verify focus traversal still works normally
+- [ ] **Right Shift isolation**: With daemon running, hold CAPSLOCK and press right Shift + direction — verify grow mode is NOT triggered; only left Shift triggers it
+- [ ] **Modifier state reset**: Rapidly press CAPS+SHIFT then release CAPS before SHIFT — verify next CAPS hold does not start in grow mode
+- [ ] **DWM bounds vs GetWindowRect**: After 5 consecutive moves, verify window size matches starting size (no shrinkage from coordinate space mismatch)
+- [ ] **Grid on rcWork**: Move window to bottom row — verify window does not land behind taskbar
+- [ ] **Cross-monitor move**: Move window off right edge of monitor A — verify it lands at leftmost column of monitor B (not arbitrary position)
+- [ ] **Min-size clamp**: Shrink window to minimum size — verify further shrink key presses are silently ignored (no divergence between overlay and actual window)
+- [ ] **Overlay tracks window**: After each move step, overlay must be at new window position (not old position)
+- [ ] **Post-SetWindowPos read-back**: Log actual rect after each move; confirm it matches intended position (for non-UIPI-blocked windows)
 
 ---
 
@@ -581,14 +632,16 @@ Already addressed. Verify overlays render on `ApplicationFrameWindow` bounds, no
 
 | Pitfall | Recovery Cost | Recovery Steps |
 |---------|---------------|----------------|
-| Hook delegate GC-collected | LOW | Add `static` or instance-field storage for delegate; no logic change |
-| No message loop — hook never fires | MEDIUM | Add dedicated STA hook thread with GetMessage loop; refactor callback to use Channel |
-| Hook timeout causing silent removal | HIGH | Redesign callback to be pass-through only; move all logic to worker thread |
-| Overlay steals focus | LOW | Add `WS_EX_NOACTIVATE` to overlay creation; add `SWP_NOACTIVATE` to SetWindowPos calls |
-| Overlay in navigation candidates | LOW | Add `WS_EX_TOOLWINDOW` to overlay; add process-ID exclusion guard in WindowEnumerator |
-| DPI offset on overlay | MEDIUM | Audit DPI context of overlay-positioning thread; verify on multi-DPI monitor setup |
-| Layered window mode mixing | LOW | Choose one mode (recommend SetLayeredWindowAttributes); never call both on same HWND |
-| Multiple daemon instances | LOW | Add named mutex check at daemon entry |
+| DWM bounds used for MoveWindow (window shrinks) | LOW | Replace DWM bounds with GetWindowRect in move handler; one call change |
+| Missing SetWindowPos return-value check | LOW | Add bool result check + GetLastError logging; no logic change |
+| Elevated window UIPI failure | LOW | Add process integrity level check before move; silently no-op |
+| TAB incorrectly suppressed | LOW | Change hook logic: track _tabHeld without suppressing TAB keydown |
+| VK_SHIFT used instead of VK_LSHIFT | LOW | Change VK constant; no architectural change |
+| Modifier state desync | LOW | Add modifier flag clear to ResetState() |
+| Grid uses rcMonitor instead of rcWork | LOW | One-line change in grid origin/size calculation |
+| No post-move read-back | LOW | Add GetWindowRect call after SetWindowPos; use result for overlay positioning |
+| ForegroundMonitor refresh loop during move | MEDIUM | Add _moveOrResizeInProgress guard; requires careful lifecycle around STA dispatch |
+| Overlay flicker during rapid move | MEDIUM | Implement Reposition+Paint-in-place path in OverlayManager; does not change architecture |
 
 ---
 
@@ -596,46 +649,43 @@ Already addressed. Verify overlays render on `ApplicationFrameWindow` bounds, no
 
 | Pitfall | Prevention Phase | Verification |
 |---------|------------------|--------------|
-| Hook delegate GC (A-1) | Phase 1 — Hook installation | Run daemon for 5 minutes of inactivity; verify hook still fires |
-| No message loop (A-2) | Phase 1 — Hook installation | Confirm first keypress triggers callback before any other work |
-| Hook timeout (A-3) | Phase 1 — Hook installation | Time callback execution; must be < 10ms |
-| Overlay focus theft (A-4) | Phase 2 — Overlay creation | Type in Notepad while holding CAPSLOCK; no focus interruption |
-| Overlay in enumeration (A-5, A-13) | Phase 2 — Overlay creation | `focus --debug enumerate` while daemon running; daemon process absent |
-| DPI mismatch on positioning (A-6) | Phase 2 — Overlay creation | Two-monitor 100%+150% DPI setup; borders align with windows on both |
-| CAPSLOCK state ambiguity (A-7) | Phase 1 — Hook installation | CAPSLOCK still toggles normally; overlay tracks hold not toggle |
-| AHK injected keys (A-8) | Phase 1 — Hook installation | AHK hotkeys fire; overlay does not flicker during hotkey execution |
-| Layered window mode mixing (A-9) | Phase 2 — Overlay rendering | Overlay is transparent; no white/black fill visible |
-| Topmost Z-order competition (A-10) | Phase 2 — Overlay lifecycle | Overlay visible with Task Manager open; acceptable degradation documented |
-| Console window suppression (A-11) | Phase 1 — Daemon infrastructure | Launch from AHK with Hide; no console flash |
-| Single instance (A-12) | Phase 1 — Daemon infrastructure | Two launches; second exits; one set of overlays |
-| DPI virtualization (B-1) | Already addressed (app.manifest) | Verify overlay thread does not change DPI context |
-| Cloaked windows (B-2) | Already addressed | Regression-test after WindowEnumerator changes |
-| SetForegroundWindow (B-3) | Already addressed | Navigation via AHK hotkey still works in daemon mode |
-| GetWindowRect shadow border (B-4) | Already addressed | Overlay position uses DWMWA_EXTENDED_FRAME_BOUNDS, not GetWindowRect |
-| UWP HWND confusion (B-5) | Already addressed | Overlay renders on ApplicationFrameWindow for UWP apps |
+| Maximized window no-op (A-1) | Phase 1 — Move handler | Test on maximized Chrome, VS Code — no silent failure |
+| DWM bounds vs MoveWindow coords (A-2) | Phase 1 — Move handler | Move window 5x; verify size unchanged; check GetWindowRect before and after |
+| DPI context mismatch (A-3) | Phase 1 — Move handler | Two-monitor mixed-DPI setup; move across monitors — position correct on both |
+| UIPI elevated window (A-4) | Phase 1 — Move handler | Attempt move on Task Manager — no crash, no error log spam |
+| TAB passthrough (A-5) | Phase 1 — Modifier tracking | Tab through dialog while CAPSLOCK held — focus traversal unaffected |
+| VK_LSHIFT vs VK_SHIFT (A-6) | Phase 1 — Modifier tracking | Right Shift + direction while CAPS held — grow mode NOT triggered |
+| Modifier state desync (A-7) | Phase 1 — Modifier tracking | Rapid CAPS+SHIFT+release-CAPS cycle — next CAPS hold starts in neutral mode |
+| Grid uses rcWork (A-8) | Phase 1 — Grid calculation | Bottom-row window — not behind taskbar |
+| Integer rounding (A-9) | Phase 1 — Grid calculation | 3440x1440 ultrawide: snap to grid — all cells equal width within 1px |
+| Cross-monitor move (A-10) | Phase 2 — Cross-monitor | Move off right edge — lands at monitor B column 0 |
+| Overlay flicker during move (A-11) | Phase 2 — Overlay integration | Rapid move keys — no visible blink; if visible, document as known |
+| Overlay tracks window (A-12) | Phase 2 — Overlay integration | Each move step — overlay immediately at new window position |
+| Min/max size clamp (A-13) | Phase 1 — Resize handler | Shrink to minimum — further shrink no-ops cleanly |
+| ForegroundMonitor loop during move (A-14) | Phase 2 — Overlay integration | Move window — no mode flicker between move and navigation overlays |
 
 ---
 
 ## Sources
 
-- [LowLevelKeyboardProc callback function — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/winmsg/lowlevelkeyboardproc) — HIGH confidence (official docs, updated 2025-07-14)
-- [callbackOnCollectedDelegate MDA — Microsoft Learn](https://learn.microsoft.com/en-us/dotnet/framework/debug-trace-profile/callbackoncollecteddelegate-mda) — HIGH confidence (official docs)
-- [SetLayeredWindowAttributes function — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setlayeredwindowattributes) — HIGH confidence (official docs)
-- [UpdateLayeredWindow function — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-updatelayeredwindow) — HIGH confidence (official docs)
-- [SetForegroundWindow function — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setforegroundwindow) — HIGH confidence (official docs)
+- [MoveWindow function — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-movewindow) — HIGH confidence (official docs)
+- [SetWindowPos function — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setwindowpos) — HIGH confidence (official docs)
+- [DWMWINDOWATTRIBUTE — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/api/dwmapi/ne-dwmapi-dwmwindowattribute) — HIGH confidence (official docs; DWMWA_EXTENDED_FRAME_BOUNDS "not adjusted for DPI")
+- [GetWindowRect — invisible borders on Windows 10](https://www.w3tutorials.net/blog/getwindowrect-returns-a-size-including-invisible-borders/) — MEDIUM confidence (practitioner, consistent with DWM docs)
 - [High DPI Desktop Application Development on Windows — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/hidpi/high-dpi-desktop-application-development-on-windows) — HIGH confidence (official docs)
-- [Window Features — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/winmsg/window-features) — HIGH confidence (official docs)
-- [Hooks Overview — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/winmsg/about-hooks) — HIGH confidence (official docs)
-- [LowLevelKeyboardProc — registry timeout behavior, Windows 10 1709 1000ms cap](https://learn.microsoft.com/en-us/windows/win32/winmsg/lowlevelkeyboardproc) — HIGH confidence (official docs)
-- [Understanding SendInput and keyboard hooks — AutoHotkey Community](https://www.autohotkey.com/boards/viewtopic.php?t=127074) — MEDIUM confidence (community-verified, consistent with LLKHF_INJECTED docs)
-- [Ouch! CallbackOnCollectedDelegate was detected — dzimchuk.net](https://dzimchuk.net/ouch-callbackoncollecteddelegate-was-detected/) — MEDIUM confidence (practitioner account, consistent with MDA docs)
-- [Low Level Global Keyboard Hook / Sink in C# .NET — Dylan's Web](https://www.dylansweb.com/2014/10/low-level-global-keyboard-hook-sink-in-c-net/) — MEDIUM confidence (practitioner, corroborated by official docs)
-- [Foreground activation — Raymond Chen, The Old New Thing](https://devblogs.microsoft.com/oldnewthing/20090220-00/?p=19083) — HIGH confidence (official Microsoft blog)
-- [Transparent Windows in WPF — Microsoft Learn (Dwayne Need)](https://learn.microsoft.com/en-us/archive/blogs/dwayneneed/transparent-windows-in-wpf) — MEDIUM confidence (official blog, WPF-specific but principles apply)
-- [DWMWINDOWATTRIBUTE — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/api/dwmapi/ne-dwmapi-dwmwindowattribute) — HIGH confidence (official docs)
-- [EnumWindows function — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-enumwindows) — HIGH confidence (official docs)
+- [PhysicalToLogicalPointForPerMonitorDPI — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-physicaltologicalpointforpermonitordpi) — HIGH confidence (official docs)
+- [WINDOWPLACEMENT — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-windowplacement) — HIGH confidence (official docs; workspace vs. screen coordinates distinction)
+- [GetWindowPlacement — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getwindowplacement) — HIGH confidence (official docs)
+- [Security Considerations for Assistive Technologies (UIPI) — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/winauto/uiauto-securityoverview) — HIGH confidence (official docs)
+- [Bring UWP app window to front and move it — Microsoft Q&A](https://learn.microsoft.com/en-us/answers/questions/219889/bring-uwp-app-window-to-front-and-move-it) — MEDIUM confidence (official Q&A; describes UIPI behavior)
+- [Virtual-Key Codes — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes) — HIGH confidence (official docs; VK_LSHIFT=0xA0, VK_LCONTROL=0xA2)
+- [GetKeyState function — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getkeystate) — HIGH confidence (official docs)
+- [Determining modifier key state when hooking keyboard input — Jon Egerton](https://jonegerton.com/dotnet/determining-the-state-of-modifier-keys-when-hooking-keyboard-input/) — MEDIUM confidence (practitioner, consistent with GetKeyState docs)
+- [Positioning Objects on Multiple Display Monitors — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/gdi/positioning-objects-on-multiple-display-monitors) — HIGH confidence (official docs)
+- [WM_WINDOWPOSCHANGING — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/winmsg/wm-windowposchanging) — HIGH confidence (official docs)
+- [UpdateLayeredWindow — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-updatelayeredwindow) — HIGH confidence (official docs; position via UpdateLayeredWindow preferred for layered windows)
 
 ---
 
-*Pitfalls research for: Win32 window management — directional focus navigation with daemon overlay*
-*Researched: 2026-02-28*
+*Pitfalls research for: Win32 grid-snapped window move/resize added to keyboard hook daemon (v3.1)*
+*Researched: 2026-03-02*
