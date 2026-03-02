@@ -8,7 +8,7 @@ progress:
   total_phases: 3
   completed_phases: 1
   total_plans: 8
-  completed_plans: 6
+  completed_plans: 7
 ---
 
 # Project State
@@ -18,16 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-02)
 
 **Core value:** Given a direction, reliably switch focus to the most intuitive window in that direction — fast enough for hotkey use, accurate enough to feel natural.
-**Current focus:** v3.1 Window Management — Phase 12 Plan 01 complete (cross-monitor Move transition with FindAdjacentMonitor and grid step recalculated for target monitor)
+**Current focus:** v3.1 Window Management — Phase 12 Plan 02 complete (mode-aware overlay: amber/cyan borders and DIB-rasterized arrow indicators for Move/Grow modes)
 
 ## Current Position
 
-Phase: 12 of 12 (Cross-Monitor and Overlay Integration) — IN PROGRESS
-Plan: 1 of 2 (plan 01 complete)
-Status: Phase 12 Plan 01 complete
-Last activity: 2026-03-03 - Completed 12-01: cross-monitor window transition (XMON-01, XMON-02)
+Phase: 12 of 12 (Cross-Monitor and Overlay Integration) — COMPLETE
+Plan: 2 of 2 (plan 02 complete)
+Status: Phase 12 complete — all plans done
+Last activity: 2026-03-03 - Completed 12-02: mode-aware overlay indicators (OVRL-01, OVRL-02, OVRL-03, OVRL-04)
 
-Progress: [██████░░░░] 60%
+Progress: [████████░░] 80%
 
 ## Performance Metrics
 
@@ -42,7 +42,7 @@ Progress: [██████░░░░] 60%
 |-------|-------|-------|----------|
 | 10 - Grid Infrastructure | 3/3 | 12 min | 4 min |
 | 11 - Move and Resize | 3/5 | 8 min | 3 min |
-| 12 - Cross-Monitor and Overlay | 1/2 | 3 min | 3 min |
+| 12 - Cross-Monitor and Overlay | 2/2 | 8 min | 4 min |
 
 *Updated after each plan completion*
 
@@ -76,6 +76,10 @@ Recent decisions affecting v3.1:
 - **TryGetCrossMonitorTarget no inner boundary check (from 12-01)**: Outer MoveOrResize already verified atBoundary using post-ComputeMove bounds; inner check on original visRect would miss normal transitions.
 - **rcMonitor vs rcWork separation for cross-monitor (from 12-01)**: FindAdjacentMonitor uses rcMonitor edges for adjacency detection; ComputeCrossMonitorPosition uses rcWork for all placement math.
 - **OnModeEntered accepts WindowMode parameter (from 12-01)**: Fixed pre-existing signature mismatch; DaemonCommand was already passing mode, OverlayOrchestrator now accepts it for plan 02 arrow rendering.
+- **_currentMode set before _staDispatcher.Invoke (from 12-02)**: Worker thread writes _currentMode before synchronous Invoke; STA thread reads it inside lambda — no concurrent mutation, no lock needed.
+- **Mode colors (from 12-02)**: Move = 0xE0FF9900 amber, Grow = 0xE000CCBB cyan, Navigate = 0xE0FFFFFF white — applied to both border and arrows.
+- **DIB-local arrow coordinates (from 12-02)**: Arrow positions in ArrowRenderer use (cx=width/2, cy=height/2) in DIB-local space, not screen coordinates — same pattern as BorderRenderer.
+- **ShowOverlaysForActivation reads GetKeyState at CAPS-hold time (from 12-02)**: Detects pre-existing modifier state and sets _currentMode so correct arrows appear even if modifier was pressed before CAPS.
 
 ### Blockers/Concerns
 
@@ -93,5 +97,5 @@ Recent decisions affecting v3.1:
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: Completed 12-01-PLAN.md (cross-monitor Move transition: FindAdjacentMonitor + ComputeCrossMonitorPosition, XMON-01, XMON-02)
+Stopped at: Completed 12-02-PLAN.md (mode-aware overlay: amber/cyan borders + ArrowRenderer DIB arrows for Move/Grow modes, OVRL-01 through OVRL-04)
 Resume file: None
