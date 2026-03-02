@@ -134,10 +134,12 @@ internal sealed class OverlayOrchestrator : IDisposable
 
         if (mode != WindowMode.Navigate)
         {
-            // Move/Grow/Shrink modes -- Phase 11 will implement WindowManagerService.
-            // For now, log and return (no-op).
-            if (_verbose)
-                Console.Error.WriteLine($"[{DateTime.Now:HH:mm:ss.fff}] Mode {mode} direction {direction} -- not yet implemented");
+            try
+            {
+                _staDispatcher.Invoke(() => WindowManagerService.MoveOrResize(direction, mode, _verbose));
+            }
+            catch (ObjectDisposedException) { }
+            catch (InvalidOperationException) { }
             return;
         }
 

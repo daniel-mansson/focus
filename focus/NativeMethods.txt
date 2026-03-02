@@ -61,3 +61,5 @@ DefWindowProc
 SetWinEventHook
 UnhookWinEvent
 keybd_event
+GetWindowRect
+IsZoomed
