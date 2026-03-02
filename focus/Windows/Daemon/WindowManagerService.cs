@@ -178,7 +178,7 @@ internal static class WindowManagerService
                 // Right edge moves outward (rightward); left edge stays fixed
                 newVisRight = GridCalculator.IsAligned(vis.right, work.left, stepX, tolX)
                     ? vis.right + stepX
-                    : GridCalculator.NearestGridLine(vis.right, work.left, stepX);
+                    : GridCalculator.NearestGridLineCeiling(vis.right, work.left, stepX);  // snap rightward (outward)
                 newVisRight = Math.Min(newVisRight, work.right);   // clamp to work area (SIZE-04)
                 break;
 
@@ -186,7 +186,7 @@ internal static class WindowManagerService
                 // Left edge moves outward (leftward); right edge stays fixed
                 newVisLeft = GridCalculator.IsAligned(vis.left, work.left, stepX, tolX)
                     ? vis.left - stepX
-                    : GridCalculator.NearestGridLine(vis.left, work.left, stepX);
+                    : GridCalculator.NearestGridLineFloor(vis.left, work.left, stepX);     // snap leftward (outward)
                 newVisLeft = Math.Max(newVisLeft, work.left);      // clamp to work area (SIZE-04)
                 break;
 
@@ -194,7 +194,7 @@ internal static class WindowManagerService
                 // Bottom edge moves outward (downward); top edge stays fixed
                 newVisBottom = GridCalculator.IsAligned(vis.bottom, work.top, stepY, tolY)
                     ? vis.bottom + stepY
-                    : GridCalculator.NearestGridLine(vis.bottom, work.top, stepY);
+                    : GridCalculator.NearestGridLineCeiling(vis.bottom, work.top, stepY);  // snap downward (outward)
                 newVisBottom = Math.Min(newVisBottom, work.bottom); // clamp to work area (SIZE-04)
                 break;
 
@@ -202,7 +202,7 @@ internal static class WindowManagerService
                 // Top edge moves outward (upward); bottom edge stays fixed
                 newVisTop = GridCalculator.IsAligned(vis.top, work.top, stepY, tolY)
                     ? vis.top - stepY
-                    : GridCalculator.NearestGridLine(vis.top, work.top, stepY);
+                    : GridCalculator.NearestGridLineFloor(vis.top, work.top, stepY);       // snap upward (outward)
                 newVisTop = Math.Max(newVisTop, work.top);          // clamp to work area (SIZE-04)
                 break;
         }

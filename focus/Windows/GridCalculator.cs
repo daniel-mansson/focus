@@ -32,6 +32,32 @@ internal static class GridCalculator
     }
 
     /// <summary>
+    /// Returns the nearest grid line position that is less than or equal to pos (floor/round-down).
+    /// Used for edges moving outward/inward toward smaller values (leftward or upward).
+    /// origin = rcWork.left (for X) or rcWork.top (for Y) in virtual-screen coordinates.
+    /// </summary>
+    public static int NearestGridLineFloor(int pos, int origin, int step)
+    {
+        if (step <= 0) return pos;
+        int offset = pos - origin;
+        int floored = (int)Math.Floor((double)offset / step) * step;
+        return origin + floored;
+    }
+
+    /// <summary>
+    /// Returns the nearest grid line position that is greater than or equal to pos (ceiling/round-up).
+    /// Used for edges moving outward/inward toward larger values (rightward or downward).
+    /// origin = rcWork.left (for X) or rcWork.top (for Y) in virtual-screen coordinates.
+    /// </summary>
+    public static int NearestGridLineCeiling(int pos, int origin, int step)
+    {
+        if (step <= 0) return pos;
+        int offset = pos - origin;
+        int ceiled = (int)Math.Ceiling((double)offset / step) * step;
+        return origin + ceiled;
+    }
+
+    /// <summary>
     /// Returns true if pos is within snapTolerancePx of the nearest grid line.
     /// Used to determine if a window is "close enough" to aligned (skip snap-only on first press).
     /// </summary>
