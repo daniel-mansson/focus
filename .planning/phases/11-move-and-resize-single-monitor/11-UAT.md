@@ -1,5 +1,5 @@
 ---
-status: complete
+status: diagnosed
 phase: 11-move-and-resize-single-monitor
 source: 11-01-SUMMARY.md
 started: 2026-03-02T00:00:00Z
@@ -63,37 +63,53 @@ skipped: 0
   reason: "User reported: The active window outline does not follow the window, it stays in the old position. needs to be redrawn"
   severity: major
   test: 1
-  root_cause: ""
-  artifacts: []
-  missing: []
-  debug_session: ""
+  root_cause: "OnDirectionKeyDown returns immediately after MoveOrResize with no overlay refresh. SetWindowPos uses SWP_NOACTIVATE so no EVENT_SYSTEM_FOREGROUND fires. ShowOverlaysForCurrentForeground() is never called."
+  artifacts:
+    - path: "focus/Windows/Daemon/Overlay/OverlayOrchestrator.cs"
+      issue: "Move/Grow/Shrink branch returns without calling ShowOverlaysForCurrentForeground()"
+  missing:
+    - "Call ShowOverlaysForCurrentForeground() after MoveOrResize inside _staDispatcher.Invoke lambda, guarded by _capsLockHeld"
+  debug_session: ".planning/debug/overlay-no-redraw-after-move.md"
 
 - truth: "Grow mode expands window edge outward correctly"
   status: failed
   reason: "User reported: 1. The outline stayed after releasing capslock in some combination with shift/before/after. 2. holding shift first, then caps lock, should work but it doesnt. 3. when pressing down, the snapping snapped the size upwards, shrinking the window when growing was expected"
   severity: major
   test: 3
-  root_cause: ""
-  artifacts: []
-  missing: []
-  debug_session: ""
+  root_cause: "(a) NearestGridLine uses Math.Round (bidirectional) but Grow needs directional snapping — ceiling for right/down, floor for left/up. (b) KeyboardHookHandler filters out CapsLock when Shift is held, blocking Shift-first+CapsLock activation and leaving overlay stuck."
+  artifacts:
+    - path: "focus/Windows/GridCalculator.cs"
+      issue: "NearestGridLine is direction-agnostic (Math.Round); Grow needs directional variants"
+    - path: "focus/Windows/Daemon/KeyboardHookHandler.cs"
+      issue: "Shift filter on CapsLock blocks Shift-first+CapsLock activation"
+  missing:
+    - "Add NearestGridLineFloor and NearestGridLineCeiling to GridCalculator"
+    - "Use ceiling variant for Grow right/down, floor variant for Grow left/up in ComputeGrow"
+    - "Remove Shift from the modifier filter that blocks CapsLock in KeyboardHookHandler"
+  debug_session: ".planning/debug/grow-down-snaps-upward.md"
 
 - truth: "Shrink mode contracts window edge inward in the pressed direction"
   status: failed
   reason: "User reported: all directions feels inverted. pressing up when shrinking should move the bottom edge upwards"
   severity: major
   test: 5
-  root_cause: ""
-  artifacts: []
-  missing: []
-  debug_session: ""
+  root_cause: "ComputeShrink uses same edge mapping as ComputeGrow — pressed direction identifies which edge moves. For Shrink, pressing 'up' moves the top edge down instead of the bottom edge up. All four directions are inverted."
+  artifacts:
+    - path: "focus/Windows/Daemon/WindowManagerService.cs"
+      issue: "ComputeShrink edge mapping inverted — up moves top edge instead of bottom edge"
+  missing:
+    - "Swap edge mapping in all four ComputeShrink cases: up→bottom edge, down→top edge, left→right edge, right→left edge"
+  debug_session: ".planning/debug/shrink-directions-inverted.md"
 
 - truth: "Shrink at minimum size is a no-op"
   status: failed
   reason: "User reported: when the window reaches its OS minimum size, shrinking from the left moves the window instead of shrinking it. in this case a no-op would be expected, not moving the window"
   severity: major
   test: 6
-  root_cause: ""
-  artifacts: []
-  missing: []
-  debug_session: ""
+  root_cause: "Min-size guard checks visW <= stepX (grid step) not OS minimum. SetWindowPos clamps size to OS ptMinTrackSize but still honors position, causing anchor edge to move without shrink."
+  artifacts:
+    - path: "focus/Windows/Daemon/WindowManagerService.cs"
+      issue: "ComputeShrink guard checks grid step minimum, not OS minimum; SetWindowPos moves position without shrinking"
+  missing:
+    - "Add post-computation no-op guard: if computed visible dimension >= current visible dimension, return win unchanged"
+  debug_session: ".planning/debug/shrink-at-os-min-moves-window.md"
