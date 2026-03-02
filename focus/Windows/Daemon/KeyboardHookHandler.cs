@@ -132,6 +132,17 @@ internal sealed class KeyboardHookHandler : IDisposable
             return (LRESULT)1;  // suppress TAB from reaching app
         }
 
+        // LSHIFT key: observe (not suppress) when CAPS held for overlay mode transitions
+        if (kbd->vkCode == VK_LSHIFT)
+        {
+            if (_capsLockHeld)
+            {
+                bool isKeyDown = (uint)wParam.Value == WM_KEYDOWN || (uint)wParam.Value == WM_SYSKEYDOWN;
+                _channelWriter.TryWrite(new KeyEvent(kbd->vkCode, isKeyDown, kbd->time, Mode: WindowMode.Grow));
+            }
+            return PInvoke.CallNextHookEx(null, nCode, wParam, lParam);  // never suppress — GetKeyState needs it
+        }
+
         // Number key interception (1-9): suppress and route through channel when CAPS held.
         if (IsNumberKey(kbd->vkCode))
         {
