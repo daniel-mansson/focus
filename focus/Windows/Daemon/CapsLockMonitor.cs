@@ -15,6 +15,7 @@ internal sealed class CapsLockMonitor
     private readonly bool _verbose;
     private bool _isHeld;
     private bool _tabHeld;
+    private bool _lShiftHeld;
     private readonly Action? _onHeld;
     private readonly Action? _onReleased;
     private readonly Action<string, WindowMode>? _onDirectionKeyDown;
@@ -156,12 +157,17 @@ internal sealed class CapsLockMonitor
             {
                 if (evt.IsKeyDown)
                 {
-                    if (_verbose)
-                        Console.Error.WriteLine($"[{DateTime.Now:HH:mm:ss.fff}] LSHIFT held -> Grow mode");
-                    _onTabDown?.Invoke();
+                    if (!_lShiftHeld)
+                    {
+                        _lShiftHeld = true;
+                        if (_verbose)
+                            Console.Error.WriteLine($"[{DateTime.Now:HH:mm:ss.fff}] LSHIFT held -> Grow mode");
+                        _onTabDown?.Invoke();
+                    }
                 }
                 else
                 {
+                    _lShiftHeld = false;
                     if (_verbose)
                         Console.Error.WriteLine($"[{DateTime.Now:HH:mm:ss.fff}] LSHIFT released");
                     _onTabReleased?.Invoke();
@@ -281,6 +287,7 @@ internal sealed class CapsLockMonitor
     {
         _isHeld = false;
         _tabHeld = false;
+        _lShiftHeld = false;
         _directionKeysHeld.Clear();
     }
 }
