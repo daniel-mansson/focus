@@ -122,10 +122,10 @@ internal sealed class OverlayOrchestrator : IDisposable
     }
 
     /// <summary>
-    /// Called when TAB is first pressed while CAPSLOCK is held (entering Move mode).
+    /// Called when a mode modifier (Space or LAlt) is first pressed while CAPSLOCK is held.
     /// Hides navigate-target outlines immediately, keeping only the foreground border.
     /// </summary>
-    public void OnTabDown()
+    public void OnModeEntered()
     {
         if (_shutdownRequested) return;
 
@@ -142,10 +142,10 @@ internal sealed class OverlayOrchestrator : IDisposable
     }
 
     /// <summary>
-    /// Called when TAB is released while CAPSLOCK is still held (returning to Navigate mode).
+    /// Called when a mode modifier (Space or LAlt) is released while CAPSLOCK is still held.
     /// Restores full overlay display including navigate-target outlines.
     /// </summary>
-    public void OnTabReleased()
+    public void OnModeExited()
     {
         if (_shutdownRequested) return;
 
@@ -306,10 +306,10 @@ internal sealed class OverlayOrchestrator : IDisposable
     /// </summary>
     private void ShowOverlaysForActivation()
     {
-        // VK_LSHIFT = 0xA0, VK_TAB = 0x09; high bit set = key is down
-        bool lShiftHeld = (PInvoke.GetKeyState(0xA0) & 0x8000) != 0;
-        bool tabHeld    = (PInvoke.GetKeyState(0x09) & 0x8000) != 0;
-        if (lShiftHeld || tabHeld)
+        // VK_LMENU = 0xA4 (LAlt), VK_SPACE = 0x20; high bit set = key is down
+        bool lAltHeld  = (PInvoke.GetKeyState(0xA4) & 0x8000) != 0;
+        bool spaceHeld = (PInvoke.GetKeyState(0x20) & 0x8000) != 0;
+        if (lAltHeld || spaceHeld)
             RefreshForegroundOverlayOnly();
         else
             ShowOverlaysForCurrentForeground();
