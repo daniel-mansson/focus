@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-03-02)
 Phase: 11 of 12 (Move and Resize Single Monitor) — IN PROGRESS
 Plan: 3 of 5 (plan 03 complete)
 Status: Phase 11 Plan 03 complete
-Last activity: 2026-03-02 — Completed 11-03 (OverlayOrchestrator: RefreshForegroundOverlayOnly after MoveOrResize, navigate-target outlines hidden during Move/Grow/Shrink)
+Last activity: 2026-03-02 - Completed quick task 1: Change grow/shrink to LShift only with directional grow/shrink
 
 Progress: [█████░░░░░] 50%
 
@@ -78,6 +78,12 @@ Recent decisions affecting v3.1:
 - **TAB chord system interaction (LOW confidence):** Whether CAPS+TAB triggers system behavior before the hook can act is empirically unknown. Test this chord manually before relying on Move mode in production.
 - **SetWindowPos min-size clamping (MEDIUM confidence):** Whether SetWindowPos auto-clamps to WM_GETMINMAXINFO ptMinTrackSize needs testing with Calculator before shipping shrink.
 - **Build file-lock (OPERATIONAL):** dotnet build fails to copy output EXE when focus daemon is running (MSB3027). C# compilation succeeds (zero CS errors). Kill daemon before rebuild for testing.
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 1 | Change grow/shrink to LShift only with directional grow/shrink | 2026-03-02 | 69bc94c | [1-change-grow-shrink-to-lshift-only-with-d](./quick/1-change-grow-shrink-to-lshift-only-with-d/) |
 
 ## Session Continuity
 
