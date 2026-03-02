@@ -1,4 +1,5 @@
 using System.Runtime.Versioning;
+using Focus.Windows.Daemon;
 using global::Windows.Win32.Foundation;
 
 namespace Focus.Windows.Daemon.Overlay;
@@ -19,6 +20,7 @@ internal sealed class OverlayManager : IDisposable
     private readonly OverlayColors _colors;
     private readonly Dictionary<Direction, OverlayWindow> _windows;
     private readonly OverlayWindow _foregroundWindow;
+    private readonly OverlayWindow _modeArrowWindow;
     private readonly List<OverlayWindow> _numberWindows;
     private bool _disposed;
 
@@ -40,6 +42,7 @@ internal sealed class OverlayManager : IDisposable
         };
 
         _foregroundWindow = new OverlayWindow();
+        _modeArrowWindow  = new OverlayWindow();
 
         _numberWindows = new List<OverlayWindow>();
         for (int i = 0; i < 9; i++)
@@ -98,6 +101,22 @@ internal sealed class OverlayManager : IDisposable
     }
 
     /// <summary>
+    /// Shows mode-specific arrow indicators on the mode arrow overlay window.
+    /// Move mode: 4 compass arrows at window center (OVRL-01).
+    /// Grow mode: axis indicator arrow pairs at right edge and top edge (OVRL-02, OVRL-03).
+    /// </summary>
+    public void ShowModeArrows(RECT bounds, WindowMode mode, uint argbColor)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        _modeArrowWindow.Reposition(bounds);
+        if (mode == WindowMode.Move)
+            ArrowRenderer.PaintMoveArrows(_modeArrowWindow.Hwnd, bounds, argbColor);
+        else if (mode == WindowMode.Grow)
+            ArrowRenderer.PaintResizeArrows(_modeArrowWindow.Hwnd, bounds, argbColor);
+        _modeArrowWindow.Show();
+    }
+
+    /// <summary>
     /// Hides the foreground border overlay.
     /// </summary>
     public void HideForegroundOverlay()
@@ -130,6 +149,7 @@ internal sealed class OverlayManager : IDisposable
         foreach (var window in _windows.Values)
             window.Hide();
         _foregroundWindow.Hide();
+        _modeArrowWindow.Hide();
         foreach (var nw in _numberWindows)
             nw.Hide();
     }
@@ -155,6 +175,7 @@ internal sealed class OverlayManager : IDisposable
             window.Dispose();
 
         _foregroundWindow.Dispose();
+        _modeArrowWindow.Dispose();
 
         foreach (var nw in _numberWindows)
             nw.Dispose();

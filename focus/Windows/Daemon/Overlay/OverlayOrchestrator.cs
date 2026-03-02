@@ -29,6 +29,10 @@ internal sealed class OverlayOrchestrator : IDisposable
     // ~88% opacity white — thin full-perimeter border on the currently focused window.
     private const uint ForegroundBorderColor = 0xE0FFFFFF;
 
+    // Mode-specific border and arrow colors (OVRL-01, OVRL-02, OVRL-03).
+    private const uint MoveModeColor = 0xE0FF9900; // ~88% opacity amber/orange
+    private const uint GrowModeColor = 0xE000CCBB; // ~88% opacity cyan/teal
+
     // Left/right overlays are expanded by this many pixels to avoid overlapping up/down borders
     // on the same target window. Matches BorderRenderer.BorderThickness + 1.
     private const int LeftRightInset = 3;
@@ -46,6 +50,11 @@ internal sealed class OverlayOrchestrator : IDisposable
     private readonly System.Windows.Forms.Timer _delayTimer;
 
     private bool _capsLockHeld;
+
+    // Tracks the active window mode. Set before _staDispatcher.Invoke so it is visible to the STA
+    // thread when RefreshForegroundOverlayOnly runs. Only ever written on the worker thread (before
+    // Invoke) or on the STA thread (inside Invoke lambdas) — no concurrent mutation possible.
+    private WindowMode _currentMode = WindowMode.Navigate;
 
     private bool _disposed;
 
@@ -123,13 +132,14 @@ internal sealed class OverlayOrchestrator : IDisposable
 
     /// <summary>
     /// Called when a mode modifier (LAlt or LWin) is first pressed while CAPSLOCK is held.
-    /// Hides navigate-target outlines immediately, keeping only the foreground border.
+    /// Sets the active mode then shows a mode-colored border and directional arrows (OVRL-01, OVRL-02, OVRL-03).
     /// </summary>
     /// <param name="mode">The mode that was entered (Move or Grow).</param>
     public void OnModeEntered(WindowMode mode)
     {
         if (_shutdownRequested) return;
 
+        _currentMode = mode; // Set BEFORE Invoke so the STA thread reads the correct mode
         try
         {
             _staDispatcher.Invoke(() =>
@@ -150,6 +160,7 @@ internal sealed class OverlayOrchestrator : IDisposable
     {
         if (_shutdownRequested) return;
 
+        _currentMode = WindowMode.Navigate; // Clear before Invoke
         try
         {
             _staDispatcher.Invoke(() =>
@@ -302,7 +313,7 @@ internal sealed class OverlayOrchestrator : IDisposable
 
     /// <summary>
     /// Shows the appropriate overlays based on current modifier state.
-    /// If LShift is already held (Grow mode), shows only the foreground border.
+    /// If LAlt (Move) or LWin (Grow) is already held, shows mode-colored border and arrows.
     /// Otherwise shows full navigate overlays.
     /// </summary>
     private void ShowOverlaysForActivation()
@@ -311,7 +322,10 @@ internal sealed class OverlayOrchestrator : IDisposable
         bool lAltHeld = (PInvoke.GetKeyState(0xA4) & 0x8000) != 0;
         bool lWinHeld = (PInvoke.GetKeyState(0x5B) & 0x8000) != 0;
         if (lAltHeld || lWinHeld)
+        {
+            _currentMode = lAltHeld ? WindowMode.Move : WindowMode.Grow;
             RefreshForegroundOverlayOnly();
+        }
         else
             ShowOverlaysForCurrentForeground();
     }
@@ -319,6 +333,7 @@ internal sealed class OverlayOrchestrator : IDisposable
     private void OnReleasedSta()
     {
         _capsLockHeld = false;
+        _currentMode  = WindowMode.Navigate; // Clear mode so teardown reads Navigate
 
         // Stop delay timer — user released before delay elapsed, preventing a spurious trigger.
         _delayTimer.Stop();
@@ -372,7 +387,21 @@ internal sealed class OverlayOrchestrator : IDisposable
 
         if (hr.Succeeded && (fgBounds.right - fgBounds.left) > 0)
         {
-            _overlayManager.ShowForegroundOverlay(fgBounds, ForegroundBorderColor);
+            // Mode-specific border color (amber for Move, cyan for Grow, white for Navigate)
+            uint borderColor = _currentMode switch
+            {
+                WindowMode.Move => MoveModeColor,
+                WindowMode.Grow => GrowModeColor,
+                _               => ForegroundBorderColor
+            };
+            _overlayManager.ShowForegroundOverlay(fgBounds, borderColor);
+
+            // Mode-specific arrows (OVRL-01, OVRL-02, OVRL-03)
+            if (_currentMode == WindowMode.Move || _currentMode == WindowMode.Grow)
+            {
+                uint arrowColor = _currentMode == WindowMode.Move ? MoveModeColor : GrowModeColor;
+                _overlayManager.ShowModeArrows(fgBounds, _currentMode, arrowColor);
+            }
         }
     }
 
