@@ -110,7 +110,7 @@ Plans:
 | 9. Overlay Chaining | v3.0 | 0/0 | Complete | 2026-03-02 |
 | 10. Grid Infrastructure and Modifier Wiring | v3.1 | 3/3 | Complete | 2026-03-02 |
 | 11. Move and Resize (Single Monitor) | v3.1 | 3/3 | Complete | 2026-03-02 |
-| 12. Cross-Monitor and Overlay Integration | 2/2 | Complete   | 2026-03-02 | - |
+| 12. Cross-Monitor and Overlay Integration | 2/2 | Complete    | 2026-03-02 | - |
 
 ---
 *Full milestone details: See `.planning/milestones/` archives*
