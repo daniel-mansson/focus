@@ -52,7 +52,7 @@ result: pass
 
 total: 7
 passed: 3
-issues: 4
+issues: 5
 pending: 0
 skipped: 0
 
@@ -113,3 +113,16 @@ skipped: 0
   missing:
     - "Add post-computation no-op guard: if computed visible dimension >= current visible dimension, return win unchanged"
   debug_session: ".planning/debug/shrink-at-os-min-moves-window.md"
+
+- truth: "Move target outlines are hidden during Move/Grow/Shrink modes"
+  status: failed
+  reason: "User reported: the other outlines for move targets should not be visible while in move/grow/shrink mode"
+  severity: major
+  test: 0
+  root_cause: "ShowOverlaysForCurrentForeground draws all overlays (active + navigate targets). In Move/Grow/Shrink modes only the active window outline should be visible."
+  artifacts:
+    - path: "focus/Windows/Daemon/Overlay/OverlayOrchestrator.cs"
+      issue: "Non-active window overlays (move targets) remain visible during Move/Grow/Shrink modes"
+  missing:
+    - "Hide or skip drawing navigate-target overlays when mode is Move, Grow, or Shrink — only show the active window outline"
+  debug_session: ""
