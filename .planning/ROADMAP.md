@@ -41,7 +41,7 @@
 **Milestone Goal:** Grid-snapped window move and resize via CAPS+TAB/LSHIFT/LCTRL+direction combos, with per-monitor grid, cross-monitor transitions, and mode-specific overlay indicators.
 
 - [x] **Phase 10: Grid Infrastructure and Modifier Wiring** — Config extensions, per-monitor grid calculation, TAB/LSHIFT/LCTRL detection in keyboard hook, modifier-aware routing through CapsLockMonitor
-- [x] **Phase 11: Move and Resize (Single Monitor)** — WindowManagerService with dual-rect coordinate handling, grid snap, move and grow/shrink operations, all guards (maximized, UIPI, clamp)
+- [ ] **Phase 11: Move and Resize (Single Monitor)** — WindowManagerService with dual-rect coordinate handling, grid snap, move and grow/shrink operations, all guards (maximized, UIPI, clamp)
 - [ ] **Phase 12: Cross-Monitor and Overlay Integration** — Adjacent monitor detection, cross-monitor move transitions, mode-specific overlay indicators, overlay reposition-in-place
 
 ## Phase Details
@@ -73,10 +73,12 @@ Plans:
   3. Moving toward the monitor edge stops at the work area boundary (window does not go behind taskbar or off screen)
   4. CAPS+LSHIFT+direction grows the window edge in that direction by one grid step; CAPS+LCTRL+direction shrinks it; shrink stops at minimum window size and does not make the window smaller than one grid cell
   5. Attempting to move or resize an elevated (admin) window or a maximized window produces no visible error and no window change
-**Plans:** 1/1 plans complete
+**Plans:** 3 plans (1 complete, 2 gap closure)
 
 Plans:
 - [x] 11-01-PLAN.md — WindowManagerService with grid-snapped move, grow, shrink operations and OverlayOrchestrator wiring
+- [ ] 11-02-PLAN.md — Gap closure: directional grid snap, shrink edge inversion fix, OS min-size guard, Shift+CapsLock activation
+- [ ] 11-03-PLAN.md — Gap closure: overlay refresh after move/resize operations
 
 ### Phase 12: Cross-Monitor and Overlay Integration
 **Goal**: Moving a window at a monitor boundary transitions it to the adjacent monitor at the correct grid position, and the overlay reflects the active mode (move/grow/shrink) with correct directional arrows throughout all operations
@@ -102,8 +104,8 @@ Plans:
 | 7. Hotkey Wiring | v3.0 | 2/2 | Complete | 2026-03-01 |
 | 8. In-Daemon Navigation | v3.0 | 1/1 | Complete | 2026-03-01 |
 | 9. Overlay Chaining | v3.0 | 0/0 | Complete | 2026-03-02 |
-| 10. Grid Infrastructure and Modifier Wiring | 3/3 | Complete    | 2026-03-02 | 2026-03-02 |
-| 11. Move and Resize (Single Monitor) | v3.1 | Complete    | 2026-03-02 | 2026-03-02 |
+| 10. Grid Infrastructure and Modifier Wiring | v3.1 | 3/3 | Complete | 2026-03-02 |
+| 11. Move and Resize (Single Monitor) | v3.1 | 1/3 | In Progress | - |
 | 12. Cross-Monitor and Overlay Integration | v3.1 | 0/? | Not started | - |
 
 ---
