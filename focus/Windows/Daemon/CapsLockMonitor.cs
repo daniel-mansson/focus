@@ -78,11 +78,10 @@ internal sealed class CapsLockMonitor
     /// </summary>
     private static string BuildModifierPrefix(KeyEvent evt)
     {
-        if (!evt.LShiftHeld && !evt.LCtrlHeld && !evt.AltHeld)
+        if (!evt.LShiftHeld && !evt.AltHeld)
             return string.Empty;
 
-        var parts = new List<string>(3);
-        if (evt.LCtrlHeld)  parts.Add("LCtrl");
+        var parts = new List<string>(2);
         if (evt.AltHeld)    parts.Add("Alt");
         if (evt.LShiftHeld) parts.Add("LShift");
         return string.Join("+", parts) + "+";
