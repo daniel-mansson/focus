@@ -142,6 +142,26 @@ internal sealed class OverlayOrchestrator : IDisposable
     }
 
     /// <summary>
+    /// Called when TAB is released while CAPSLOCK is still held (returning to Navigate mode).
+    /// Restores full overlay display including navigate-target outlines.
+    /// </summary>
+    public void OnTabReleased()
+    {
+        if (_shutdownRequested) return;
+
+        try
+        {
+            _staDispatcher.Invoke(() =>
+            {
+                if (_capsLockHeld)
+                    ShowOverlaysForCurrentForeground();
+            });
+        }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
+    }
+
+    /// <summary>
     /// Called when a direction key is pressed while CAPSLOCK is held.
     /// Marshals to the STA thread and performs the full navigation pipeline:
     /// parse direction, load fresh config, enumerate windows, score, activate.
