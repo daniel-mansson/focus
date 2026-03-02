@@ -2,26 +2,13 @@
 gsd_state_version: 1.0
 milestone: v3.1
 milestone_name: Window Management
-status: unknown
-last_updated: "2026-03-02T14:57:35.827Z"
-progress:
-  total_phases: 1
-  completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
----
-
----
-gsd_state_version: 1.0
-milestone: v3.1
-milestone_name: Window Management
 status: in_progress
 last_updated: "2026-03-02"
 progress:
   total_phases: 3
   completed_phases: 1
   total_plans: 6
-  completed_plans: 2
+  completed_plans: 3
 ---
 
 # Project State
@@ -31,29 +18,29 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-02)
 
 **Core value:** Given a direction, reliably switch focus to the most intuitive window in that direction — fast enough for hotkey use, accurate enough to feel natural.
-**Current focus:** v3.1 Window Management — Phase 10 complete, starting Phase 11 (Window Move/Resize Service)
+**Current focus:** v3.1 Window Management — Phase 10 complete (all 3 plans done), ready for Phase 11 (Window Move/Resize Service)
 
 ## Current Position
 
 Phase: 10 of 12 (Grid Infrastructure and Modifier Wiring) — COMPLETE
-Plan: 2 of 2 (both plans complete)
+Plan: 3 of 3 (all plans complete)
 Status: Phase 10 complete, ready for Phase 11
-Last activity: 2026-03-02 — Completed 10-02 (hook runtime wiring: TAB interception, left-modifier detection, mode-qualified pipeline)
+Last activity: 2026-03-02 — Completed 10-03 (TAB held log spam suppression: _tabHeld repeat guard in CapsLockMonitor)
 
 Progress: [██░░░░░░░░] 20%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 2 (v3.1)
-- Average duration: 4.5 min
-- Total execution time: 9 min
+- Total plans completed: 3 (v3.1)
+- Average duration: 4 min
+- Total execution time: 12 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 10 - Grid Infrastructure | 2/2 | 9 min | 4.5 min |
+| 10 - Grid Infrastructure | 3/3 | 12 min | 4 min |
 
 *Updated after each plan completion*
 
@@ -73,6 +60,7 @@ Recent decisions affecting v3.1:
 - **NearestGridLine origin param**: Takes monitor origin to handle multi-monitor virtual-screen coordinates correctly.
 - **WindowMode.Navigate default**: Existing CAPS+direction and number key events compile unchanged (positional args only).
 - **Phase 10 no-op placeholder**: Non-Navigate modes (Move/Grow/Shrink) log and return in OverlayOrchestrator; Phase 11 implements WindowManagerService.
+- **_tabHeld repeat guard in CapsLockMonitor**: Mirrored _isHeld pattern for TAB; bool field declared alongside _isHeld, cleared in keyup handler and ResetState() — log fires exactly once per TAB press.
 
 ### Blockers/Concerns
 
@@ -83,5 +71,5 @@ Recent decisions affecting v3.1:
 ## Session Continuity
 
 Last session: 2026-03-02
-Stopped at: Completed 10-02-PLAN.md (hook runtime wiring complete — TAB interception, left-modifier mode detection, mode-qualified pipeline to OverlayOrchestrator)
+Stopped at: Completed 10-03-PLAN.md (TAB held log spam suppression — _tabHeld repeat guard in CapsLockMonitor, closes UAT test 4 gap)
 Resume file: None
