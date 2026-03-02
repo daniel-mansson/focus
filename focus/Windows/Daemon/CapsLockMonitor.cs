@@ -14,6 +14,7 @@ internal sealed class CapsLockMonitor
     private readonly ChannelReader<KeyEvent> _reader;
     private readonly bool _verbose;
     private bool _isHeld;
+    private bool _tabHeld;
     private readonly Action? _onHeld;
     private readonly Action? _onReleased;
     private readonly Action<string, WindowMode>? _onDirectionKeyDown;
@@ -125,11 +126,17 @@ internal sealed class CapsLockMonitor
             {
                 if (evt.IsKeyDown)
                 {
-                    if (_verbose)
-                        Console.Error.WriteLine($"[{DateTime.Now:HH:mm:ss.fff}] TAB held -> Move mode");
+                    if (!_tabHeld)
+                    {
+                        _tabHeld = true;
+                        if (_verbose)
+                            Console.Error.WriteLine($"[{DateTime.Now:HH:mm:ss.fff}] TAB held -> Move mode");
+                    }
+                    // else: auto-repeat, silently suppress
                 }
                 else
                 {
+                    _tabHeld = false;
                     if (_verbose)
                         Console.Error.WriteLine($"[{DateTime.Now:HH:mm:ss.fff}] TAB released");
                 }
@@ -247,6 +254,7 @@ internal sealed class CapsLockMonitor
     public void ResetState()
     {
         _isHeld = false;
+        _tabHeld = false;
         _directionKeysHeld.Clear();
     }
 }
