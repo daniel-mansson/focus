@@ -2,6 +2,19 @@
 gsd_state_version: 1.0
 milestone: v3.1
 milestone_name: Window Management
+status: unknown
+last_updated: "2026-03-02T14:57:35.827Z"
+progress:
+  total_phases: 1
+  completed_phases: 1
+  total_plans: 2
+  completed_plans: 2
+---
+
+---
+gsd_state_version: 1.0
+milestone: v3.1
+milestone_name: Window Management
 status: in_progress
 last_updated: "2026-03-02"
 progress:
