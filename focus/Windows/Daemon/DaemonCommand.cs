@@ -88,7 +88,7 @@ internal static class DaemonCommand
             onReleased:         () => orchestrator?.OnCapsLockReleased(),
             onDirectionKeyDown: (dir, mode) => orchestrator?.OnDirectionKeyDown(dir, mode),
             onNumberKeyDown:    (num) => orchestrator?.OnNumberKeyDown(num),
-            onModeEntered:      () => orchestrator?.OnModeEntered(),
+            onModeEntered:      (mode) => orchestrator?.OnModeEntered(mode),
             onModeExited:       () => orchestrator?.OnModeExited());
 
         // 9. Set up cancellation (used by both Ctrl+C and tray Exit paths)

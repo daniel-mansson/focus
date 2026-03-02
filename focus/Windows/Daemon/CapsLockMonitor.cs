@@ -14,13 +14,13 @@ internal sealed class CapsLockMonitor
     private readonly ChannelReader<KeyEvent> _reader;
     private readonly bool _verbose;
     private bool _isHeld;
-    private bool _spaceHeld;
     private bool _lAltHeld;
+    private bool _lWinHeld;
     private readonly Action? _onHeld;
     private readonly Action? _onReleased;
     private readonly Action<string, WindowMode>? _onDirectionKeyDown;
     private readonly Action<int>? _onNumberKeyDown;
-    private readonly Action? _onModeEntered;
+    private readonly Action<WindowMode>? _onModeEntered;
     private readonly Action? _onModeExited;
 
     // Tracks which direction/number keys are currently pressed to suppress key repeats.
@@ -32,7 +32,7 @@ internal sealed class CapsLockMonitor
         Action? onHeld = null, Action? onReleased = null,
         Action<string, WindowMode>? onDirectionKeyDown = null,
         Action<int>? onNumberKeyDown = null,
-        Action? onModeEntered = null,
+        Action<WindowMode>? onModeEntered = null,
         Action? onModeExited = null)
     {
         _reader = reader;
@@ -74,15 +74,14 @@ internal sealed class CapsLockMonitor
     };
 
     /// <summary>
-    /// Builds a modifier prefix string for verbose logging (e.g., "LAlt+", or "").
+    /// Builds a modifier prefix string for verbose logging based on the event's mode.
     /// </summary>
-    private static string BuildModifierPrefix(KeyEvent evt)
+    private static string BuildModifierPrefix(KeyEvent evt) => evt.Mode switch
     {
-        if (!evt.LAltHeld)
-            return string.Empty;
-
-        return "LAlt+";
-    }
+        WindowMode.Move => "LAlt+",
+        WindowMode.Grow => "LWin+",
+        _               => string.Empty
+    };
 
     /// <summary>
     /// Returns the display name for a key VK code (used in verbose log).
@@ -124,30 +123,7 @@ internal sealed class CapsLockMonitor
                 continue;
             }
 
-            // SPACE key event (VK_SPACE = 0x20) -- Move mode transitions
-            if (evt.VkCode == 0x20)
-            {
-                if (evt.IsKeyDown)
-                {
-                    if (!_spaceHeld)
-                    {
-                        _spaceHeld = true;
-                        if (_verbose)
-                            Console.Error.WriteLine($"[{DateTime.Now:HH:mm:ss.fff}] SPACE held -> Move mode");
-                        _onModeEntered?.Invoke();
-                    }
-                }
-                else
-                {
-                    _spaceHeld = false;
-                    if (_verbose)
-                        Console.Error.WriteLine($"[{DateTime.Now:HH:mm:ss.fff}] SPACE released");
-                    _onModeExited?.Invoke();
-                }
-                continue;
-            }
-
-            // LALT key event (VK_LMENU = 0xA4) -- Grow mode transitions
+            // LALT key event (VK_LMENU = 0xA4) -- Move mode transitions
             if (evt.VkCode == 0xA4)
             {
                 if (evt.IsKeyDown)
@@ -156,8 +132,8 @@ internal sealed class CapsLockMonitor
                     {
                         _lAltHeld = true;
                         if (_verbose)
-                            Console.Error.WriteLine($"[{DateTime.Now:HH:mm:ss.fff}] LALT held -> Grow mode");
-                        _onModeEntered?.Invoke();
+                            Console.Error.WriteLine($"[{DateTime.Now:HH:mm:ss.fff}] LALT held -> Move mode");
+                        _onModeEntered?.Invoke(WindowMode.Move);
                     }
                 }
                 else
@@ -165,6 +141,29 @@ internal sealed class CapsLockMonitor
                     _lAltHeld = false;
                     if (_verbose)
                         Console.Error.WriteLine($"[{DateTime.Now:HH:mm:ss.fff}] LALT released");
+                    _onModeExited?.Invoke();
+                }
+                continue;
+            }
+
+            // LWIN key event (VK_LWIN = 0x5B) -- Grow mode transitions
+            if (evt.VkCode == 0x5B)
+            {
+                if (evt.IsKeyDown)
+                {
+                    if (!_lWinHeld)
+                    {
+                        _lWinHeld = true;
+                        if (_verbose)
+                            Console.Error.WriteLine($"[{DateTime.Now:HH:mm:ss.fff}] LWIN held -> Grow mode");
+                        _onModeEntered?.Invoke(WindowMode.Grow);
+                    }
+                }
+                else
+                {
+                    _lWinHeld = false;
+                    if (_verbose)
+                        Console.Error.WriteLine($"[{DateTime.Now:HH:mm:ss.fff}] LWIN released");
                     _onModeExited?.Invoke();
                 }
                 continue;
@@ -281,8 +280,8 @@ internal sealed class CapsLockMonitor
     public void ResetState()
     {
         _isHeld = false;
-        _spaceHeld = false;
         _lAltHeld = false;
+        _lWinHeld = false;
         _directionKeysHeld.Clear();
     }
 }
