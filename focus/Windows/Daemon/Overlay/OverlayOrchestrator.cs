@@ -295,8 +295,23 @@ internal sealed class OverlayOrchestrator : IDisposable
         }
         else
         {
-            ShowOverlaysForCurrentForeground();
+            ShowOverlaysForActivation();
         }
+    }
+
+    /// <summary>
+    /// Shows the appropriate overlays based on current modifier state.
+    /// If LShift is already held (Grow mode), shows only the foreground border.
+    /// Otherwise shows full navigate overlays.
+    /// </summary>
+    private void ShowOverlaysForActivation()
+    {
+        // VK_LSHIFT = 0xA0; high bit set = key is down
+        bool lShiftHeld = (PInvoke.GetKeyState(0xA0) & 0x8000) != 0;
+        if (lShiftHeld)
+            RefreshForegroundOverlayOnly();
+        else
+            ShowOverlaysForCurrentForeground();
     }
 
     private void OnReleasedSta()
@@ -317,7 +332,7 @@ internal sealed class OverlayOrchestrator : IDisposable
         // Only show overlays if CapsLock is still held (user may have released during delay).
         if (_capsLockHeld)
         {
-            ShowOverlaysForCurrentForeground();
+            ShowOverlaysForActivation();
         }
     }
 
