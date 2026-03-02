@@ -1,9 +1,9 @@
 ---
-status: diagnosed
+status: resolved
 phase: 10-grid-infrastructure-and-modifier-wiring
 source: 10-01-SUMMARY.md, 10-02-SUMMARY.md
 started: 2026-03-02T15:10:00Z
-updated: 2026-03-02T15:15:00Z
+updated: 2026-03-02T15:45:00Z
 ---
 
 ## Current Test
@@ -45,7 +45,7 @@ skipped: 0
 ## Gaps
 
 - truth: "TAB held log should not spam on key repeat"
-  status: failed
+  status: resolved
   reason: "User reported: It works, but spams TAB held -> Move mode on every key repeat event while TAB is held down"
   severity: minor
   test: 4
