@@ -52,7 +52,19 @@ Given a direction, reliably switch focus to the most intuitive window in that di
 
 ### Active
 
-(No active milestone — use `/gsd:new-milestone` to start next)
+## Current Milestone: v3.1 Window Management
+
+**Goal:** Add grid-snapped window move and resize controls via CAPSLOCK modifier combos, layered onto the existing daemon.
+
+**Target features:**
+- CAPS+TAB+direction to move the foreground window by grid steps
+- CAPS+LSHIFT+direction to grow the window edge outward by grid steps
+- CAPS+LCTRL+direction to shrink the window edge inward by grid steps
+- Grid-snapped movement and sizing (configurable fraction, default 1/16th screen)
+- Per-monitor grid with cross-monitor movement support
+- Smart snap with tolerance (~10% of grid step)
+- Mode-specific overlay indicators (move arrows, grow/shrink edge arrows)
+- Instant overlay transitions (no animation)
 
 ### Out of Scope
 
@@ -102,4 +114,4 @@ AutoHotkey dependency eliminated for core navigation — daemon handles everythi
 | Overlay chaining via existing architecture | No new code needed — existing show/refresh already chains | ✓ Good — v2.0 architecture already supported it |
 
 ---
-*Last updated: 2026-03-02 after v3.0 milestone*
+*Last updated: 2026-03-02 after v3.1 milestone start*
