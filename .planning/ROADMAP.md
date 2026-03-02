@@ -41,7 +41,7 @@
 **Milestone Goal:** Grid-snapped window move and resize via CAPS+TAB/LSHIFT/LCTRL+direction combos, with per-monitor grid, cross-monitor transitions, and mode-specific overlay indicators.
 
 - [x] **Phase 10: Grid Infrastructure and Modifier Wiring** — Config extensions, per-monitor grid calculation, TAB/LSHIFT/LCTRL detection in keyboard hook, modifier-aware routing through CapsLockMonitor
-- [ ] **Phase 11: Move and Resize (Single Monitor)** — WindowManagerService with dual-rect coordinate handling, grid snap, move and grow/shrink operations, all guards (maximized, UIPI, clamp)
+- [x] **Phase 11: Move and Resize (Single Monitor)** — WindowManagerService with dual-rect coordinate handling, grid snap, move and grow/shrink operations, all guards (maximized, UIPI, clamp) (completed 2026-03-02)
 - [ ] **Phase 12: Cross-Monitor and Overlay Integration** — Adjacent monitor detection, cross-monitor move transitions, mode-specific overlay indicators, overlay reposition-in-place
 
 ## Phase Details
@@ -73,7 +73,7 @@ Plans:
   3. Moving toward the monitor edge stops at the work area boundary (window does not go behind taskbar or off screen)
   4. CAPS+LSHIFT+direction grows the window edge in that direction by one grid step; CAPS+LCTRL+direction shrinks it; shrink stops at minimum window size and does not make the window smaller than one grid cell
   5. Attempting to move or resize an elevated (admin) window or a maximized window produces no visible error and no window change
-**Plans:** 3 plans (1 complete, 2 gap closure)
+**Plans:** 3/3 plans complete
 
 Plans:
 - [x] 11-01-PLAN.md — WindowManagerService with grid-snapped move, grow, shrink operations and OverlayOrchestrator wiring
@@ -105,7 +105,7 @@ Plans:
 | 8. In-Daemon Navigation | v3.0 | 1/1 | Complete | 2026-03-01 |
 | 9. Overlay Chaining | v3.0 | 0/0 | Complete | 2026-03-02 |
 | 10. Grid Infrastructure and Modifier Wiring | v3.1 | 3/3 | Complete | 2026-03-02 |
-| 11. Move and Resize (Single Monitor) | v3.1 | 1/3 | In Progress | - |
+| 11. Move and Resize (Single Monitor) | 3/3 | Complete   | 2026-03-02 | - |
 | 12. Cross-Monitor and Overlay Integration | v3.1 | 0/? | Not started | - |
 
 ---
