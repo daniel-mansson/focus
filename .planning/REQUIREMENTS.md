@@ -81,32 +81,33 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| MODE-01 | — | Pending |
-| MODE-02 | — | Pending |
-| MODE-03 | — | Pending |
-| MODE-04 | — | Pending |
-| MOVE-01 | — | Pending |
-| MOVE-02 | — | Pending |
-| MOVE-03 | — | Pending |
-| SIZE-01 | — | Pending |
-| SIZE-02 | — | Pending |
-| SIZE-03 | — | Pending |
-| SIZE-04 | — | Pending |
-| GRID-01 | — | Pending |
-| GRID-02 | — | Pending |
-| GRID-03 | — | Pending |
-| GRID-04 | — | Pending |
-| XMON-01 | — | Pending |
-| XMON-02 | — | Pending |
-| OVRL-01 | — | Pending |
-| OVRL-02 | — | Pending |
-| OVRL-04 | — | Pending |
+| MODE-01 | Phase 10 | Pending |
+| MODE-02 | Phase 10 | Pending |
+| MODE-03 | Phase 10 | Pending |
+| MODE-04 | Phase 10 | Pending |
+| GRID-01 | Phase 10 | Pending |
+| GRID-02 | Phase 10 | Pending |
+| GRID-03 | Phase 10 | Pending |
+| GRID-04 | Phase 10 | Pending |
+| MOVE-01 | Phase 11 | Pending |
+| MOVE-02 | Phase 11 | Pending |
+| MOVE-03 | Phase 11 | Pending |
+| SIZE-01 | Phase 11 | Pending |
+| SIZE-02 | Phase 11 | Pending |
+| SIZE-03 | Phase 11 | Pending |
+| SIZE-04 | Phase 11 | Pending |
+| XMON-01 | Phase 12 | Pending |
+| XMON-02 | Phase 12 | Pending |
+| OVRL-01 | Phase 12 | Pending |
+| OVRL-02 | Phase 12 | Pending |
+| OVRL-03 | Phase 12 | Pending |
+| OVRL-04 | Phase 12 | Pending |
 
 **Coverage:**
-- v3.1 requirements: 20 total
-- Mapped to phases: 0
-- Unmapped: 20 ⚠️
+- v3.1 requirements: 20 total (+ 1 recovered: OVRL-03 was missing from original traceability table)
+- Mapped to phases: 20/20
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-02*
-*Last updated: 2026-03-02 after initial definition*
+*Last updated: 2026-03-02 after roadmap creation (phases 10-12)*
