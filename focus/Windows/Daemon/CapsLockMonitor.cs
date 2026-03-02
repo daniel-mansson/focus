@@ -16,7 +16,7 @@ internal sealed class CapsLockMonitor
     private bool _isHeld;
     private readonly Action? _onHeld;
     private readonly Action? _onReleased;
-    private readonly Action<string>? _onDirectionKeyDown;
+    private readonly Action<string, WindowMode>? _onDirectionKeyDown;
     private readonly Action<int>? _onNumberKeyDown;
 
     // Tracks which direction/number keys are currently pressed to suppress key repeats.
@@ -26,7 +26,7 @@ internal sealed class CapsLockMonitor
 
     public CapsLockMonitor(ChannelReader<KeyEvent> reader, bool verbose,
         Action? onHeld = null, Action? onReleased = null,
-        Action<string>? onDirectionKeyDown = null,
+        Action<string, WindowMode>? onDirectionKeyDown = null,
         Action<int>? onNumberKeyDown = null)
     {
         _reader = reader;
@@ -70,13 +70,13 @@ internal sealed class CapsLockMonitor
     /// </summary>
     private static string BuildModifierPrefix(KeyEvent evt)
     {
-        if (!evt.ShiftHeld && !evt.CtrlHeld && !evt.AltHeld)
+        if (!evt.LShiftHeld && !evt.LCtrlHeld && !evt.AltHeld)
             return string.Empty;
 
         var parts = new List<string>(3);
-        if (evt.CtrlHeld)  parts.Add("Ctrl");
-        if (evt.AltHeld)   parts.Add("Alt");
-        if (evt.ShiftHeld) parts.Add("Shift");
+        if (evt.LCtrlHeld)  parts.Add("LCtrl");
+        if (evt.AltHeld)    parts.Add("Alt");
+        if (evt.LShiftHeld) parts.Add("LShift");
         return string.Join("+", parts) + "+";
     }
 
@@ -117,6 +117,22 @@ internal sealed class CapsLockMonitor
             if (directionName is not null)
             {
                 HandleDirectionKeyEvent(evt, directionName);
+                continue;
+            }
+
+            // TAB key event (VK_TAB = 0x09) -- track mode state for verbose logging
+            if (evt.VkCode == 0x09)
+            {
+                if (evt.IsKeyDown)
+                {
+                    if (_verbose)
+                        Console.Error.WriteLine($"[{DateTime.Now:HH:mm:ss.fff}] TAB held -> Move mode");
+                }
+                else
+                {
+                    if (_verbose)
+                        Console.Error.WriteLine($"[{DateTime.Now:HH:mm:ss.fff}] TAB released");
+                }
                 continue;
             }
 
@@ -169,10 +185,10 @@ internal sealed class CapsLockMonitor
                 string modifierPrefix = BuildModifierPrefix(evt);
                 string keyName = GetKeyDisplayName(evt.VkCode);
                 Console.Error.WriteLine(
-                    $"[{DateTime.Now:HH:mm:ss.fff}] Direction: {modifierPrefix}{keyName} -> {directionName}");
+                    $"[{DateTime.Now:HH:mm:ss.fff}] Direction: {modifierPrefix}{keyName} -> {directionName} [{evt.Mode}]");
             }
 
-            _onDirectionKeyDown?.Invoke(directionName);
+            _onDirectionKeyDown?.Invoke(directionName, evt.Mode);
         }
         else
         {

@@ -127,9 +127,19 @@ internal sealed class OverlayOrchestrator : IDisposable
     /// parse direction, load fresh config, enumerate windows, score, activate.
     /// </summary>
     /// <param name="direction">Cardinal direction: "up", "down", "left", "right"</param>
-    public void OnDirectionKeyDown(string direction)
+    /// <param name="mode">Window operation mode derived from modifier keys (default: Navigate).</param>
+    public void OnDirectionKeyDown(string direction, WindowMode mode = WindowMode.Navigate)
     {
         if (_shutdownRequested) return;
+
+        if (mode != WindowMode.Navigate)
+        {
+            // Move/Grow/Shrink modes -- Phase 11 will implement WindowManagerService.
+            // For now, log and return (no-op).
+            if (_verbose)
+                Console.Error.WriteLine($"[{DateTime.Now:HH:mm:ss.fff}] Mode {mode} direction {direction} -- not yet implemented");
+            return;
+        }
 
         try
         {
