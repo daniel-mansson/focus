@@ -92,7 +92,7 @@ Plans:
 **Plans:** 2 plans
 
 Plans:
-- [ ] 12-01-PLAN.md — Cross-monitor adjacency detection in MonitorHelper and cross-monitor move transition in WindowManagerService
+- [x] 12-01-PLAN.md — Cross-monitor adjacency detection in MonitorHelper and cross-monitor move transition in WindowManagerService
 - [ ] 12-02-PLAN.md — Mode-aware overlay plumbing (OnModeEntered signature), ArrowRenderer, mode-colored borders and arrow indicators in OverlayOrchestrator
 
 ## Progress
@@ -110,7 +110,7 @@ Plans:
 | 9. Overlay Chaining | v3.0 | 0/0 | Complete | 2026-03-02 |
 | 10. Grid Infrastructure and Modifier Wiring | v3.1 | 3/3 | Complete | 2026-03-02 |
 | 11. Move and Resize (Single Monitor) | v3.1 | 3/3 | Complete | 2026-03-02 |
-| 12. Cross-Monitor and Overlay Integration | v3.1 | 0/2 | Not started | - |
+| 12. Cross-Monitor and Overlay Integration | v3.1 | 1/2 | In progress | - |
 
 ---
 *Full milestone details: See `.planning/milestones/` archives*
