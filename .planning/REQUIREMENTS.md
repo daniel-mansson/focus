@@ -16,16 +16,16 @@ Requirements for the Window Management milestone. Each maps to roadmap phases.
 
 ### Window Move
 
-- [ ] **MOVE-01**: User can move the foreground window by one grid step in any direction (CAPS+TAB+direction)
-- [ ] **MOVE-02**: User can press direction keys repeatedly for consecutive grid steps while CAPS+TAB held
-- [ ] **MOVE-03**: Window position clamped to monitor work area boundaries
+- [x] **MOVE-01**: User can move the foreground window by one grid step in any direction (CAPS+TAB+direction)
+- [x] **MOVE-02**: User can press direction keys repeatedly for consecutive grid steps while CAPS+TAB held
+- [x] **MOVE-03**: Window position clamped to monitor work area boundaries
 
 ### Window Resize
 
-- [ ] **SIZE-01**: User can grow a window edge outward by one grid step (CAPS+LSHIFT+direction)
-- [ ] **SIZE-02**: User can shrink a window edge inward by one grid step (CAPS+LCTRL+direction)
-- [ ] **SIZE-03**: Shrink stops at minimum window size
-- [ ] **SIZE-04**: Grow stops at monitor work area boundary
+- [x] **SIZE-01**: User can grow a window edge outward by one grid step (CAPS+LSHIFT+direction)
+- [x] **SIZE-02**: User can shrink a window edge inward by one grid step (CAPS+LCTRL+direction)
+- [x] **SIZE-03**: Shrink stops at minimum window size
+- [x] **SIZE-04**: Grow stops at monitor work area boundary
 
 ### Grid & Snap
 
@@ -89,13 +89,13 @@ Which phases cover which requirements. Updated during roadmap creation.
 | GRID-02 | Phase 10 | Complete |
 | GRID-03 | Phase 10 | Complete |
 | GRID-04 | Phase 10 | Complete |
-| MOVE-01 | Phase 11 | Pending |
-| MOVE-02 | Phase 11 | Pending |
-| MOVE-03 | Phase 11 | Pending |
-| SIZE-01 | Phase 11 | Pending |
-| SIZE-02 | Phase 11 | Pending |
-| SIZE-03 | Phase 11 | Pending |
-| SIZE-04 | Phase 11 | Pending |
+| MOVE-01 | Phase 11 | Complete |
+| MOVE-02 | Phase 11 | Complete |
+| MOVE-03 | Phase 11 | Complete |
+| SIZE-01 | Phase 11 | Complete |
+| SIZE-02 | Phase 11 | Complete |
+| SIZE-03 | Phase 11 | Complete |
+| SIZE-04 | Phase 11 | Complete |
 | XMON-01 | Phase 12 | Pending |
 | XMON-02 | Phase 12 | Pending |
 | OVRL-01 | Phase 12 | Pending |
