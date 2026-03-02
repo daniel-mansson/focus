@@ -9,9 +9,9 @@ Requirements for the Window Management milestone. Each maps to roadmap phases.
 
 ### Modifier Modes
 
-- [ ] **MODE-01**: User holds CAPS+TAB to activate window move mode
-- [ ] **MODE-02**: User holds CAPS+LSHIFT to activate window grow mode
-- [ ] **MODE-03**: User holds CAPS+LCTRL to activate window shrink mode
+- [x] **MODE-01**: User holds CAPS+TAB to activate window move mode
+- [x] **MODE-02**: User holds CAPS+LSHIFT to activate window grow mode
+- [x] **MODE-03**: User holds CAPS+LCTRL to activate window shrink mode
 - [ ] **MODE-04**: Normal TAB key behavior preserved when CAPS is not held
 
 ### Window Move
@@ -29,10 +29,10 @@ Requirements for the Window Management milestone. Each maps to roadmap phases.
 
 ### Grid & Snap
 
-- [ ] **GRID-01**: Grid step is 1/Nth of monitor dimension (configurable `gridFraction`, default 16)
-- [ ] **GRID-02**: Grid computed per-monitor from that monitor's work area
-- [ ] **GRID-03**: Misaligned windows snap to nearest grid line on first operation
-- [ ] **GRID-04**: Snap tolerance configurable (`snapTolerancePercent`, default 10)
+- [x] **GRID-01**: Grid step is 1/Nth of monitor dimension (configurable `gridFraction`, default 16)
+- [x] **GRID-02**: Grid computed per-monitor from that monitor's work area
+- [x] **GRID-03**: Misaligned windows snap to nearest grid line on first operation
+- [x] **GRID-04**: Snap tolerance configurable (`snapTolerancePercent`, default 10)
 
 ### Cross-Monitor
 
@@ -81,14 +81,14 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| MODE-01 | Phase 10 | Pending |
-| MODE-02 | Phase 10 | Pending |
-| MODE-03 | Phase 10 | Pending |
+| MODE-01 | Phase 10 | Complete |
+| MODE-02 | Phase 10 | Complete |
+| MODE-03 | Phase 10 | Complete |
 | MODE-04 | Phase 10 | Pending |
-| GRID-01 | Phase 10 | Pending |
-| GRID-02 | Phase 10 | Pending |
-| GRID-03 | Phase 10 | Pending |
-| GRID-04 | Phase 10 | Pending |
+| GRID-01 | Phase 10 | Complete |
+| GRID-02 | Phase 10 | Complete |
+| GRID-03 | Phase 10 | Complete |
+| GRID-04 | Phase 10 | Complete |
 | MOVE-01 | Phase 11 | Pending |
 | MOVE-02 | Phase 11 | Pending |
 | MOVE-03 | Phase 11 | Pending |
