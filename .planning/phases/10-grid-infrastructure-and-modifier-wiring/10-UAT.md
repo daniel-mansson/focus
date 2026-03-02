@@ -1,5 +1,5 @@
 ---
-status: complete
+status: diagnosed
 phase: 10-grid-infrastructure-and-modifier-wiring
 source: 10-01-SUMMARY.md, 10-02-SUMMARY.md
 started: 2026-03-02T15:10:00Z
@@ -49,6 +49,10 @@ skipped: 0
   reason: "User reported: It works, but spams TAB held -> Move mode on every key repeat event while TAB is held down"
   severity: minor
   test: 4
-  artifacts: []
-  missing: []
-  debug_session: ""
+  root_cause: "CapsLockMonitor TAB handler logs on every WM_KEYDOWN repeat with no guard — unlike CAPSLOCK and direction handlers which suppress repeats"
+  artifacts:
+    - path: "focus/Windows/Daemon/CapsLockMonitor.cs"
+      issue: "TAB keydown block (lines 123-136) missing repeat guard — logs on every auto-repeat cycle"
+  missing:
+    - "Add _tabHeld bool field to CapsLockMonitor, guard log with if (!_tabHeld), clear on key-up"
+  debug_session: ".planning/debug/tab-held-log-spam.md"
