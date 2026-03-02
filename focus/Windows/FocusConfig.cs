@@ -20,6 +20,9 @@ internal class FocusConfig
     public bool NumberOverlayEnabled { get; set; } = true;
     public NumberOverlayPosition NumberOverlayPosition { get; set; } = NumberOverlayPosition.TopLeft;
     public NumberSortStrategy NumberSortStrategy { get; set; } = NumberSortStrategy.LeftEdge;
+    public int GridFractionX { get; set; } = 16;
+    public int GridFractionY { get; set; } = 12;
+    public int SnapTolerancePercent { get; set; } = 10;
 
     public static string GetConfigPath()
     {
