@@ -236,42 +236,48 @@ internal static class WindowManagerService
 
         switch (direction)
         {
-            case "right":
-                // Right edge moves inward (leftward); left edge stays fixed
-                if (visW <= stepX) return win;  // minimum size guard — silent no-op (SIZE-03)
-                newVisRight = GridCalculator.IsAligned(vis.right, work.left, stepX, tolX)
-                    ? vis.right - stepX
-                    : GridCalculator.NearestGridLine(vis.right, work.left, stepX);
-                newVisRight = Math.Max(newVisRight, newVisLeft + stepX); // min-size clamp (SIZE-03)
-                break;
-
-            case "left":
-                // Left edge moves inward (rightward); right edge stays fixed
-                if (visW <= stepX) return win;
-                newVisLeft = GridCalculator.IsAligned(vis.left, work.left, stepX, tolX)
-                    ? vis.left + stepX
-                    : GridCalculator.NearestGridLine(vis.left, work.left, stepX);
-                newVisLeft = Math.Min(newVisLeft, newVisRight - stepX); // min-size clamp (SIZE-03)
-                break;
-
-            case "down":
-                // Bottom edge moves inward (upward); top edge stays fixed
-                if (visH <= stepY) return win;
+            case "up":
+                // Shrink-up: BOTTOM edge moves upward (inward); top edge stays fixed
+                if (visH <= stepY) return win;  // minimum size guard — silent no-op (SIZE-03)
                 newVisBottom = GridCalculator.IsAligned(vis.bottom, work.top, stepY, tolY)
                     ? vis.bottom - stepY
-                    : GridCalculator.NearestGridLine(vis.bottom, work.top, stepY);
+                    : GridCalculator.NearestGridLineFloor(vis.bottom, work.top, stepY);  // snap upward (inward)
                 newVisBottom = Math.Max(newVisBottom, newVisTop + stepY); // min-size clamp (SIZE-03)
                 break;
 
-            case "up":
-                // Top edge moves inward (downward); bottom edge stays fixed
+            case "down":
+                // Shrink-down: TOP edge moves downward (inward); bottom edge stays fixed
                 if (visH <= stepY) return win;
                 newVisTop = GridCalculator.IsAligned(vis.top, work.top, stepY, tolY)
                     ? vis.top + stepY
-                    : GridCalculator.NearestGridLine(vis.top, work.top, stepY);
+                    : GridCalculator.NearestGridLineCeiling(vis.top, work.top, stepY);  // snap downward (inward)
                 newVisTop = Math.Min(newVisTop, newVisBottom - stepY); // min-size clamp (SIZE-03)
                 break;
+
+            case "left":
+                // Shrink-left: RIGHT edge moves leftward (inward); left edge stays fixed
+                if (visW <= stepX) return win;
+                newVisRight = GridCalculator.IsAligned(vis.right, work.left, stepX, tolX)
+                    ? vis.right - stepX
+                    : GridCalculator.NearestGridLineFloor(vis.right, work.left, stepX);  // snap leftward (inward)
+                newVisRight = Math.Max(newVisRight, newVisLeft + stepX); // min-size clamp (SIZE-03)
+                break;
+
+            case "right":
+                // Shrink-right: LEFT edge moves rightward (inward); right edge stays fixed
+                if (visW <= stepX) return win;
+                newVisLeft = GridCalculator.IsAligned(vis.left, work.left, stepX, tolX)
+                    ? vis.left + stepX
+                    : GridCalculator.NearestGridLineCeiling(vis.left, work.left, stepX);  // snap rightward (inward)
+                newVisLeft = Math.Min(newVisLeft, newVisRight - stepX); // min-size clamp (SIZE-03)
+                break;
         }
+
+        // Post-computation no-op guard: if the visible dimension did not actually shrink,
+        // SetWindowPos would only move the window (OS clamps to ptMinTrackSize). Return unchanged.
+        int newVisW = newVisRight - newVisLeft;
+        int newVisH = newVisBottom - newVisTop;
+        if (newVisW >= visW && newVisH >= visH) return win;
 
         // Translate visible coords back to GetWindowRect coordinate space
         return new RECT

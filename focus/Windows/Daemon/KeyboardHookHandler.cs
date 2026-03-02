@@ -183,17 +183,14 @@ internal sealed class KeyboardHookHandler : IDisposable
         if (kbd->vkCode != VK_CAPITAL)
             return PInvoke.CallNextHookEx(null, nCode, wParam, lParam);
 
-        // Filter modifier combinations — only bare CAPSLOCK triggers detection
-        // Alt check: LLKHF_ALTDOWN flag in KBDLLHOOKSTRUCT.flags
+        // Filter modifier combinations — only bare CAPSLOCK or SHIFT+CAPSLOCK triggers detection.
+        // Alt+CAPS and Ctrl+CAPS are filtered out (system shortcuts).
+        // Shift+CAPS is allowed so users can hold LShift first then press CAPS to enter grow mode.
         if (((uint)kbd->flags & LLKHF_ALTDOWN) != 0)
             return PInvoke.CallNextHookEx(null, nCode, wParam, lParam);
 
         // Ctrl check: GetKeyState high bit set means key is down
         if ((PInvoke.GetKeyState((int)VK_CONTROL) & 0x8000) != 0)
-            return PInvoke.CallNextHookEx(null, nCode, wParam, lParam);
-
-        // Shift check: GetKeyState high bit set means key is down
-        if ((PInvoke.GetKeyState((int)VK_SHIFT) & 0x8000) != 0)
             return PInvoke.CallNextHookEx(null, nCode, wParam, lParam);
 
         // Update _capsLockHeld in real-time so direction key check above is accurate
