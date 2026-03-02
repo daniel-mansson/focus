@@ -122,10 +122,11 @@ internal sealed class OverlayOrchestrator : IDisposable
     }
 
     /// <summary>
-    /// Called when a mode modifier (Space or LAlt) is first pressed while CAPSLOCK is held.
+    /// Called when a mode modifier (LAlt or LWin) is first pressed while CAPSLOCK is held.
     /// Hides navigate-target outlines immediately, keeping only the foreground border.
     /// </summary>
-    public void OnModeEntered()
+    /// <param name="mode">The mode that was entered (Move or Grow).</param>
+    public void OnModeEntered(WindowMode mode)
     {
         if (_shutdownRequested) return;
 
@@ -142,7 +143,7 @@ internal sealed class OverlayOrchestrator : IDisposable
     }
 
     /// <summary>
-    /// Called when a mode modifier (Space or LAlt) is released while CAPSLOCK is still held.
+    /// Called when a mode modifier (LAlt or LWin) is released while CAPSLOCK is still held.
     /// Restores full overlay display including navigate-target outlines.
     /// </summary>
     public void OnModeExited()
@@ -306,10 +307,10 @@ internal sealed class OverlayOrchestrator : IDisposable
     /// </summary>
     private void ShowOverlaysForActivation()
     {
-        // VK_LMENU = 0xA4 (LAlt), VK_SPACE = 0x20; high bit set = key is down
-        bool lAltHeld  = (PInvoke.GetKeyState(0xA4) & 0x8000) != 0;
-        bool spaceHeld = (PInvoke.GetKeyState(0x20) & 0x8000) != 0;
-        if (lAltHeld || spaceHeld)
+        // VK_LMENU = 0xA4 (LAlt/Move), VK_LWIN = 0x5B (LWin/Grow); high bit set = key is down
+        bool lAltHeld = (PInvoke.GetKeyState(0xA4) & 0x8000) != 0;
+        bool lWinHeld = (PInvoke.GetKeyState(0x5B) & 0x8000) != 0;
+        if (lAltHeld || lWinHeld)
             RefreshForegroundOverlayOnly();
         else
             ShowOverlaysForCurrentForeground();
