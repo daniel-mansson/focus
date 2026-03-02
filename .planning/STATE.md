@@ -2,19 +2,6 @@
 gsd_state_version: 1.0
 milestone: v3.1
 milestone_name: Window Management
-status: unknown
-last_updated: "2026-03-02T21:36:08.493Z"
-progress:
-  total_phases: 2
-  completed_phases: 2
-  total_plans: 6
-  completed_plans: 6
----
-
----
-gsd_state_version: 1.0
-milestone: v3.1
-milestone_name: Window Management
 status: in_progress
 last_updated: "2026-03-02"
 progress:
@@ -57,7 +44,6 @@ Progress: [█████░░░░░] 50%
 | 11 - Move and Resize | 3/5 | 8 min | 3 min |
 
 *Updated after each plan completion*
-| Phase 11 P02 | 2 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -83,6 +69,8 @@ Recent decisions affecting v3.1:
 - **ComputeShrink edge mapping corrected**: shrink direction names the side that stays FIXED; opposite edge contracts — shrink-up moves bottom edge upward, shrink-down moves top edge downward, etc. (from 11-02).
 - **Post-computation no-op guard in ComputeShrink**: if newVisW >= visW && newVisH >= visH return win unchanged — prevents position-only SetWindowPos call at OS min-track size (from 11-02).
 - **Shift filter removed from CapsLock handler**: Shift+CapsLock now activates overlay, enabling Shift-first workflow for grow mode; Alt and Ctrl filters remain (from 11-02).
+- **RefreshForegroundOverlayOnly vs ShowOverlaysForCurrentForeground (from 11-03)**: During Move/Grow/Shrink only the active window border should be visible; navigate targets are distracting and wrong. New method: HideAll then ShowForegroundOverlay only.
+- **_capsLockHeld guard on RefreshForegroundOverlayOnly (from 11-03)**: Prevents stale overlay flash if CapsLock released between direction keydown and STA dispatch execution — OnReleasedSta already HideAll'd.
 
 ### Blockers/Concerns
 
@@ -94,5 +82,5 @@ Recent decisions affecting v3.1:
 ## Session Continuity
 
 Last session: 2026-03-02
-Stopped at: Completed 11-02-PLAN.md (bug fixes: grow directional snap, shrink edge inversion, OS min-size no-op guard, Shift-first+CapsLock activation)
+Stopped at: Completed 11-03-PLAN.md (OverlayOrchestrator: RefreshForegroundOverlayOnly after MoveOrResize, navigate-target outlines hidden during Move/Grow/Shrink)
 Resume file: None
