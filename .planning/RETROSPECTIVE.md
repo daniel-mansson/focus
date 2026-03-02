@@ -2,6 +2,52 @@
 
 *A living document updated after each milestone. Lessons feed forward into future planning.*
 
+## Milestone: v3.0 — Integrated Navigation
+
+**Shipped:** 2026-03-02
+**Phases:** 3 | **Plans:** 3 | **Quick Tasks:** 6
+
+### What Was Built
+- Direction key interception/suppression in WH_KEYBOARD_LL hook — arrows + WASD silenced while CAPSLOCK held
+- Full in-daemon navigation pipeline — CAPSLOCK + direction fires same scoring engine as CLI
+- Overlay chaining — overlay persists and refreshes through sequential directional moves
+- White foreground window border for visual orientation
+- CAPS+number window selection with GDI text labels and position-stable numbering
+- Runtime config reload on every keypress (zero-restart workflow)
+
+### What Worked
+- Phase 9 (Overlay Chaining) turned out to already work with existing v2.0 architecture — no new code was needed, just verification
+- Quick task workflow (`/gsd:quick`) was highly effective for small UX improvements (6 tasks in ~40 min total)
+- Fresh config load per keypress was a good user-driven decision — immediate feedback loop for tweaking settings
+- Hook point pattern (Phase 7 creates no-op, Phase 8 fills it in) provided clean separation of concerns
+- Milestone audit caught that Phase 9 was already working before formal execution began, saving an entire planning/execution cycle
+
+### What Was Inefficient
+- Phase 9 was planned as a separate phase with formal plans, but the overlay chaining behavior already worked from v2.0's ShowOverlaysForCurrentForeground architecture — could have been verified earlier
+- STATE.md accumulated a lot of context (quick task decisions, key decisions) that became stale after milestone completion — suggests trimming accumulated context at milestone boundaries
+- Dual-config pattern (startup config vs per-keypress config) was noted as tech debt but is actually by-design — audit flagged it unnecessarily
+
+### Patterns Established
+- Quick task workflow: `/gsd:quick` for atomic, tracked improvements outside formal phase plans
+- Hook point pattern: add no-op method to orchestrator, wire callback, implement in future phase
+- HashSet<uint> for key repeat suppression — cleared on keyup and ResetState() for sleep/wake safety
+- GDI text on layered windows requires alpha fixup pass (premultiplied alpha from ClearType)
+- Position-stable overlay numbering: sort full filtered window list including active window
+
+### Key Lessons
+1. Audit before completing milestones — the v3.0 audit correctly identified that Phase 9 was already working, saving a full planning/execution cycle
+2. Quick tasks are the right granularity for UX polish — small, atomic, tracked, but without the overhead of full phase planning
+3. Architecture can satisfy future requirements without new code — v2.0's overlay refresh-on-foreground-change already enabled v3.0 chaining
+4. Fresh config load per interaction is a good pattern for desktop tools — users expect settings to take effect immediately
+5. Runtime key repeat suppression needs explicit state cleanup on sleep/wake transitions
+
+### Cost Observations
+- Model mix: ~60% opus, ~30% sonnet, ~10% haiku (estimated)
+- Sessions: ~4
+- Notable: Phase 9 required zero code changes — existing architecture already chained. Quick tasks took 1-20 min each. Total milestone was 2 days.
+
+---
+
 ## Milestone: v2.0 — Overlay Preview
 
 **Shipped:** 2026-03-01
@@ -84,9 +130,12 @@
 |-----------|--------|-------|------------|
 | v1.0 | 3 | 6 | Established CsWin32 + NativeMethods.txt pattern, debug-first approach |
 | v2.0 | 3 | 6 | Added human verification checkpoints, systematic deviation tracking |
+| v3.0 | 3 | 3 | Quick task workflow for UX polish, milestone audit caught pre-satisfied requirements |
 
 ### Top Lessons (Verified Across Milestones)
 
 1. CsWin32 NativeMethods.txt entries must be explicit — transitive dependencies are never generated (verified in Phase 1, 4, 5, 6)
-2. Human verification catches real bugs that compilation alone misses — GDI alpha, overlay overlap, stale frames (verified in Phase 5, 6)
-3. Two-plan phase structure (build → wire+verify) consistently produces focused, testable increments (verified across all 6 phases)
+2. Human verification catches real bugs that compilation alone misses — GDI alpha, overlay overlap, stale frames (verified in Phase 5, 6, 7, 8)
+3. Two-plan phase structure (build → wire+verify) consistently produces focused, testable increments (verified across all 9 phases)
+4. Milestone audit before completion saves wasted effort — Phase 9 was already working from v2.0 architecture (verified in v3.0)
+5. Quick tasks (`/gsd:quick`) are the right tool for UX polish between formal phases (verified in v3.0 — 6 quick tasks, ~40 min total)

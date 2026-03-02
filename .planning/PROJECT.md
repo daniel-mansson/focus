@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A lightweight C# command-line tool and optional background daemon that enables directional window focus navigation on Windows, inspired by Hyprland's arrow-key-based window switching. Invoked via AutoHotkey hotkeys (e.g., `focus left`), it finds the best candidate window in the given direction and switches focus to it. The daemon mode (`focus daemon`) renders colored border overlays on target windows while CAPSLOCK is held, showing which window each direction would navigate to — bringing Hyprland-style spatial navigation to Windows without requiring a full tiling window manager.
+A lightweight C# tool enabling keyboard-driven directional window focus navigation on Windows, inspired by Hyprland's spatial window switching. In daemon mode (`focus daemon`), holding CAPSLOCK shows colored border overlays on candidate windows, and pressing direction keys (arrows or WASD) instantly switches focus — with overlay chaining for sequential moves and number keys for direct window selection. Also works as a stateless CLI (`focus left`) for scripting and external launchers.
 
 ## Core Value
 
@@ -43,14 +43,16 @@ Given a direction, reliably switch focus to the most intuitive window in that di
 - ✓ Sleep/wake recovery for keyboard hook and CAPSLOCK state — v2.0
 - ✓ Configurable activation delay (overlayDelayMs) to suppress accidental taps — v2.0
 
+<!-- Shipped and confirmed valuable (v3.0). -->
+
+- ✓ Daemon detects CAPSLOCK + direction keys (arrows + WASD) and performs focus navigation directly — v3.0
+- ✓ Direction keys suppressed from reaching focused app while CAPSLOCK held — v3.0
+- ✓ Overlay stays visible during chained moves, refreshing candidates from new foreground window — v3.0
+- ✓ Stateless CLI (`focus <direction>`) continues to work alongside daemon hotkeys — v3.0
+
 ### Active
 
-<!-- Current scope: v3.0 Integrated Navigation -->
-
-- [ ] Daemon detects CAPSLOCK + direction keys (arrows + WASD) and performs focus navigation directly
-- [ ] Overlay stays visible during chained moves, refreshing candidates from new foreground window
-- [ ] Direction keys suppressed from reaching focused app while CAPSLOCK held
-- [ ] Stateless CLI (`focus <direction>`) continues to work alongside daemon hotkeys
+(No active milestone — use `/gsd:new-milestone` to start next)
 
 ### Out of Scope
 
@@ -64,10 +66,12 @@ Given a direction, reliably switch focus to the most intuitive window in that di
 
 ## Context
 
-Shipped v2.0 with 3,298 LOC C# across 22 source files.
+Shipped v3.0 with 4,197 LOC C# across ~25 source files.
 Tech stack: .NET 8 (net8.0-windows), CsWin32 0.3.269 for P/Invoke, WinForms (message pump + tray icon only), GDI for overlay rendering.
-Two modes: stateless CLI (`focus <direction>`) for AHK hotkeys, persistent daemon (`focus daemon`) for overlay previews.
-Six weighting strategies available: balanced, strong-axis-bias, closest-in-direction, edge-matching, edge-proximity, axis-only.
+Two modes: stateless CLI (`focus <direction>`) for scripting, persistent daemon (`focus daemon`) for hotkey navigation + overlay previews.
+Six weighting strategies: balanced, strong-axis-bias, closest-in-direction, edge-matching, edge-proximity, axis-only.
+Daemon handles full navigation flow: CAPSLOCK + direction keys, overlay chaining, CAPS+number window selection.
+AutoHotkey dependency eliminated for core navigation — daemon handles everything natively.
 
 ## Constraints
 
@@ -91,16 +95,11 @@ Six weighting strategies available: balanced, strong-axis-bias, closest-in-direc
 | Win32 GDI layered windows for overlays | UpdateLayeredWindow + premultiplied alpha DIB — no WPF/WinUI dependency | ✓ Good — lightweight, accurate positioning, click-through |
 | Fade animation removed (instant show/hide) | User tested both, preferred instant transitions over 100ms fade | ✓ Good — eliminated all timer/alpha machinery, simpler code |
 | Replace semantics for daemon mutex | Kill existing daemon on restart rather than error — smoother UX | ✓ Good — user never sees "already running" errors |
-
-## Current Milestone: v3.0 Integrated Navigation
-
-**Goal:** Daemon handles CAPSLOCK + direction hotkeys (arrows + WASD) to perform focus navigation directly, eliminating the AutoHotkey dependency for window switching.
-
-**Target features:**
-- CAPSLOCK + arrow keys / WASD triggers focus move from within the daemon
-- Overlay stays visible for chaining multiple moves while CAPSLOCK held
-- Direction keys suppressed while CAPSLOCK held (don't leak to focused app)
-- Stateless CLI mode preserved for scripting and other launchers
+| Fresh config load per keypress | Runtime config changes without daemon restart | ✓ Good — zero-restart config workflow |
+| STA thread navigation dispatch | All Win32 APIs run on STA thread via Invoke | ✓ Good — consistent with overlay dispatch pattern |
+| Silent no-op on no candidates | No beep/log when no window in direction | ✓ Good — clean, unobtrusive experience |
+| CAPS+number overlay labels | GDI text rendering on layered windows with alpha fixup | ✓ Good — position-stable numbering across navigation |
+| Overlay chaining via existing architecture | No new code needed — existing show/refresh already chains | ✓ Good — v2.0 architecture already supported it |
 
 ---
-*Last updated: 2026-03-01 after v3.0 milestone started*
+*Last updated: 2026-03-02 after v3.0 milestone*

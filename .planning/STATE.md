@@ -1,12 +1,12 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
+milestone: v3.0
 milestone_name: Integrated Navigation
-status: unknown
-last_updated: "2026-03-02T00:00:00Z"
+status: complete
+last_updated: "2026-03-02T12:31:53.338Z"
 progress:
-  total_phases: 2
-  completed_phases: 2
+  total_phases: 3
+  completed_phases: 3
   total_plans: 3
   completed_plans: 3
 ---
@@ -15,19 +15,18 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-01)
+See: .planning/PROJECT.md (updated 2026-03-02)
 
 **Core value:** Given a direction, reliably switch focus to the most intuitive window in that direction — fast enough for hotkey use, accurate enough to feel natural.
-**Current focus:** v3.0 Integrated Navigation — Phase 8 complete, ready for Phase 9 (Overlay Chaining)
+**Current focus:** v3.0 complete — planning next milestone
 
 ## Current Position
 
-Phase: 8 (In-Daemon Navigation) — complete
-Plan: 08-01 — complete (all tasks done, human-verified)
-Status: Ready for Phase 9 (Overlay Chaining)
-Last activity: 2026-03-02 - Completed quick task 6: Include active window in overlay numbering (1/1 tasks)
+Phase: All v3.0 phases complete
+Status: Milestone v3.0 shipped 2026-03-02
+Last activity: 2026-03-02 - Completed v3.0 milestone archival
 
-Progress: [████░░░░░░] 40%
+Progress: [██████████] 100%
 
 ## Milestones
 
@@ -35,76 +34,17 @@ Progress: [████░░░░░░] 40%
 |-----------|--------|--------|---------|
 | v1.0 CLI | 1-3 (6 plans) | Complete | 2026-02-28 |
 | v2.0 Overlay Preview | 4-6 (6 plans) | Complete | 2026-03-01 |
-| v3.0 Integrated Navigation | 7-9 | In progress | — |
-
-## v3.0 Phase Summary
-
-| Phase | Goal | Requirements |
-|-------|------|--------------|
-| 7 - Hotkey Wiring | Direction keys intercepted and suppressed while CAPSLOCK held | HOTKEY-01, HOTKEY-02, HOTKEY-03, HOTKEY-04 |
-| 8 - In-Daemon Navigation | Focus switching fires directly from daemon hotkeys | NAV-01, NAV-02, NAV-03 |
-| 9 - Overlay Chaining | Overlay persists and refreshes through sequential moves | CHAIN-01, CHAIN-02, CHAIN-03 |
+| v3.0 Integrated Navigation | 7-9 (3 plans) | Complete | 2026-03-02 |
 
 ## Accumulated Context
 
 ### Key Decisions
-- Quick task 1: ForegroundBorderColor = 0xE0FFFFFF (~88% opacity white); PaintFullBorder static method bypasses IOverlayRenderer direction-based contract
-- Quick task 2: Wrap target is last entry in opposite-direction ranked list (furthest window); candidatesFound incremented for wrap targets to prevent solo-window dim
-- Quick task 3: Single timestamp captured once for config dump block — all lines share same [HH:mm:ss.fff] to avoid clock drift confusion
-- Quick task 4: JsonNamingPolicy.KebabCaseLower replaces CamelCase in both Load() and WriteDefaults() — no backward compat needed since camelCase values were confusing users
-- Quick task 5: _directionKeysHeld HashSet reused for number key repeat suppression (VK ranges don't overlap in practice); CreateFontIndirect preferred over CreateFont (safe handle overload); alpha fixup pass needed for GDI ClearType text in layered windows; fresh config load in ShowOverlaysForCurrentForeground() enables runtime changes
-- Quick task 6: Both ShowOverlaysForCurrentForeground and ActivateByNumberSta now sort full filtered window list — active window included in numbering for position-stable numbers across navigation; re-activating already-focused window via CAPS+N is harmless no-op
-- v3.0 phases numbered from 7 to continue from v2.0 (phases 4-6)
-- 3 phases derived from 3 natural requirement clusters (hotkey wiring, navigation firing, overlay chaining)
-- Depth is "quick" — 3 phases is appropriate compression for 10 requirements across tight dependency chain
-- Phase 7 delivers pure input interception; no navigation logic yet (clean separation)
-- Phase 8 wires navigation; validates that CLI and daemon produce identical results
-- Phase 9 is integration — depends on both phase 7 (hotkeys) and phase 8 (navigation) working
-- Direction key repeats tracked via HashSet<uint> — cleared on keyup and ResetState() for sleep/wake safety
-- IsDirectionKey() uses switch expression for O(1) VK code lookup without heap allocation
-- Modifier prefix order in verbose log: Ctrl+Alt+Shift+ (control before alt before shift)
-- Both keydown and keyup posted to channel; only keydown triggers callback and logging
-- KeyEvent extended with optional ShiftHeld/CtrlHeld/AltHeld — defaults false for CAPSLOCK events
-- OnDirectionKeyDown is a no-op in Phase 7 — Phase 8 hook point only; interception/suppression lives in KeyboardHookHandler
-- Closure pattern orchestrator?.OnDirectionKeyDown(dir) matches existing onHeld/onReleased — null-safe before STA thread initializes
-- Load FocusConfig fresh on every direction keypress — runtime config changes take effect immediately without daemon restart
-- Navigate entirely on STA thread via _staDispatcher.Invoke — all Win32 APIs run on STA (same pattern as OnCapsLockHeld)
-- Silent no-op when result == 1 (no candidates in direction) — no log, no beep, no visual (per user decision)
-- Human-verified: CAPSLOCK+direction and CLI focus <direction> produce identical results (5 test scenarios passed)
+See .planning/PROJECT.md Key Decisions table for full history.
 
 ### Blockers
 None.
 
-### Quick Tasks Completed
-
-| # | Description | Date | Commit | Directory |
-|---|-------------|------|--------|-----------|
-| 1 | Add a white border around the currently active window when holding caps lock | 2026-03-01 | b79d6ae | [1-add-a-white-border-around-the-currently-](./quick/1-add-a-white-border-around-the-currently-/) |
-| 2 | Fix overlay outlines not showing for wrap targets | 2026-03-01 | c7ea305 | [2-fix-overlay-outlines-not-showing-for-wra](./quick/2-fix-overlay-outlines-not-showing-for-wra/) |
-| 3 | Print resolved config to stderr on verbose daemon startup | 2026-03-01 | 40029f2 | [3-when-starting-the-daemon-in-verbose-mode](./quick/3-when-starting-the-daemon-in-verbose-mode/) |
-| 4 | Make config file accept same kebab-case values as CLI | 2026-03-01 | 9b4a04e | [4-make-config-file-accept-same-dash-separa](./quick/4-make-config-file-accept-same-dash-separa/) |
-| 5 | Add CAPS+number window selection with configurable overlay labels | 2026-03-01 | 5d38aa5 | [5-add-caps-number-window-selection-with-co](./quick/5-add-caps-number-window-selection-with-co/) |
-| 6 | Include active window in overlay numbering so IDs stay stable | 2026-03-02 | 7c4e6fe | [6-include-active-window-in-overlay-numberi](./quick/6-include-active-window-in-overlay-numberi/) |
-| 6 | Include active window in overlay numbering for position-stable numbers | 2026-03-02 | 7c4e6fe | [6-include-active-window-in-overlay-numberi](./quick/6-include-active-window-in-overlay-numberi/) |
-
-### Todos
-- Execute 09-PLAN (Overlay Chaining) — Phase 8 complete, all requirements met
-
-## Performance Metrics
-
-| Phase | Plan | Duration | Tasks | Files |
-|-------|------|----------|-------|-------|
-| 07 | 01 | ~2 min | 2/2 | 3 |
-| 07 | 02 | ~20 min | 2/2 | 2 |
-| 08 | 01 | ~30 min | 2/2 | 3 |
-| quick-1 | 01 | ~15 min | 2/2 | 3 |
-| quick-2 | 01 | ~10 min | 2/2 | 1 |
-| quick-3 | 01 | ~5 min | 1/1 | 1 |
-| quick-4 | 01 | ~1 min | 2/2 | 2 |
-| quick-5 | 01 | ~7 min | 2/3 | 9 |
-| quick-6 | 01 | ~3 min | 1/1 | 1 |
-
 ## Session Continuity
 
-Last session: 2026-03-02T00:00:00Z
-Stopped at: Completed quick task 6 — include active window in overlay numbering (1/1 tasks, no checkpoints)
+Last session: 2026-03-02
+Stopped at: Completed v3.0 milestone archival

@@ -1,4 +1,27 @@
 # Milestones
+## v3.0 Integrated Navigation (Shipped: 2026-03-02)
+
+**Phases:** 7-9 (3 phases, 3 plans, 6 tasks + 6 quick tasks)
+**Timeline:** 2 days (2026-03-01 → 2026-03-02)
+**Git range:** `d7c209a` → `40b732b` (61 commits)
+**LOC:** 4,197 C# total (+670 lines net)
+
+**Delivered:** Daemon-native directional focus navigation via CAPSLOCK + arrow/WASD hotkeys, eliminating the AutoHotkey dependency for window switching, with persistent overlay chaining and CAPS+number window selection.
+
+**Key accomplishments:**
+1. Direction key interception/suppression via WH_KEYBOARD_LL hook — arrows + WASD silenced while CAPSLOCK held
+2. Full in-daemon navigation pipeline — CAPSLOCK + direction fires focus switch identical to CLI behavior
+3. Overlay chaining — overlay persists and refreshes through sequential directional moves while CAPSLOCK held
+4. White foreground window border for visual orientation while CAPSLOCK held
+5. CAPS+number window selection with position-stable overlay labels
+6. Runtime config reload — config changes take effect immediately without daemon restart
+
+**Requirements:** 10/10 satisfied (HOTKEY-01 through HOTKEY-04, NAV-01 through NAV-03, CHAIN-01 through CHAIN-03)
+
+**Tech debt:** 2 minor items (DPI manifest warning, dual-config pattern). See `milestones/v3.0-MILESTONE-AUDIT.md`.
+
+---
+
 
 ## v2.0 Overlay Preview (Shipped: 2026-03-01)
 
