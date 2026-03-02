@@ -31,7 +31,6 @@ internal sealed class KeyboardHookHandler : IDisposable
     private const uint VK_CONTROL  = 0x11;   // Generic ctrl — used for CAPS modifier filter
     private const uint VK_TAB      = 0x09;
     private const uint VK_LSHIFT   = 0xA0;   // Left Shift only (MODE-02)
-    private const uint VK_LCONTROL = 0xA2;   // Left Ctrl only (MODE-03)
 
     // Direction key virtual key codes — arrows
     private const uint VK_LEFT  = 0x25;
@@ -167,24 +166,22 @@ internal sealed class KeyboardHookHandler : IDisposable
             // CAPSLOCK is held — intercept and suppress the direction key (HOTKEY-03)
             bool isKeyDown = (uint)wParam.Value == WM_KEYDOWN || (uint)wParam.Value == WM_SYSKEYDOWN;
 
-            // Read left-side modifier state (MODE-02: LSHIFT=Grow, MODE-03: LCTRL=Shrink)
-            bool lShiftHeld = (PInvoke.GetKeyState((int)VK_LSHIFT)   & 0x8000) != 0;
-            bool lCtrlHeld  = (PInvoke.GetKeyState((int)VK_LCONTROL) & 0x8000) != 0;
+            // Read left-side modifier state (MODE-02: LSHIFT=Grow)
+            bool lShiftHeld = (PInvoke.GetKeyState((int)VK_LSHIFT) & 0x8000) != 0;
             bool altHeld    = ((uint)kbd->flags & LLKHF_ALTDOWN) != 0;
 
-            // Derive mode from _tabHeld + left-modifier state (MODE-01, MODE-02, MODE-03)
-            // TAB overrides modifiers; then LSHIFT (grow) takes priority over LCTRL (shrink)
-            WindowMode mode = (_tabHeld, lShiftHeld, lCtrlHeld) switch
+            // Derive mode from _tabHeld + left-modifier state (MODE-01, MODE-02)
+            // TAB overrides modifiers; LSHIFT = grow (right/up expand, left/down contract)
+            WindowMode mode = (_tabHeld, lShiftHeld) switch
             {
-                (true, _, _)  => WindowMode.Move,     // CAPS+TAB = move
-                (_, true, _)  => WindowMode.Grow,     // CAPS+LSHIFT = grow
-                (_, _, true)  => WindowMode.Shrink,   // CAPS+LCTRL = shrink
-                _             => WindowMode.Navigate  // bare CAPS+direction = navigate
+                (true, _)  => WindowMode.Move,     // CAPS+TAB = move
+                (_, true)  => WindowMode.Grow,     // CAPS+LSHIFT = grow/shrink by direction
+                _          => WindowMode.Navigate  // bare CAPS+direction = navigate
             };
 
             // MUST use TryWrite (fire-and-forget) — NEVER use WriteAsync in hook callback.
             // Hook callback has a 1000ms total budget on Windows 10 1709+.
-            _channelWriter.TryWrite(new KeyEvent(kbd->vkCode, isKeyDown, kbd->time, lShiftHeld, lCtrlHeld, altHeld, mode));
+            _channelWriter.TryWrite(new KeyEvent(kbd->vkCode, isKeyDown, kbd->time, lShiftHeld, altHeld, mode));
 
             // Suppress the key — return non-zero so the focused app never sees it
             return (LRESULT)1;
