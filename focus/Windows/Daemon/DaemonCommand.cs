@@ -93,11 +93,18 @@ internal static class DaemonCommand
 
         // 9. Set up cancellation (used by both Ctrl+C and tray Exit paths)
         using var cts = new CancellationTokenSource();
+        var cancelCount = 0;
 
         Console.CancelKeyPress += (_, e) =>
         {
             e.Cancel = true;  // Prevent immediate termination — allow ordered cleanup
-            cts.Cancel();
+            if (Interlocked.Increment(ref cancelCount) > 1)
+            {
+                System.Diagnostics.Process.GetCurrentProcess().Kill();
+                return;
+            }
+            try { cts.Cancel(); }
+            catch (ObjectDisposedException) { System.Diagnostics.Process.GetCurrentProcess().Kill(); }
         };
 
         // 10. Start consumer task on thread pool — consumes KeyEvent from channel
@@ -115,9 +122,9 @@ internal static class DaemonCommand
         staThread.Start();
 
         // 12. Register cancellation callback that exits the STA message pump.
-        //     Handles the Ctrl+C path where tray Exit hasn't already called Application.ExitThread().
-        //     Application.ExitThread() is thread-safe and idempotent — safe to call multiple times.
-        cts.Token.Register(() => Application.ExitThread());
+        //     Uses Application.Exit() (not ExitThread) because the CTS callback runs on the
+        //     Ctrl+C handler thread, not the STA thread — Exit() posts WM_QUIT across all threads.
+        cts.Token.Register(() => Application.Exit());
 
         // 13. Block main thread until cancellation is signalled (Ctrl+C or tray Exit)
         try
