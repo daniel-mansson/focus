@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+using Focus.Windows;
 using Windows.Win32;
 using Windows.Win32.Foundation;
 using Windows.Win32.Graphics.Dwm;
@@ -70,6 +71,41 @@ internal static class WindowManagerService
             WindowMode.Grow => ComputeGrow(direction, visRect, winRect, workArea, stepX, stepY, tolX, tolY, borderLeft, borderTop, borderRight, borderBottom),
             _               => winRect // Navigate: no-op (should not reach here)
         };
+
+        // Cross-monitor transition: applies to Move mode only (Grow stays on current monitor)
+        if (mode == WindowMode.Move)
+        {
+            // Compute visible bounds of the newly computed position to check if it's at boundary
+            int newVisLeft   = newWinRect.left   + borderLeft;
+            int newVisTop    = newWinRect.top    + borderTop;
+            int newVisRight  = newWinRect.right  - borderRight;
+            int newVisBottom = newWinRect.bottom - borderBottom;
+
+            bool atBoundary = direction switch
+            {
+                "right" => newVisRight  >= workArea.right,
+                "left"  => newVisLeft   <= workArea.left,
+                "down"  => newVisBottom >= workArea.bottom,
+                "up"    => newVisTop    <= workArea.top,
+                _       => false
+            };
+
+            if (atBoundary)
+            {
+                var crossTarget = TryGetCrossMonitorTarget(fgHwnd, direction);
+                if (crossTarget.HasValue)
+                {
+                    var (targetWork, _) = crossTarget.Value;
+                    int tw = targetWork.right  - targetWork.left;
+                    int th = targetWork.bottom - targetWork.top;
+                    var (tStepX, tStepY) = GridCalculator.GetGridStep(tw, th, config.GridFractionX, config.GridFractionY);
+
+                    newWinRect = ComputeCrossMonitorPosition(
+                        direction, visRect, winRect, targetWork, tStepX, tStepY,
+                        borderLeft, borderTop, borderRight, borderBottom);
+                }
+            }
+        }
 
         int newX  = newWinRect.left;
         int newY  = newWinRect.top;
@@ -156,6 +192,82 @@ internal static class WindowManagerService
             top    = newVisTop  - borderT,
             right  = newVisLeft + visW + borderR,
             bottom = newVisTop  + visH + borderB
+        };
+    }
+
+    /// <summary>
+    /// Returns the work area and monitor rect of the adjacent monitor in the given direction,
+    /// or null if no adjacent monitor exists.
+    /// Called only when the caller has already verified the window is at the work-area boundary.
+    /// Uses rcMonitor (physical screen edges) for adjacency detection, not rcWork.
+    /// </summary>
+    private static unsafe (RECT work, RECT monitor)? TryGetCrossMonitorTarget(
+        HWND hwnd, string direction)
+    {
+        // Get the current monitor's physical rect (rcMonitor) for adjacency detection
+        var hMon = PInvoke.MonitorFromWindow(hwnd, MONITOR_FROM_FLAGS.MONITOR_DEFAULTTONEAREST);
+        MONITORINFO mi = default;
+        mi.cbSize = (uint)sizeof(MONITORINFO);
+        if (!PInvoke.GetMonitorInfo(hMon, ref mi)) return null;
+
+        return MonitorHelper.FindAdjacentMonitor(hMon, mi.rcMonitor, direction);
+    }
+
+    /// <summary>
+    /// Computes the window rect for a cross-monitor transition.
+    /// Movement axis: snaps to first grid cell from the entry edge of the target monitor.
+    /// Perpendicular axis: preserves current pixel position, clamped to target work area.
+    /// If the window is larger than the target work area, size is clamped (not resized).
+    /// Returns coords in GetWindowRect coordinate space (border offsets applied).
+    /// </summary>
+    private static RECT ComputeCrossMonitorPosition(
+        string direction, RECT vis, RECT win, RECT targetWork,
+        int tStepX, int tStepY,
+        int borderL, int borderT, int borderR, int borderB)
+    {
+        int visW = vis.right  - vis.left;
+        int visH = vis.bottom - vis.top;
+
+        // Clamp window size to target work area — do not resize, only reposition
+        int clampedW = Math.Min(visW, targetWork.right  - targetWork.left);
+        int clampedH = Math.Min(visH, targetWork.bottom - targetWork.top);
+
+        int newVisLeft, newVisTop;
+
+        switch (direction)
+        {
+            case "right":
+                // Enter from left edge: snap to first full grid cell from the left
+                newVisLeft = targetWork.left + tStepX;
+                // Preserve vertical position, clamped to target work area
+                newVisTop  = Math.Clamp(vis.top, targetWork.top, targetWork.bottom - clampedH);
+                break;
+            case "left":
+                // Enter from right edge: snap so right visible edge is one step from the right
+                newVisLeft = targetWork.right - tStepX - clampedW;
+                newVisTop  = Math.Clamp(vis.top, targetWork.top, targetWork.bottom - clampedH);
+                break;
+            case "down":
+                // Enter from top edge: snap to first full grid cell from the top
+                newVisTop  = targetWork.top + tStepY;
+                newVisLeft = Math.Clamp(vis.left, targetWork.left, targetWork.right - clampedW);
+                break;
+            case "up":
+                // Enter from bottom edge: snap so bottom visible edge is one step from the bottom
+                newVisTop  = targetWork.bottom - tStepY - clampedH;
+                newVisLeft = Math.Clamp(vis.left, targetWork.left, targetWork.right - clampedW);
+                break;
+            default:
+                return win; // defensive no-op
+        }
+
+        // Translate visible coords back to GetWindowRect coordinate space
+        return new RECT
+        {
+            left   = newVisLeft           - borderL,
+            top    = newVisTop            - borderT,
+            right  = newVisLeft + clampedW + borderR,
+            bottom = newVisTop  + clampedH + borderB
         };
     }
 
