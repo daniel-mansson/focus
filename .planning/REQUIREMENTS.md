@@ -36,8 +36,8 @@ Requirements for the Window Management milestone. Each maps to roadmap phases.
 
 ### Cross-Monitor
 
-- [ ] **XMON-01**: Moving at monitor edge transitions window to adjacent monitor
-- [ ] **XMON-02**: Grid step recalculated for target monitor's dimensions
+- [x] **XMON-01**: Moving at monitor edge transitions window to adjacent monitor
+- [x] **XMON-02**: Grid step recalculated for target monitor's dimensions
 
 ### Overlay Indicators
 
@@ -96,8 +96,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SIZE-02 | Phase 11 | Complete |
 | SIZE-03 | Phase 11 | Complete |
 | SIZE-04 | Phase 11 | Complete |
-| XMON-01 | Phase 12 | Pending |
-| XMON-02 | Phase 12 | Pending |
+| XMON-01 | Phase 12 | Complete |
+| XMON-02 | Phase 12 | Complete |
 | OVRL-01 | Phase 12 | Pending |
 | OVRL-02 | Phase 12 | Pending |
 | OVRL-03 | Phase 12 | Pending |

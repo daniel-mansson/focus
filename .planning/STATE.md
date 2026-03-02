@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v3.1
 milestone_name: Window Management
 status: in_progress
-last_updated: "2026-03-02"
+last_updated: "2026-03-03"
 progress:
   total_phases: 3
   completed_phases: 1
-  total_plans: 6
-  completed_plans: 5
+  total_plans: 8
+  completed_plans: 6
 ---
 
 # Project State
@@ -18,16 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-02)
 
 **Core value:** Given a direction, reliably switch focus to the most intuitive window in that direction — fast enough for hotkey use, accurate enough to feel natural.
-**Current focus:** v3.1 Window Management — Phase 11 Plan 03 complete (OverlayOrchestrator: overlay refresh after Move/Grow/Shrink, navigate targets hidden during these modes)
+**Current focus:** v3.1 Window Management — Phase 12 Plan 01 complete (cross-monitor Move transition with FindAdjacentMonitor and grid step recalculated for target monitor)
 
 ## Current Position
 
-Phase: 11 of 12 (Move and Resize Single Monitor) — IN PROGRESS
-Plan: 3 of 5 (plan 03 complete)
-Status: Phase 11 Plan 03 complete
-Last activity: 2026-03-02 - Completed quick task 1: Change grow/shrink to LShift only with directional grow/shrink
+Phase: 12 of 12 (Cross-Monitor and Overlay Integration) — IN PROGRESS
+Plan: 1 of 2 (plan 01 complete)
+Status: Phase 12 Plan 01 complete
+Last activity: 2026-03-03 - Completed 12-01: cross-monitor window transition (XMON-01, XMON-02)
 
-Progress: [█████░░░░░] 50%
+Progress: [██████░░░░] 60%
 
 ## Performance Metrics
 
@@ -42,6 +42,7 @@ Progress: [█████░░░░░] 50%
 |-------|-------|-------|----------|
 | 10 - Grid Infrastructure | 3/3 | 12 min | 4 min |
 | 11 - Move and Resize | 3/5 | 8 min | 3 min |
+| 12 - Cross-Monitor and Overlay | 1/2 | 3 min | 3 min |
 
 *Updated after each plan completion*
 
@@ -71,6 +72,10 @@ Recent decisions affecting v3.1:
 - **Shift filter removed from CapsLock handler**: Shift+CapsLock now activates overlay, enabling Shift-first workflow for grow mode; Alt and Ctrl filters remain (from 11-02).
 - **RefreshForegroundOverlayOnly vs ShowOverlaysForCurrentForeground (from 11-03)**: During Move/Grow/Shrink only the active window border should be visible; navigate targets are distracting and wrong. New method: HideAll then ShowForegroundOverlay only.
 - **_capsLockHeld guard on RefreshForegroundOverlayOnly (from 11-03)**: Prevents stale overlay flash if CapsLock released between direction keydown and STA dispatch execution — OnReleasedSta already HideAll'd.
+- **Post-ComputeMove boundary check for cross-monitor (from 12-01)**: Cross-monitor check uses post-ComputeMove visible bounds (not original visRect) — correctly catches transitions from one step before boundary where ComputeMove clamps to boundary.
+- **TryGetCrossMonitorTarget no inner boundary check (from 12-01)**: Outer MoveOrResize already verified atBoundary using post-ComputeMove bounds; inner check on original visRect would miss normal transitions.
+- **rcMonitor vs rcWork separation for cross-monitor (from 12-01)**: FindAdjacentMonitor uses rcMonitor edges for adjacency detection; ComputeCrossMonitorPosition uses rcWork for all placement math.
+- **OnModeEntered accepts WindowMode parameter (from 12-01)**: Fixed pre-existing signature mismatch; DaemonCommand was already passing mode, OverlayOrchestrator now accepts it for plan 02 arrow rendering.
 
 ### Blockers/Concerns
 
@@ -87,6 +92,6 @@ Recent decisions affecting v3.1:
 
 ## Session Continuity
 
-Last session: 2026-03-02
-Stopped at: Completed 11-03-PLAN.md (OverlayOrchestrator: RefreshForegroundOverlayOnly after MoveOrResize, navigate-target outlines hidden during Move/Grow/Shrink)
+Last session: 2026-03-03
+Stopped at: Completed 12-01-PLAN.md (cross-monitor Move transition: FindAdjacentMonitor + ComputeCrossMonitorPosition, XMON-01, XMON-02)
 Resume file: None
