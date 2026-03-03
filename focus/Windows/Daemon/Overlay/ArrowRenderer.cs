@@ -8,23 +8,24 @@ using global::Windows.Win32.UI.WindowsAndMessaging;
 namespace Focus.Windows.Daemon.Overlay;
 
 /// <summary>
-/// Renders mode-indicator arrows on layered overlay windows using direct pixel buffer writes.
-/// Move mode: 4 compass arrows at window center.
-/// Resize mode: left/right arrow at right edge center, up/down arrow at top edge center.
+/// Renders mode-indicator chevron arrows on layered overlay windows using direct pixel buffer writes.
+/// Move mode: 4 compass chevrons at window center.
+/// Resize mode: left/right chevron at right edge center, up/down chevron at top edge center.
 /// Follows the same DIB + UpdateLayeredWindow pipeline as BorderRenderer.
 /// </summary>
 [SupportedOSPlatform("windows6.0.6000")]
 internal static class ArrowRenderer
 {
-    /// <summary>
-    /// Arrow height in pixels, clamped to a reasonable range relative to window size.
-    /// </summary>
+    private const int EdgeMargin = 2;
+
     private static int GetArrowSize(int width, int height)
-        => Math.Clamp(Math.Min(width, height) / 8, 16, 48);
+        => Math.Clamp(Math.Min(width, height) * 3 / 80, 5, 15);
+
+    private static int GetLineThickness(int arrowSize)
+        => Math.Clamp(arrowSize / 6, 2, 5);
 
     /// <summary>
-    /// Renders 4 filled triangle arrows as a compass/cross at the window center (OVRL-01).
-    /// Up/down/left/right arrows point outward from center with a small gap.
+    /// Renders 4 hollow chevron arrows as a compass/cross at the window center (OVRL-01).
     /// </summary>
     public static unsafe void PaintMoveArrows(HWND hwnd, RECT bounds, uint argbColor)
     {
@@ -34,10 +35,7 @@ internal static class ArrowRenderer
         if (width <= 0 || height <= 0)
             return;
 
-        byte alpha = (byte)(argbColor >> 24);
-        byte r     = (byte)(argbColor >> 16);
-        byte g     = (byte)(argbColor >> 8);
-        byte b     = (byte)(argbColor);
+        uint pixel = PremultiplyPixel(argbColor);
 
         var screenDC = PInvoke.GetDC(HWND.Null);
 
@@ -62,38 +60,40 @@ internal static class ArrowRenderer
         uint* pixelBuf = (uint*)bits;
 
         int arrowSize = GetArrowSize(width, height);
-        int baseWidth = arrowSize * 2 / 3;
-        int gap       = arrowSize / 3;
+        int thickness = GetLineThickness(arrowSize);
+        int depth     = arrowSize * 3 / 5;
+        int spread    = arrowSize * 3 / 5;
+        int gap       = arrowSize / 2 + spread * 2;
         int cx        = width  / 2;
         int cy        = height / 2;
 
-        // Up arrow: tip pointing up from center
-        FillTriangle(pixelBuf, width, height,
-            cx,            cy - arrowSize,   // tip
-            cx - baseWidth / 2, cy - gap,    // base left
-            cx + baseWidth / 2, cy - gap,    // base right
-            alpha, r, g, b);
+        // Up chevron: tip pointing up
+        DrawChevron(pixelBuf, width, height,
+            cx, cy - gap - depth,
+            cx - spread, cy - gap,
+            cx + spread, cy - gap,
+            thickness, pixel);
 
-        // Down arrow: tip pointing down from center
-        FillTriangle(pixelBuf, width, height,
-            cx,            cy + arrowSize,   // tip
-            cx - baseWidth / 2, cy + gap,    // base left
-            cx + baseWidth / 2, cy + gap,    // base right
-            alpha, r, g, b);
+        // Down chevron: tip pointing down
+        DrawChevron(pixelBuf, width, height,
+            cx, cy + gap + depth,
+            cx - spread, cy + gap,
+            cx + spread, cy + gap,
+            thickness, pixel);
 
-        // Left arrow: tip pointing left from center
-        FillTriangle(pixelBuf, width, height,
-            cx - arrowSize, cy,              // tip
-            cx - gap, cy - baseWidth / 2,    // base top
-            cx - gap, cy + baseWidth / 2,    // base bottom
-            alpha, r, g, b);
+        // Left chevron: tip pointing left
+        DrawChevron(pixelBuf, width, height,
+            cx - gap - depth, cy,
+            cx - gap, cy - spread,
+            cx - gap, cy + spread,
+            thickness, pixel);
 
-        // Right arrow: tip pointing right from center
-        FillTriangle(pixelBuf, width, height,
-            cx + arrowSize, cy,              // tip
-            cx + gap, cy - baseWidth / 2,    // base top
-            cx + gap, cy + baseWidth / 2,    // base bottom
-            alpha, r, g, b);
+        // Right chevron: tip pointing right
+        DrawChevron(pixelBuf, width, height,
+            cx + gap + depth, cy,
+            cx + gap, cy - spread,
+            cx + gap, cy + spread,
+            thickness, pixel);
 
         BlitToLayeredWindow(hwnd, screenDC, memDC, bounds, width, height);
 
@@ -104,9 +104,9 @@ internal static class ArrowRenderer
     }
 
     /// <summary>
-    /// Renders axis indicator arrows for resize mode (OVRL-02, OVRL-03).
-    /// At right edge center: back-to-back left+right triangle pair indicating horizontal axis.
-    /// At top edge center:   back-to-back up+down triangle pair indicating vertical axis.
+    /// Renders axis indicator chevrons for resize mode (OVRL-02, OVRL-03).
+    /// At right edge center: back-to-back left+right chevron pair.
+    /// At top edge center:   back-to-back up+down chevron pair.
     /// </summary>
     public static unsafe void PaintResizeArrows(HWND hwnd, RECT bounds, uint argbColor)
     {
@@ -116,10 +116,7 @@ internal static class ArrowRenderer
         if (width <= 0 || height <= 0)
             return;
 
-        byte alpha = (byte)(argbColor >> 24);
-        byte r     = (byte)(argbColor >> 16);
-        byte g     = (byte)(argbColor >> 8);
-        byte b     = (byte)(argbColor);
+        uint pixel = PremultiplyPixel(argbColor);
 
         var screenDC = PInvoke.GetDC(HWND.Null);
 
@@ -144,44 +141,47 @@ internal static class ArrowRenderer
         uint* pixelBuf = (uint*)bits;
 
         int arrowSize  = GetArrowSize(width, height);
-        int pairSize   = arrowSize * 3 / 4; // slightly smaller for back-to-back pairs
-        int pairBase   = pairSize * 2 / 3;
+        int thickness  = GetLineThickness(arrowSize);
+        int pairSize   = arrowSize * 3 / 4;
+        int pairDepth  = pairSize * 3 / 5;
+        int pairSpread = pairSize * 3 / 5;
+        int pairGap    = pairSize / 4;
 
         // --- Horizontal axis pair at right edge center ---
-        int hx = width - arrowSize * 2;  // anchor x for the pair
-        int hy = height / 2;             // vertical center
+        int hx = width - pairSize - EdgeMargin;
+        int hy = height / 2;
 
-        // Left-pointing triangle of horizontal pair
-        FillTriangle(pixelBuf, width, height,
-            hx - pairSize, hy,               // tip (pointing left)
-            hx, hy - pairBase / 2,           // base top
-            hx, hy + pairBase / 2,           // base bottom
-            alpha, r, g, b);
+        // Left-pointing chevron
+        DrawChevron(pixelBuf, width, height,
+            hx - pairGap - pairDepth, hy,
+            hx - pairGap, hy - pairSpread,
+            hx - pairGap, hy + pairSpread,
+            thickness, pixel);
 
-        // Right-pointing triangle of horizontal pair
-        FillTriangle(pixelBuf, width, height,
-            hx + pairSize, hy,               // tip (pointing right)
-            hx, hy - pairBase / 2,           // base top
-            hx, hy + pairBase / 2,           // base bottom
-            alpha, r, g, b);
+        // Right-pointing chevron
+        DrawChevron(pixelBuf, width, height,
+            hx + pairGap + pairDepth, hy,
+            hx + pairGap, hy - pairSpread,
+            hx + pairGap, hy + pairSpread,
+            thickness, pixel);
 
         // --- Vertical axis pair at top edge center ---
-        int vx = width  / 2;              // horizontal center
-        int vy = arrowSize * 2;           // anchor y for the pair
+        int vx = width / 2;
+        int vy = pairSize + EdgeMargin;
 
-        // Up-pointing triangle of vertical pair
-        FillTriangle(pixelBuf, width, height,
-            vx, vy - pairSize,               // tip (pointing up)
-            vx - pairBase / 2, vy,           // base left
-            vx + pairBase / 2, vy,           // base right
-            alpha, r, g, b);
+        // Up-pointing chevron
+        DrawChevron(pixelBuf, width, height,
+            vx, vy - pairGap - pairDepth,
+            vx - pairSpread, vy - pairGap,
+            vx + pairSpread, vy - pairGap,
+            thickness, pixel);
 
-        // Down-pointing triangle of vertical pair
-        FillTriangle(pixelBuf, width, height,
-            vx, vy + pairSize,               // tip (pointing down)
-            vx - pairBase / 2, vy,           // base left
-            vx + pairBase / 2, vy,           // base right
-            alpha, r, g, b);
+        // Down-pointing chevron
+        DrawChevron(pixelBuf, width, height,
+            vx, vy + pairGap + pairDepth,
+            vx - pairSpread, vy + pairGap,
+            vx + pairSpread, vy + pairGap,
+            thickness, pixel);
 
         BlitToLayeredWindow(hwnd, screenDC, memDC, bounds, width, height);
 
@@ -191,57 +191,68 @@ internal static class ArrowRenderer
         PInvoke.ReleaseDC(HWND.Null, screenDC);
     }
 
-    /// <summary>
-    /// Fills a triangle defined by three vertices into the pixel buffer using a cross-product
-    /// sign test for inside/outside determination. Writes premultiplied ARGB pixels.
-    /// </summary>
-    private static unsafe void FillTriangle(
-        uint* pixelBuf, int width, int height,
-        int x0, int y0, int x1, int y1, int x2, int y2,
-        byte alpha, byte r, byte g, byte b)
+    private static uint PremultiplyPixel(uint argbColor)
     {
-        // Premultiplied pixel value (alpha is full for arrows — same opacity throughout)
+        byte alpha = (byte)(argbColor >> 24);
+        byte r     = (byte)(argbColor >> 16);
+        byte g     = (byte)(argbColor >> 8);
+        byte b     = (byte)(argbColor);
         byte pr = (byte)((r * alpha) / 255);
         byte pg = (byte)((g * alpha) / 255);
         byte pb = (byte)((b * alpha) / 255);
-        uint pixel = ((uint)alpha << 24) | ((uint)pr << 16) | ((uint)pg << 8) | pb;
+        return ((uint)alpha << 24) | ((uint)pr << 16) | ((uint)pg << 8) | pb;
+    }
 
-        // Bounding box (clamped to DIB bounds)
-        int minX = Math.Max(0, Math.Min(x0, Math.Min(x1, x2)));
-        int maxX = Math.Min(width  - 1, Math.Max(x0, Math.Max(x1, x2)));
-        int minY = Math.Max(0, Math.Min(y0, Math.Min(y1, y2)));
-        int maxY = Math.Min(height - 1, Math.Max(y0, Math.Max(y1, y2)));
+    /// <summary>
+    /// Draws a hollow chevron (two thick lines from tip to each arm endpoint, no base line).
+    /// </summary>
+    private static unsafe void DrawChevron(
+        uint* pixelBuf, int width, int height,
+        int tipX, int tipY, int armLeftX, int armLeftY, int armRightX, int armRightY,
+        int thickness, uint pixel)
+    {
+        DrawThickLine(pixelBuf, width, height, tipX, tipY, armLeftX, armLeftY, thickness, pixel);
+        DrawThickLine(pixelBuf, width, height, tipX, tipY, armRightX, armRightY, thickness, pixel);
+    }
+
+    /// <summary>
+    /// Draws a thick line segment using distance-to-segment test for each pixel in the bounding box.
+    /// </summary>
+    private static unsafe void DrawThickLine(
+        uint* pixelBuf, int width, int height,
+        int x0, int y0, int x1, int y1,
+        int thickness, uint pixel)
+    {
+        float halfT = thickness / 2.0f;
+        float halfTSq = halfT * halfT;
+
+        int minX = Math.Max(0, Math.Min(x0, x1) - thickness);
+        int maxX = Math.Min(width  - 1, Math.Max(x0, x1) + thickness);
+        int minY = Math.Max(0, Math.Min(y0, y1) - thickness);
+        int maxY = Math.Min(height - 1, Math.Max(y0, y1) + thickness);
+
+        float dx = x1 - x0;
+        float dy = y1 - y0;
+        float lenSq = dx * dx + dy * dy;
+
+        if (lenSq < 1f)
+            return;
 
         for (int py = minY; py <= maxY; py++)
         {
             for (int px = minX; px <= maxX; px++)
             {
-                if (IsInsideTriangle(px, py, x0, y0, x1, y1, x2, y2))
+                float t = ((px - x0) * dx + (py - y0) * dy) / lenSq;
+                t = Math.Clamp(t, 0f, 1f);
+                float closestX = x0 + t * dx;
+                float closestY = y0 + t * dy;
+                float distSq = (px - closestX) * (px - closestX) + (py - closestY) * (py - closestY);
+                if (distSq <= halfTSq)
                     pixelBuf[py * width + px] = pixel;
             }
         }
     }
 
-    /// <summary>
-    /// Returns true if point (px, py) is inside or on the edge of the triangle
-    /// defined by (x0,y0), (x1,y1), (x2,y2), using the cross-product sign test.
-    /// </summary>
-    private static bool IsInsideTriangle(
-        int px, int py,
-        int x0, int y0, int x1, int y1, int x2, int y2)
-    {
-        int d1 = (px - x2) * (y0 - y2) - (x0 - x2) * (py - y2);
-        int d2 = (px - x0) * (y1 - y0) - (x1 - x0) * (py - y0);
-        int d3 = (px - x1) * (y2 - y1) - (x2 - x1) * (py - y1);
-        bool hasNeg = d1 < 0 || d2 < 0 || d3 < 0;
-        bool hasPos = d1 > 0 || d2 > 0 || d3 > 0;
-        return !(hasNeg && hasPos);
-    }
-
-    /// <summary>
-    /// Calls UpdateLayeredWindow to composite the pixel buffer onto the layered window.
-    /// Extracted to avoid code duplication between PaintMoveArrows and PaintResizeArrows.
-    /// </summary>
     private static unsafe void BlitToLayeredWindow(
         HWND hwnd, HDC screenDC, HDC memDC, RECT bounds, int width, int height)
     {
