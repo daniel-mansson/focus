@@ -63,7 +63,25 @@ Given a direction, reliably switch focus to the most intuitive window in that di
 
 ### Active
 
-(No active requirements — next milestone not yet planned)
+<!-- Current scope: v4.0 System Tray & Settings UI -->
+
+- [ ] Custom tray icon (generated .ico, replaceable)
+- [ ] Enhanced right-click context menu (status labels, settings, restart, exit)
+- [ ] WinForms settings window (strategy, grid fractions, overlay colors/timing)
+- [ ] About section in settings (name, attribution, GitHub link)
+- [ ] Daemon status display (hook status, uptime, last action)
+- [ ] Daemon restart from context menu
+
+## Current Milestone: v4.0 System Tray & Settings UI
+
+**Goal:** Polish the daemon's system tray presence with a custom icon, informative context menu with daemon status, a WinForms settings UI for key configuration values, and daemon restart capability.
+
+**Target features:**
+- Custom tray icon (generated .ico, embeddable, replaceable later)
+- Right-click context menu with inline status (hook alive, uptime, last action), Settings, Restart Daemon, Exit
+- WinForms settings window for navigation strategy, grid fractions, overlay colors/timing
+- About section with project name, attribution, and link to GitHub repo
+- Daemon restart from tray menu
 
 ### Out of Scope
 
@@ -125,4 +143,4 @@ AutoHotkey dependency eliminated for core navigation — daemon handles everythi
 | Mode-at-event-time pattern | WindowMode derived from snapshot of _tabHeld + modifiers at direction keydown | ✓ Good — eliminates race condition between modifier release and event processing |
 
 ---
-*Last updated: 2026-03-03 after v3.1 milestone*
+*Last updated: 2026-03-03 after v4.0 milestone started*
