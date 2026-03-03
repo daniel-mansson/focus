@@ -22,17 +22,17 @@ internal sealed class KeyboardHookHandler : IDisposable
     // CAPSLOCK state tracked in real-time from hook callbacks
     private bool _capsLockHeld;
 
-    // SPACE held state: true when CAPS+SPACE is held (Move mode master switch)
-    private bool _spaceHeld;
-
-    // LALT held state: true when CAPS+LAlt is held (Grow mode)
+    // LALT held state: true when CAPS+LAlt is held (Move mode)
     private bool _lAltHeld;
+
+    // LWIN held state: true when CAPS+LWin is held (Grow mode)
+    private bool _lWinHeld;
 
     // Virtual key codes
     private const uint VK_CAPITAL  = 0x14;
     private const uint VK_CONTROL  = 0x11;   // Generic ctrl — used for CAPS modifier filter
-    private const uint VK_SPACE    = 0x20;
-    private const uint VK_LMENU   = 0xA4;   // Left Alt only (Grow mode)
+    private const uint VK_LMENU   = 0xA4;   // Left Alt (Move mode)
+    private const uint VK_LWIN    = 0x5B;   // Left Windows key (Grow mode)
 
     // Direction key virtual key codes — arrows
     private const uint VK_LEFT  = 0x25;
@@ -119,20 +119,7 @@ internal sealed class KeyboardHookHandler : IDisposable
         if (((uint)kbd->flags & LLKHF_INJECTED) != 0)
             return PInvoke.CallNextHookEx(null, nCode, wParam, lParam);
 
-        // SPACE key: suppress when CAPS held (Move mode), pass through when CAPS not held
-        if (kbd->vkCode == VK_SPACE)
-        {
-            if (!_capsLockHeld)
-                return PInvoke.CallNextHookEx(null, nCode, wParam, lParam);
-
-            bool isKeyDown = (uint)wParam.Value == WM_KEYDOWN || (uint)wParam.Value == WM_SYSKEYDOWN;
-            _spaceHeld = isKeyDown;
-
-            _channelWriter.TryWrite(new KeyEvent(kbd->vkCode, isKeyDown, kbd->time, Mode: WindowMode.Move));
-            return (LRESULT)1;  // suppress SPACE from reaching app
-        }
-
-        // LALT key: suppress when CAPS held (Grow mode), pass through when CAPS not held
+        // LALT key: suppress when CAPS held (Move mode), pass through when CAPS not held.
         // Suppressed to prevent menu activation in target apps.
         if (kbd->vkCode == VK_LMENU)
         {
@@ -142,8 +129,22 @@ internal sealed class KeyboardHookHandler : IDisposable
             bool isKeyDown = (uint)wParam.Value == WM_KEYDOWN || (uint)wParam.Value == WM_SYSKEYDOWN;
             _lAltHeld = isKeyDown;
 
-            _channelWriter.TryWrite(new KeyEvent(kbd->vkCode, isKeyDown, kbd->time, Mode: WindowMode.Grow));
+            _channelWriter.TryWrite(new KeyEvent(kbd->vkCode, isKeyDown, kbd->time, Mode: WindowMode.Move));
             return (LRESULT)1;  // suppress LAlt from reaching app
+        }
+
+        // LWIN key: suppress when CAPS held (Grow mode), pass through when CAPS not held.
+        // Suppressed to prevent Start menu activation.
+        if (kbd->vkCode == VK_LWIN)
+        {
+            if (!_capsLockHeld)
+                return PInvoke.CallNextHookEx(null, nCode, wParam, lParam);
+
+            bool isKeyDown = (uint)wParam.Value == WM_KEYDOWN || (uint)wParam.Value == WM_SYSKEYDOWN;
+            _lWinHeld = isKeyDown;
+
+            _channelWriter.TryWrite(new KeyEvent(kbd->vkCode, isKeyDown, kbd->time, Mode: WindowMode.Grow));
+            return (LRESULT)1;  // suppress LWin from reaching app
         }
 
         // Number key interception (1-9): suppress and route through channel when CAPS held.
@@ -170,18 +171,18 @@ internal sealed class KeyboardHookHandler : IDisposable
             // CAPSLOCK is held — intercept and suppress the direction key (HOTKEY-03)
             bool isKeyDown = (uint)wParam.Value == WM_KEYDOWN || (uint)wParam.Value == WM_SYSKEYDOWN;
 
-            // Derive mode from _spaceHeld + _lAltHeld state
-            // SPACE overrides LAlt; LAlt = grow (right/up expand, left/down contract)
-            WindowMode mode = (_spaceHeld, _lAltHeld) switch
+            // Derive mode from _lAltHeld + _lWinHeld state
+            // LAlt overrides LWin; LWin = grow (right/up expand, left/down contract)
+            WindowMode mode = (_lAltHeld, _lWinHeld) switch
             {
-                (true, _)  => WindowMode.Move,     // CAPS+SPACE = move
-                (_, true)  => WindowMode.Grow,     // CAPS+LAlt = grow/shrink by direction
+                (true, _)  => WindowMode.Move,     // CAPS+LAlt = move
+                (_, true)  => WindowMode.Grow,     // CAPS+LWin = grow/shrink by direction
                 _          => WindowMode.Navigate   // bare CAPS+direction = navigate
             };
 
             // MUST use TryWrite (fire-and-forget) — NEVER use WriteAsync in hook callback.
             // Hook callback has a 1000ms total budget on Windows 10 1709+.
-            _channelWriter.TryWrite(new KeyEvent(kbd->vkCode, isKeyDown, kbd->time, _lAltHeld, mode));
+            _channelWriter.TryWrite(new KeyEvent(kbd->vkCode, isKeyDown, kbd->time, _lWinHeld, mode));
 
             // Suppress the key — return non-zero so the focused app never sees it
             return (LRESULT)1;
@@ -192,7 +193,7 @@ internal sealed class KeyboardHookHandler : IDisposable
             return PInvoke.CallNextHookEx(null, nCode, wParam, lParam);
 
         // Filter modifier combinations — Ctrl+CAPS is filtered out (system shortcut).
-        // Alt+CAPS is allowed so users can hold LAlt first then press CAPS to enter grow mode.
+        // Alt+CAPS and Win+CAPS are allowed for modifier-first activation of Move/Grow modes.
         if ((PInvoke.GetKeyState((int)VK_CONTROL) & 0x8000) != 0)
             return PInvoke.CallNextHookEx(null, nCode, wParam, lParam);
 
@@ -201,13 +202,13 @@ internal sealed class KeyboardHookHandler : IDisposable
         _capsLockHeld = capsIsKeyDown;
         if (capsIsKeyDown)
         {
-            _spaceHeld = (PInvoke.GetKeyState((int)VK_SPACE) & 0x8000) != 0;   // Space-first activation
-            _lAltHeld  = (PInvoke.GetKeyState((int)VK_LMENU) & 0x8000) != 0;   // LAlt-first activation
+            _lAltHeld = (PInvoke.GetKeyState((int)VK_LMENU) & 0x8000) != 0;   // LAlt-first activation (Move)
+            _lWinHeld = (PInvoke.GetKeyState((int)VK_LWIN)  & 0x8000) != 0;   // LWin-first activation (Grow)
         }
         else
         {
-            _spaceHeld = false;  // CAPS release = master switch off (clears all modes)
-            _lAltHeld  = false;
+            _lAltHeld = false;  // CAPS release = master switch off (clears all modes)
+            _lWinHeld  = false;
         }
 
         // Post bare CAPSLOCK event to worker thread via Channel
