@@ -1,4 +1,25 @@
 # Milestones
+## v3.1 Window Management (Shipped: 2026-03-03)
+
+**Phases:** 10-12 (3 phases, 8 plans, 1 quick task)
+**Timeline:** 2 days (2026-03-02 → 2026-03-03)
+**Git range:** `237b43f` → `8dafec0` (60 commits)
+**LOC:** 11,400 C# total (+7,960 lines net)
+
+**Delivered:** Grid-snapped window move and resize via CAPSLOCK modifier combos (CAPS+TAB+direction to move, CAPS+LSHIFT+direction to grow, CAPS+LCTRL+direction to shrink), with per-monitor grid calculation, cross-monitor transitions, and mode-specific overlay indicators.
+
+**Key accomplishments:**
+1. GridCalculator with per-monitor grid computation, configurable fractions (16x12), and directional snap variants (Floor/Ceiling)
+2. TAB interception and left-side modifier detection for Move/Grow/Shrink mode routing through keyboard hook
+3. WindowManagerService with dual-rect coordinate pattern, snap-first grid stepping, boundary clamping, and maximized/elevated window guards
+4. Cross-monitor window transitions via adjacent monitor detection (overlapping-range algorithm) with automatic grid recalculation
+5. Mode-aware overlay indicators — amber borders/arrows for Move, cyan for Grow — using DIB-rasterized triangle renderer
+6. Real-time overlay tracking through all move/resize operations with navigate-target suppression during window management modes
+
+**Requirements:** 20/20 satisfied (MODE-01 through MODE-04, MOVE-01 through MOVE-03, SIZE-01 through SIZE-04, GRID-01 through GRID-04, XMON-01 through XMON-02, OVRL-01 through OVRL-04)
+
+---
+
 ## v3.0 Integrated Navigation (Shipped: 2026-03-02)
 
 **Phases:** 7-9 (3 phases, 3 plans, 6 tasks + 6 quick tasks)

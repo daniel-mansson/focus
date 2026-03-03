@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A lightweight C# tool enabling keyboard-driven directional window focus navigation on Windows, inspired by Hyprland's spatial window switching. In daemon mode (`focus daemon`), holding CAPSLOCK shows colored border overlays on candidate windows, and pressing direction keys (arrows or WASD) instantly switches focus — with overlay chaining for sequential moves and number keys for direct window selection. Also works as a stateless CLI (`focus left`) for scripting and external launchers.
+A lightweight C# tool enabling keyboard-driven directional window focus navigation and grid-snapped window management on Windows, inspired by Hyprland's spatial window switching. In daemon mode (`focus daemon`), holding CAPSLOCK shows colored border overlays on candidate windows, and pressing direction keys (arrows or WASD) instantly switches focus — with overlay chaining for sequential moves and number keys for direct window selection. CAPS+TAB+direction moves windows by grid steps, CAPS+LSHIFT grows edges, CAPS+LCTRL shrinks edges — all with per-monitor grid calculation and cross-monitor transitions. Also works as a stateless CLI (`focus left`) for scripting and external launchers.
 
 ## Core Value
 
@@ -50,39 +50,42 @@ Given a direction, reliably switch focus to the most intuitive window in that di
 - ✓ Overlay stays visible during chained moves, refreshing candidates from new foreground window — v3.0
 - ✓ Stateless CLI (`focus <direction>`) continues to work alongside daemon hotkeys — v3.0
 
+<!-- Shipped and confirmed valuable (v3.1). -->
+
+- ✓ Move foreground window by grid steps via CAPS+TAB+direction — v3.1
+- ✓ Grow window edge outward by grid steps via CAPS+LSHIFT+direction — v3.1
+- ✓ Shrink window edge inward by grid steps via CAPS+LCTRL+direction — v3.1
+- ✓ Per-monitor grid calculation with configurable fractions (gridFractionX/Y) — v3.1
+- ✓ Smart snap-to-grid with configurable tolerance (snapTolerancePercent) — v3.1
+- ✓ Cross-monitor window transitions with automatic grid recalculation — v3.1
+- ✓ Mode-specific overlay indicators (amber Move arrows, cyan Grow arrows) — v3.1
+- ✓ Normal TAB behavior preserved when CAPS not held — v3.1
+
 ### Active
 
-## Current Milestone: v3.1 Window Management
-
-**Goal:** Add grid-snapped window move and resize controls via CAPSLOCK modifier combos, layered onto the existing daemon.
-
-**Target features:**
-- CAPS+TAB+direction to move the foreground window by grid steps
-- CAPS+LSHIFT+direction to grow the window edge outward by grid steps
-- CAPS+LCTRL+direction to shrink the window edge inward by grid steps
-- Grid-snapped movement and sizing (configurable fraction, default 1/16th screen)
-- Per-monitor grid with cross-monitor movement support
-- Smart snap with tolerance (~10% of grid step)
-- Mode-specific overlay indicators (move arrows, grow/shrink edge arrows)
-- Instant overlay transitions (no animation)
+(No active requirements — next milestone not yet planned)
 
 ### Out of Scope
 
-- Window tiling or layout management — this is focus navigation only
+- Window tiling or layout management — move/resize are primitives, not layouts
 - Linux/macOS support — Windows-specific by design (Win32 API)
-- Window resizing or moving — only focus switching
 - GUI or system tray for daemon — daemon managed via CLI only (`focus daemon`); tray icon is minimal (exit only)
 - Animated overlay transitions (fade in/out) — tested and rejected; instant show/hide feels better
 - Window title/content preview in overlay — DwmRegisterThumbnail complexity; colored border at window position IS the preview
 - Interactive/clickable overlay elements — conflicts with WS_EX_TRANSPARENT click-through; navigation is keyboard-only
+- Diagonal resize (both axes simultaneously) — breaks one-edge-per-direction model; chain two operations instead
+- Pixel-exact move (no grid) — defeats grid discipline; mouse exists for pixel control
+- Automatic grid enforcement on focus change — hostile to manually positioned windows; snap is always user-initiated
 
 ## Context
 
-Shipped v3.0 with 4,197 LOC C# across ~25 source files.
+Shipped v3.1 with 11,400 LOC C# across ~30 source files.
 Tech stack: .NET 8 (net8.0-windows), CsWin32 0.3.269 for P/Invoke, WinForms (message pump + tray icon only), GDI for overlay rendering.
-Two modes: stateless CLI (`focus <direction>`) for scripting, persistent daemon (`focus daemon`) for hotkey navigation + overlay previews.
+Two modes: stateless CLI (`focus <direction>`) for scripting, persistent daemon (`focus daemon`) for hotkey navigation + overlay previews + window management.
 Six weighting strategies: balanced, strong-axis-bias, closest-in-direction, edge-matching, edge-proximity, axis-only.
 Daemon handles full navigation flow: CAPSLOCK + direction keys, overlay chaining, CAPS+number window selection.
+Window management: CAPS+TAB+direction (move), CAPS+LSHIFT+direction (grow), CAPS+LCTRL+direction (shrink) — all grid-snapped with per-monitor calculation.
+Cross-monitor transitions with adjacent monitor detection and automatic grid recalculation.
 AutoHotkey dependency eliminated for core navigation — daemon handles everything natively.
 
 ## Constraints
@@ -112,6 +115,14 @@ AutoHotkey dependency eliminated for core navigation — daemon handles everythi
 | Silent no-op on no candidates | No beep/log when no window in direction | ✓ Good — clean, unobtrusive experience |
 | CAPS+number overlay labels | GDI text rendering on layered windows with alpha fixup | ✓ Good — position-stable numbering across navigation |
 | Overlay chaining via existing architecture | No new code needed — existing show/refresh already chains | ✓ Good — v2.0 architecture already supported it |
+| Dual-rect coordinate pattern | GetWindowRect for SetWindowPos inputs; DwmGetWindowAttribute for overlay positioning only | ✓ Good — prevents border offset errors across all move/resize operations |
+| GridCalculator Win32-free | Takes explicit int params, no RECT structs — trivially testable | ✓ Good — clean separation of math from platform |
+| Per-axis grid fractions (16x12) | Separate GridFractionX/Y for near-square cells on 16:9 monitors | ✓ Good — grid cells feel uniform across aspect ratios |
+| Directional snap variants (Floor/Ceiling) | NearestGridLineFloor for leftward/upward, Ceiling for rightward/downward | ✓ Good — grow/shrink always expand/contract correctly |
+| Maximized window guard (refuse) | IsZoomed returns silently — never restore before moving | ✓ Good — prevents unexpected window state changes |
+| rcMonitor vs rcWork separation | rcMonitor for adjacency detection, rcWork for placement math | ✓ Good — cross-monitor transitions avoid taskbar overlap |
+| DIB pixel-write arrow renderer | Bounding-box scan + cross-product sign test for filled triangles | ✓ Good — no GDI path dependency, consistent premultiplied alpha |
+| Mode-at-event-time pattern | WindowMode derived from snapshot of _tabHeld + modifiers at direction keydown | ✓ Good — eliminates race condition between modifier release and event processing |
 
 ---
-*Last updated: 2026-03-02 after v3.1 milestone start*
+*Last updated: 2026-03-03 after v3.1 milestone*
