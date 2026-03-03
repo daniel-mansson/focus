@@ -1,267 +1,304 @@
 # Stack Research
 
-**Domain:** Windows background daemon — grid-snapped window move and resize
-**Researched:** 2026-03-02
-**Confidence:** HIGH (all APIs verified against official Microsoft Learn documentation)
+**Domain:** Windows system tray polish — custom icon, enhanced context menu, WinForms settings UI, daemon restart
+**Researched:** 2026-03-03
+**Confidence:** HIGH (all claims verified against official Microsoft Learn documentation and primary sources)
 
 ---
 
 ## Scope of This Document
 
-This document covers **additions required for v3.1 only**. The existing validated stack (.NET 8 `net8.0-windows`, CsWin32 0.3.269, WinForms message pump, WH_KEYBOARD_LL hook, GDI layered overlays, DwmGetWindowAttribute, MonitorFromWindow, GetMonitorInfo) is unchanged. Every recommendation integrates with the existing CsWin32 P/Invoke setup. No new NuGet packages are required.
+This document covers **additions required for v4.0 only**. The existing validated stack is unchanged and not re-researched:
 
-**DPI awareness status:** The app.manifest already declares `PerMonitorV2, PerMonitor` — the process is per-monitor DPI aware. This is the correct mode for grid calculations and window positioning across monitors with different DPI settings.
+**Already validated (do not re-research):** .NET 8 `net8.0-windows`, CsWin32 0.3.269, WinForms (`UseWindowsForms=true`), `NotifyIcon` + `ContextMenuStrip`, GDI for overlays, `System.CommandLine` 2.0.3, `System.Text.Json` (built-in), `Microsoft.Extensions.FileSystemGlobbing` 8.0.0.
 
----
-
-## New APIs Required
-
-### Window Positioning (Primary)
-
-| Win32 API | NativeMethods.txt Entry | Signature | Purpose |
-|-----------|------------------------|-----------|---------|
-| `SetWindowPos` | Already in NativeMethods.txt | `BOOL SetWindowPos(HWND hWnd, HWND hWndInsertAfter, int X, int Y, int cx, int cy, SET_WINDOW_POS_FLAGS uFlags)` | Move and/or resize a window. The single correct API for both operations. `X, Y` are virtual-screen coordinates (same space as GetWindowRect). Pass `SWP_NOZORDER \| SWP_NOACTIVATE` to reposition without changing Z-order or stealing focus. |
-| `GetWindowRect` | **New addition** | `BOOL GetWindowRect(HWND hWnd, out RECT lpRect)` | Get the window's current position in virtual-screen coordinates. **This is the correct source for SetWindowPos target coordinates.** Returns coordinates that include invisible DWM resize borders — those borders are intentional and must be included when round-tripping through SetWindowPos. |
-
-`SetWindowPos` is already declared in NativeMethods.txt (used by overlay windows). Only `GetWindowRect` is a new entry.
-
-### DPI Query APIs
-
-| Win32 API | NativeMethods.txt Entry | Signature | DLL | Purpose |
-|-----------|------------------------|-----------|-----|---------|
-| `GetDpiForWindow` | **New addition** | `UINT GetDpiForWindow(HWND hwnd)` | User32.dll | Returns DPI of the monitor where the given window is currently displayed. Use this (not GetDpiForMonitor) when the process is per-monitor DPI aware — returns the window's actual DPI, not the system DPI. Minimum Windows 10 1607. |
-| `GetDpiForMonitor` | **New addition (optional)** | `HRESULT GetDpiForMonitor(HMONITOR hmonitor, MONITOR_DPI_TYPE dpiType, out UINT dpiX, out UINT dpiY)` | Shcore.dll | Returns DPI for a monitor handle. Use MDT_EFFECTIVE_DPI for the user-visible scaling factor. Requires separate Shcore.lib link — CsWin32 handles this automatically. Useful when computing grid size for a target monitor before the window has moved there (cross-monitor movement). |
-
-**Which to use:** `GetDpiForWindow` for a window's current monitor. `GetDpiForMonitor` for computing grid size on the destination monitor during cross-monitor movement before calling SetWindowPos. Both are available via CsWin32 NativeMethods.txt.
-
-### Window State Query APIs
-
-| Win32 API | NativeMethods.txt Entry | Signature | Purpose |
-|-----------|------------------------|-----------|---------|
-| `IsZoomed` | **New addition** | `BOOL IsZoomed(HWND hWnd)` | Detect if window is maximized. Skip move/resize if true — operating on a maximized window produces unintended results (Windows restores it automatically on the next interaction). |
-| `IsIconic` | Already in NativeMethods.txt | `BOOL IsIconic(HWND hWnd)` | Already used in WindowEnumerator to skip minimized windows during enumeration. Reuse here: skip move/resize if window is minimized. |
-
-### MONITOR_DPI_TYPE Enum (needed for GetDpiForMonitor)
-
-CsWin32 generates `MONITOR_DPI_TYPE` automatically when `GetDpiForMonitor` is added to NativeMethods.txt. Use `MDT_EFFECTIVE_DPI` (value 0) — this returns the DPI that matches the display scaling factor the user has set in Windows Settings. `MDT_ANGULAR_DPI` and `MDT_RAW_DPI` are hardware values that do not reflect user scaling choices.
+The four new capability areas are:
+1. **ICO file generation** — produce a `.ico` at build time or startup, embed as `EmbeddedResource`
+2. **Enhanced context menu** — status labels (hook status, uptime, last action) and additional menu items
+3. **WinForms settings window** — `Form` with `TabControl`, `TableLayoutPanel`, `ComboBox`, `NumericUpDown`, `ColorDialog`, `LinkLabel`
+4. **Daemon restart** — self-restart from context menu using `Environment.ProcessPath` + `Process.Start`
 
 ---
 
-## NativeMethods.txt Additions
+## New Capabilities Required
 
-Append to the existing NativeMethods.txt:
+### 1. ICO File Generation
 
-```
-GetWindowRect
-GetDpiForWindow
-GetDpiForMonitor
-IsZoomed
-```
+**Finding:** .NET does not have a built-in ICO encoder. `System.Drawing.Image.Save(stream, ImageFormat.Icon)` produces a PNG file, not a valid ICO. The correct approach is a custom binary encoder using `BinaryWriter`.
 
-(`SetWindowPos`, `IsIconic`, `MonitorFromWindow`, `GetMonitorInfo` are already present.)
+**Approach — hand-written ICO encoder (no new dependency):**
 
----
-
-## Coordinate System: The Critical Distinction
-
-This is the most important detail for correct window positioning.
-
-### Two rect types, two coordinate spaces
-
-| Source | Coordinate type | DPI adjusted? | Use for |
-|--------|----------------|---------------|---------|
-| `DwmGetWindowAttribute(DWMWA_EXTENDED_FRAME_BOUNDS)` | Physical pixels, virtual-screen space | **No** — raw physical | Reading visible bounds for overlay positioning, grid snap calculations, display to user |
-| `GetWindowRect` | Physical pixels, virtual-screen space (includes invisible DWM borders) | Yes (virtualized for DPI) | **Input to SetWindowPos** — round-trip safe |
-
-### The invisible border problem
-
-Windows 10+ Win32 windows have invisible 7–8 px resize borders on left, right, and bottom edges (0 px on top). `GetWindowRect` includes these borders. `DwmGetWindowAttribute(DWMWA_EXTENDED_FRAME_BOUNDS)` excludes them.
-
-**Consequence for move/resize:** If you read `DwmGetWindowAttribute` (visible bounds) and pass those coordinates directly to `SetWindowPos`, the window will shift by ~7 px each operation due to the missing border offset. This accumulates across repeated keypresses.
-
-### Correct approach: read GetWindowRect, compute in visible space, compensate
+The ICO format is straightforward binary: a 6-byte header, a 16-byte directory entry per image, then the raw PNG-encoded image data. `System.Drawing.Bitmap` (already available via `System.Drawing.Common` which ships with `UseWindowsForms=true`) can resize and PNG-encode in memory. The encoder writes the directory and concatenates the PNG blobs.
 
 ```csharp
-// 1. Read current position via GetWindowRect (includes invisible borders)
-PInvoke.GetWindowRect(hwnd, out RECT windowRect);  // for SetWindowPos input
+// ICO binary format (all little-endian)
+// Header: reserved(2) + type(2=1) + count(2)
+// Per image: width(1) height(1) colors(1) reserved(1) planes(2) bpp(2) dataLen(4) offset(4)
+// Then raw PNG bytes for each size
 
-// 2. Read visible bounds via DwmGetWindowAttribute (for grid snap / display)
-RECT visibleRect = default;
-var bytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref visibleRect, 1));
-PInvoke.DwmGetWindowAttribute(hwnd, DWMWINDOWATTRIBUTE.DWMWA_EXTENDED_FRAME_BOUNDS, bytes);
+static void WriteIco(Bitmap source, Stream output)
+{
+    int[] sizes = { 256, 48, 32, 16 };
+    var pngBlobs = new List<byte[]>();
 
-// 3. Border offsets (per-window, computed once)
-int borderLeft   = visibleRect.left   - windowRect.left;   // typically +7
-int borderTop    = visibleRect.top    - windowRect.top;    // typically 0
-int borderRight  = windowRect.right   - visibleRect.right; // typically +7
-int borderBottom = windowRect.bottom  - visibleRect.bottom; // typically +7
+    foreach (int sz in sizes)
+    {
+        using var resized = new Bitmap(source, new Size(sz, sz));
+        using var ms = new MemoryStream();
+        resized.Save(ms, ImageFormat.Png);
+        pngBlobs.Add(ms.ToArray());
+    }
 
-// 4. Grid snap: align visibleRect to grid, then add borders back for SetWindowPos
-// Target visible position after snap:
-int newVisLeft = SnapToGrid(visibleRect.left + deltaX, gridStep);
-int newVisTop  = SnapToGrid(visibleRect.top  + deltaY, gridStep);
+    using var w = new BinaryWriter(output, Encoding.UTF8, leaveOpen: true);
+    w.Write((short)0);                // reserved
+    w.Write((short)1);                // type = icon
+    w.Write((short)sizes.Length);     // image count
 
-// SetWindowPos coordinates (include invisible borders):
-int newLeft = newVisLeft - borderLeft;
-int newTop  = newVisTop  - borderTop;
-// Width/height from windowRect (unchanged for a move):
-int width  = windowRect.right  - windowRect.left;
-int height = windowRect.bottom - windowRect.top;
+    int offset = 6 + 16 * sizes.Length;
+    for (int i = 0; i < sizes.Length; i++)
+    {
+        w.Write((byte)(sizes[i] == 256 ? 0 : sizes[i])); // 0 means 256
+        w.Write((byte)(sizes[i] == 256 ? 0 : sizes[i]));
+        w.Write((byte)0);             // colors in palette
+        w.Write((byte)0);             // reserved
+        w.Write((short)0);            // color planes
+        w.Write((short)32);           // bits per pixel
+        w.Write((int)pngBlobs[i].Length);
+        w.Write((int)offset);
+        offset += pngBlobs[i].Length;
+    }
 
-PInvoke.SetWindowPos(hwnd, HWND.Null, newLeft, newTop, width, height,
-    SET_WINDOW_POS_FLAGS.SWP_NOZORDER | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
+    foreach (var blob in pngBlobs)
+        w.Write(blob);
+}
 ```
 
-For a resize (grow/shrink edge), the delta is applied to the appropriate edge of the visible rect, then borders are added back to compute the final windowRect dimensions.
+**Embedding:** Once generated, embed via `<EmbeddedResource Include="Resources\focus.ico" />` in the csproj and load at startup with `Assembly.GetExecutingAssembly().GetManifestResourceStream("Focus.Resources.focus.ico")`.
+
+**Render the source bitmap with GDI (already in codebase):** The existing GDI DIB renderer can draw a simple geometric icon (e.g., directional arrows or a stylized "F") at 256x256 into a `Bitmap`, which is then passed to `WriteIco`. No external image editor needed.
+
+**Replaceable at runtime:** If a `focus.ico` file exists in `%APPDATA%\focus\`, load it from disk instead of the embedded resource. This allows user customization without rebuilding.
+
+**Loading the embedded ICO into NotifyIcon:**
+```csharp
+// Load from embedded resource
+using var stream = Assembly.GetExecutingAssembly()
+    .GetManifestResourceStream("Focus.Resources.focus.ico");
+_trayIcon.Icon = new Icon(stream!);
+```
+
+**Confidence:** HIGH — ICO binary format is a documented public format. `BinaryWriter` + `Bitmap.Save(stream, ImageFormat.Png)` is all BCL. Approach verified against [Edi Wang's ICO encoder](https://edi.wang/post/2019/11/12/generate-a-true-ico-format-image-in-net-core) and [darkfall's gist](https://gist.github.com/darkfall/1656050).
 
 ---
 
-## Grid Calculation: Per-Monitor DPI
+### 2. Enhanced Context Menu — Status Labels
 
-### Physical-pixel grid (recommended)
+**Finding:** `ToolStripMenuItem` with `Enabled = false` renders grayed-out text — that is the standard WinForms pattern for non-interactive status display in a context menu. No special type is needed. Known visual inconsistency: in some themes the disabled item does not visually gray correctly unless `ForeColor` is also set. Set `Enabled = false` on the status items; they will not fire `Click`.
 
-Because the process is per-monitor DPI aware (`PerMonitorV2` in app.manifest), all Win32 coordinates are **physical pixels**. The grid should be expressed in physical pixels based on the monitor's resolution.
-
+**Pattern for status labels:**
 ```csharp
-// Get monitor info for the foreground window's current monitor
-HMONITOR hMon = PInvoke.MonitorFromWindow(hwnd, MONITOR_FROM_FLAGS.MONITOR_DEFAULTTONEAREST);
-MONITORINFO mi = default;
-mi.cbSize = (uint)sizeof(MONITORINFO);
-PInvoke.GetMonitorInfo(hMon, ref mi);
+// Status label items — non-clickable, read-only
+var hookStatus = new ToolStripMenuItem("Hook: active") { Enabled = false };
+var uptime     = new ToolStripMenuItem("Uptime: 0d 0h 3m") { Enabled = false };
+var lastAction = new ToolStripMenuItem("Last: left → Firefox") { Enabled = false };
 
-// Physical monitor dimensions
-int monitorWidth  = mi.rcMonitor.right  - mi.rcMonitor.left;  // e.g. 2560 at 4K
-int monitorHeight = mi.rcMonitor.bottom - mi.rcMonitor.top;   // e.g. 1440 at 4K
-
-// Grid step = 1/16th of monitor width/height (configurable)
-int gridFraction = config.GridFraction;  // default 16
-int gridStepX = monitorWidth  / gridFraction;  // e.g. 160 px at 2560
-int gridStepY = monitorHeight / gridFraction;  // e.g. 90 px at 1440
+menu.Items.Add(hookStatus);
+menu.Items.Add(uptime);
+menu.Items.Add(lastAction);
+menu.Items.Add(new ToolStripSeparator());
+menu.Items.Add("Settings", null, OnSettingsClicked);
+menu.Items.Add("Restart Daemon", null, OnRestartClicked);
+menu.Items.Add(new ToolStripSeparator());
+menu.Items.Add("Exit", null, OnExitClicked);
 ```
 
-**Why physical pixels, not DPI-scaled logical units:** `GetWindowRect` and `SetWindowPos` operate in physical pixels when the process is per-monitor DPI aware. Using physical pixels avoids any DPI conversion math. Grid steps are simply fractions of the physical monitor resolution.
-
-**DPI variation across monitors:** On a mixed DPI setup (e.g., 4K at 200% DPI + 1080p at 100% DPI), each monitor has different physical dimensions. The grid step is computed from the **current window's monitor** at move time. When crossing to another monitor, recompute grid step from the destination monitor. Both `MonitorFromWindow` and `GetMonitorInfo` are already present and validated.
-
-### Cross-monitor grid recalculation
-
-During cross-monitor movement, the window's new grid position on the destination monitor must be computed:
+**Updating status before the menu opens:** Subscribe to `ContextMenuStrip.Opening` event. Update `hookStatus.Text`, `uptime.Text`, `lastAction.Text` there. This fires on every right-click before the menu renders — no polling required.
 
 ```csharp
-// Window has moved to destination monitor — recalculate grid for new monitor
-HMONITOR destMon = PInvoke.MonitorFromPoint(newCenterPoint, MONITOR_FROM_FLAGS.MONITOR_DEFAULTTONEAREST);
-// ... get new monitor info, compute new grid steps
-// Snap window position to new monitor's grid
+menu.Opening += (_, _) =>
+{
+    hookStatus.Text = $"Hook: {(_hook.IsInstalled ? "active" : "inactive")}";
+    uptime.Text = $"Uptime: {FormatUptime(DateTime.UtcNow - _startTime)}";
+    lastAction.Text = $"Last: {_lastActionDescription}";
+};
 ```
 
-`MonitorFromPoint` is already in NativeMethods.txt.
+**APIs involved:** All in `System.Windows.Forms` — `ContextMenuStrip`, `ToolStripMenuItem`, `ToolStripSeparator`. No new types beyond what's already used.
+
+**Confidence:** HIGH — `ContextMenuStrip.Opening` event and `ToolStripMenuItem.Enabled` are documented BCL WinForms APIs, .NET 8 target framework.
 
 ---
 
-## Window Size Constraints
+### 3. WinForms Settings Window
 
-### What to check before move/resize
+**Finding:** A pure code-constructed `Form` (no `.resx`, no designer) with `TableLayoutPanel` for label/control alignment is the correct approach for this project (code-only, no VS designer dependency). `TabControl` organizes sections. Standard WinForms controls cover all needed settings.
 
+**Layout strategy:**
+
+`TabControl` with tabs: **Navigation**, **Overlay**, **Grid**, **About**
+
+Within each tab, `TableLayoutPanel` with 2 columns (label + control) provides aligned form layout. `AutoSize = true` on the panel keeps height proportional to content.
+
+**Controls per setting type:**
+
+| Setting | Control | Notes |
+|---------|---------|-------|
+| Strategy (enum) | `ComboBox` | `DropDownStyle = DropDownList`; populate from `Enum.GetValues<Strategy>()` |
+| Wrap behavior (enum) | `ComboBox` | Same pattern |
+| Overlay delay (int ms) | `NumericUpDown` | `Minimum = 0`, `Maximum = 2000`, `Increment = 50` |
+| Grid fraction X/Y (int) | `NumericUpDown` | `Minimum = 2`, `Maximum = 64` |
+| Snap tolerance (int %) | `NumericUpDown` | `Minimum = 0`, `Maximum = 50` |
+| Overlay colors (ARGB hex) | Color swatch button + `ColorDialog` | Button shows current color as `BackColor`; click opens `ColorDialog`; read `dialog.Color.ToArgb()` |
+| Exclude patterns | `ListBox` + Add/Remove buttons | Multiline list; Add opens `InputBox`-style dialog or `TextBox`+OK |
+
+**ColorDialog for overlay colors:**
 ```csharp
-// 1. Skip if minimized (already in WindowEnumerator; add here as guard)
-if (PInvoke.IsIconic(hwnd)) return;
-
-// 2. Skip if maximized — resize conflicts with maximized state
-if (PInvoke.IsZoomed(hwnd)) return;
-
-// 3. Skip if fullscreen (check if window covers entire monitor work area)
-// Use mi.rcWork for work area (excludes taskbar) vs visible window bounds
+var dialog = new ColorDialog
+{
+    FullOpen = true,
+    Color = ParseArgbHex(config.OverlayColors.Left)
+};
+if (dialog.ShowDialog(this) == DialogResult.OK)
+{
+    config.OverlayColors.Left = $"#{dialog.Color.A:X2}{dialog.Color.R:X2}{dialog.Color.G:X2}{dialog.Color.B:X2}";
+    UpdateColorSwatch(leftColorButton, dialog.Color);
+}
 ```
 
-### Minimum size clamping
-
-Windows enforces a minimum window size via `WM_GETMINMAXINFO`. Apps respond to this message to declare their minimum. Since we do not own the target windows, we cannot know their minimums in advance.
-
-**Recommended approach:** Clamp to a sensible minimum (e.g., one grid step wide/tall) before calling SetWindowPos. The window manager will silently enforce the application's own minimum if our value is smaller — the call succeeds but the window snaps to its declared minimum. This is not an error condition; the window simply ends up at its minimum size rather than the requested size.
-
+**About tab — LinkLabel for GitHub:**
 ```csharp
-int minWidth  = gridStepX;  // at minimum, one grid cell wide
-int minHeight = gridStepY;
-
-int newWidth  = Math.Max(requestedWidth,  minWidth);
-int newHeight = Math.Max(requestedHeight, minHeight);
+var link = new LinkLabel { Text = "https://github.com/user/focus", AutoSize = true };
+link.LinkClicked += (_, _) =>
+    Process.Start(new ProcessStartInfo(link.Text) { UseShellExecute = true });
 ```
 
-### Monitor boundary clamping
-
-Clamp the target rect to the monitor's work area (`mi.rcWork`, not `mi.rcMonitor`) to avoid the window being dragged behind the taskbar:
+**ShowDialog from context menu (STA thread):**
+The `ContextMenuStrip.Opening` handler and `ToolStripMenuItem.Click` handlers run on the STA thread (they are dispatched through the WinForms message pump). Calling `settingsForm.ShowDialog(owner)` directly from the click handler is safe — no additional thread needed.
 
 ```csharp
-// Clamp new visible position to work area
-// (rcWork already available from GetMonitorInfo — already in MonitorHelper pattern)
+private SettingsForm? _settingsForm;
+
+private void OnSettingsClicked(object? sender, EventArgs e)
+{
+    // Reuse if already open; bring to front
+    if (_settingsForm is { IsDisposed: false })
+    {
+        _settingsForm.BringToFront();
+        return;
+    }
+    _settingsForm = new SettingsForm(_config);
+    _settingsForm.Show();  // Non-blocking — allows tray icon to remain responsive
+}
 ```
 
-`GetMonitorInfo` is already called in the existing `ClampToMonitor` helper in OverlayOrchestrator. Extend this pattern for work-area clamping.
+**Saving config:** On "Save" button click in `SettingsForm`, serialize back to `%APPDATA%\focus\config.json` via the existing `System.Text.Json` path. The daemon's existing "fresh config load per keypress" pattern (`FocusConfig.Load()` on each event) means changes are live immediately — no daemon restart required for config changes.
+
+**Confidence:** HIGH — `TabControl`, `TableLayoutPanel`, `NumericUpDown`, `ComboBox`, `ColorDialog`, `LinkLabel`, `Form.Show()` are all documented BCL WinForms controls available in `net8.0-windows`. `Process.Start` with `UseShellExecute = true` is required in .NET 8 (defaults to `false` unlike .NET Framework — confirmed via [official docs](https://learn.microsoft.com/en-us/dotnet/api/system.diagnostics.processstartinfo.useshellexecute?view=net-8.0)).
 
 ---
 
-## Integration with Existing Architecture
+### 4. Daemon Restart
 
-### Hook handler changes (KeyboardHookHandler)
+**Finding:** The existing `DaemonMutex.AcquireOrReplace()` already kills any running daemon instance and takes ownership of the mutex. A "restart" from the tray is therefore: spawn a new `focus daemon` process, then exit the current one. The new process's `AcquireOrReplace()` handles killing the old process automatically.
 
-The hook handler already reads `shiftHeld` and `ctrlHeld` modifier state for direction key events. For v3.1, add detection for `VK_TAB` and expand the modifier key intercept list:
+**Self-path:** Use `Environment.ProcessPath` (introduced in .NET 6, available in .NET 8). This is the preferred modern API over `Process.GetCurrentProcess().MainModule.FileName` — no Process allocation, no dispose requirement.
 
 ```csharp
-private const uint VK_TAB     = 0x09;  // CAPS+TAB+direction = move
-// VK_SHIFT (0x10) and VK_CONTROL (0x11) already tracked
-// CAPS+LSHIFT+direction = grow, CAPS+LCTRL+direction = shrink
+private void OnRestartClicked(object? sender, EventArgs e)
+{
+    var exePath = Environment.ProcessPath;
+    if (exePath is null) return;
+
+    // Spawn new instance — it will kill this one via AcquireOrReplace()
+    Process.Start(new ProcessStartInfo(exePath, "daemon --background")
+    {
+        UseShellExecute = false  // No shell needed for self-restart
+    });
+
+    // Exit this instance — the new process will acquire the mutex after killing us
+    _trayIcon.Visible = false;
+    _onExit();
+    Application.ExitThread();
+}
 ```
 
-Tab suppression when CAPSLOCK is held needs to be added to the hook callback alongside the existing direction/number key suppression.
+**Why not `Application.Restart()`:** `Application.Restart()` throws `NotSupportedException` when the application is not a pure WinForms application (i.e., when `Application.Run()` was not the entry point). This daemon uses `Application.Run()` only on the STA thread, with the main thread blocking on `cts.Token.WaitHandle.WaitOne()`. `Application.Restart()` is unreliable in this topology — confirmed by [official docs](https://learn.microsoft.com/en-us/dotnet/api/system.windows.forms.application.restart?view=windowsdesktop-8.0): "Throws NotSupportedException: Your code is not a Windows Forms application."
 
-No new Win32 APIs are needed in the hook handler itself.
-
-### Orchestrator changes (OverlayOrchestrator)
-
-Add a new `OnMoveWindowKeyDown` / `OnResizeWindowKeyDown` dispatch path analogous to `OnDirectionKeyDown`. The new methods marshal to the STA thread and call a `MoveWindowSta` / `ResizeWindowSta` implementation that:
-
-1. Calls `PInvoke.GetForegroundWindow()`
-2. Guards: `IsIconic`, `IsZoomed`
-3. Calls `PInvoke.GetWindowRect` for current position
-4. Calls `PInvoke.DwmGetWindowAttribute` for visible bounds
-5. Computes border offsets
-6. Gets monitor info for grid step calculation
-7. Applies delta, snaps to grid, clamps to work area
-8. Calls `PInvoke.SetWindowPos`
-
-All these Win32 calls run on the STA thread via `_staDispatcher.Invoke()` — the existing pattern in `OverlayOrchestrator` is directly reusable.
-
-### Overlay rendering for move/resize mode
-
-Mode-specific overlay indicators (move arrows, grow/shrink edge arrows) use the existing `IOverlayRenderer` interface and `OverlayWindow` infrastructure. New renderer implementations are needed but no new Win32 APIs — the same `UpdateLayeredWindow` + GDI DIB pattern handles any visual content.
+**Confidence:** HIGH — `Environment.ProcessPath` is documented .NET 6+ API. `Process.Start(ProcessStartInfo)` is documented. The existing `DaemonMutex` replace-semantics already handle the kill-and-replace cycle.
 
 ---
 
-## Recommended Stack (Complete — v3.1 Additions Only)
+## Recommended Stack (v4.0 Additions)
 
-### New Win32 APIs via CsWin32
+### No New NuGet Packages Required
 
-| Win32 API | DLL | Purpose | Why This One |
-|-----------|-----|---------|--------------|
-| `GetWindowRect` | User32.dll | Read current window position (with invisible borders) | SetWindowPos round-trip requires GetWindowRect coordinates, not DwmGetWindowAttribute |
-| `GetDpiForWindow` | User32.dll | Get DPI of window's current monitor | Per-monitor DPI aware version; preferred over GetDpiForMonitor when querying by window. Windows 10 1607+. |
-| `GetDpiForMonitor` | Shcore.dll | Get DPI for a destination monitor (cross-monitor moves) | Needed when computing target grid before window arrives on destination monitor |
-| `IsZoomed` | User32.dll | Detect maximized state | Guard: skip move/resize on maximized windows |
+All capabilities are covered by existing dependencies:
 
-### No New NuGet Packages
+| Capability | Provided By | Already a Dependency? |
+|------------|-------------|----------------------|
+| ICO binary encoding | `System.IO.BinaryWriter` (BCL) | Yes |
+| Bitmap resize + PNG encode | `System.Drawing.Bitmap` (via `UseWindowsForms`) | Yes |
+| Embedded resource loading | `System.Reflection.Assembly` (BCL) | Yes |
+| Status labels in context menu | `System.Windows.Forms.ToolStripMenuItem` | Yes |
+| Menu `Opening` event for live updates | `System.Windows.Forms.ContextMenuStrip` | Yes |
+| Settings form layout | `System.Windows.Forms.TabControl`, `TableLayoutPanel` | Yes |
+| Enum picker | `System.Windows.Forms.ComboBox` | Yes |
+| Integer settings | `System.Windows.Forms.NumericUpDown` | Yes |
+| Color picker | `System.Windows.Forms.ColorDialog` | Yes |
+| GitHub link | `System.Windows.Forms.LinkLabel` | Yes |
+| Open browser | `System.Diagnostics.Process.Start` (BCL) | Yes |
+| Self-restart path | `System.Environment.ProcessPath` (.NET 6+) | Yes |
+| Spawn new process | `System.Diagnostics.Process.Start` (BCL) | Yes |
 
-Zero new dependencies. All new APIs are Win32 system DLLs exposed through the existing CsWin32 source-generator setup.
+**Zero new NuGet packages.** All required types are in the BCL or already-referenced WinForms assembly.
 
 ---
 
-## Alternatives Considered
+## csproj Changes
 
-| Recommended | Alternative | Why Not |
-|-------------|-------------|---------|
-| `SetWindowPos` | `MoveWindow` | `MoveWindow` always repaints the window (`bRepaint` parameter is misleading — the WM_SIZE/WM_MOVE messages are always sent). `SetWindowPos` with `SWP_NOZORDER \| SWP_NOACTIVATE` gives cleaner semantics. Both ultimately call the same internal window manager code. Use SetWindowPos — it's already in the codebase. |
-| `GetWindowRect` for SetWindowPos input | `DwmGetWindowAttribute` for SetWindowPos input | DwmGetWindowAttribute returns visible-only bounds (excludes invisible DWM borders). Passing these to SetWindowPos causes a ~7px drift per operation. GetWindowRect returns the full rect that SetWindowPos expects. |
-| Physical-pixel grid (fraction of monitor resolution) | DPI-logical-unit grid | Since the process is per-monitor DPI aware, all Win32 coordinates are physical pixels. No DPI conversion math needed. Logical units would require `MulDiv(value, dpi, 96)` conversions at every boundary. Physical pixels are simpler and direct. |
-| `IsZoomed` guard before resize | `GetWindowPlacement` | `GetWindowPlacement` provides more detail (WINDOWPLACEMENT.showCmd) but is heavier. IsZoomed is a single bool check sufficient for the guard. |
+### Embed the ICO file
+
+```xml
+<ItemGroup>
+  <EmbeddedResource Include="Resources\focus.ico" />
+</ItemGroup>
+```
+
+The embedded resource name becomes `Focus.Resources.focus.ico` (assembly default namespace + folder path + filename). Verify with `Assembly.GetExecutingAssembly().GetManifestResourceNames()` at startup if the name is uncertain.
+
+### ApplicationIcon (optional, for taskbar/exe icon)
+
+```xml
+<PropertyGroup>
+  <ApplicationIcon>Resources\focus.ico</ApplicationIcon>
+</PropertyGroup>
+```
+
+This embeds the icon into the PE header for Windows Explorer / taskbar display. Separate from the `EmbeddedResource` entry used for `NotifyIcon` at runtime. Both entries can coexist.
+
+---
+
+## Integration Points
+
+### TrayIcon.cs (DaemonApplicationContext)
+
+- Replace `SystemIcons.Application` with loaded ICO from embedded resource
+- Add status `ToolStripMenuItem` items (disabled) + `menu.Opening` handler
+- Add "Settings" and "Restart Daemon" menu items
+- Inject `DaemonStatus` object (hook state, start time, last action) into `DaemonApplicationContext`
+
+### SettingsForm (new file)
+
+- Pure code-constructed `Form` subclass — no `.resx`, no designer
+- Constructor accepts `FocusConfig` (the current loaded config)
+- "Save" button: serialize to `%APPDATA%\focus\config.json` via `FocusConfig.WriteDefaults` (or an updated `FocusConfig.Save()` variant)
+- "Cancel" button: close without saving
+
+### DaemonCommand.cs
+
+- Thread start time for uptime calculation
+- Last action description string (updated by keyboard handler callbacks)
+- Restart handler calls `Environment.ProcessPath` + `Process.Start` before signaling exit
 
 ---
 
@@ -269,40 +306,55 @@ Zero new dependencies. All new APIs are Win32 system DLLs exposed through the ex
 
 | Avoid | Why | Use Instead |
 |-------|-----|-------------|
-| `MoveWindow` | Redundant with SetWindowPos; less flexible flags; already have SetWindowPos in codebase | `SetWindowPos` with `SWP_NOZORDER \| SWP_NOACTIVATE` |
-| `SetWindowPlacement` | Designed for save/restore window state across sessions. Overkill for grid moves. Its coordinates are workspace-relative, adding conversion complexity. | `SetWindowPos` with GetWindowRect-derived coordinates |
-| `WM_GETMINMAXINFO` / subclassing target windows | Would require SetWindowSubclass, a WndProc callback, and per-window teardown logic. The window manager already enforces min size silently when SetWindowPos is called with a too-small rect. | Clamp to one grid step minimum before SetWindowPos; let window manager enforce app minimum |
-| Any animation/transition API (`AnimateWindow`, DWM transitions) | Project decision: instant moves only, no animation. | Direct SetWindowPos with no SWP_ASYNCWINDOWPOS |
-| `SWP_ASYNCWINDOWPOS` flag | Defers the position change to the target window's thread — adds a frame of latency and makes the move non-atomic. Unnecessary for a keyboard hotkey operation. | Synchronous SetWindowPos |
-| WinRT / Windows.UI.ViewManagement APIs | UWP/WinRT window management does not apply to Win32 HWNDs. | Win32 SetWindowPos |
-| New rendering libraries for move/resize indicators | Existing IOverlayRenderer + UpdateLayeredWindow + GDI DIB handles any visual content | Extend existing overlay renderer infrastructure |
+| Third-party ICO libraries (BluwolfIcons, etc.) | Zero value over a 30-line hand-written encoder; adds a dependency to a project with a "minimal dependencies" constraint | `BinaryWriter` + `Bitmap.Save(stream, ImageFormat.Png)` |
+| `Application.Restart()` | Throws `NotSupportedException` when WinForms is not the entry point — this daemon uses a hybrid STA/main-thread topology | `Environment.ProcessPath` + `Process.Start` |
+| `System.Drawing.Icon.FromHandle(bitmap.GetHicon())` for ICO generation | `GetHicon()` produces a single-size HICON in memory; cannot serialize a multi-size `.ico` file this way. Also requires `DestroyIcon` cleanup | Binary ICO encoder with multiple PNG blobs |
+| WPF / WinUI for settings window | No WPF/WinUI dependency exists; adding one for a settings form is disproportionate and conflicts with the existing WinForms message pump | `System.Windows.Forms.Form` (already available) |
+| `ToolStripLabel` in `ContextMenuStrip` | `ToolStripLabel` is designed for `ToolStrip`/`StatusStrip`, not `ContextMenuStrip`; adding it to a `ContextMenuStrip` is unsupported and may produce layout artifacts | `ToolStripMenuItem` with `Enabled = false` |
+| `ColorTranslator.FromHtml` for ARGB parsing | `ColorTranslator.FromHtml` supports only RGB hex (`#RRGGBB`), not ARGB (`#AARRGGBB`). The existing config uses 8-digit ARGB hex. | Manual parse: `Color.FromArgb(Convert.ToInt32(hex.TrimStart('#'), 16))` |
+| `System.Windows.Forms.ColorDialog` with `AllowFullOpen = false` | Restricts to basic colors only — insufficient for ARGB overlay color selection | `ColorDialog { FullOpen = true }` |
+| Polling timer for status updates | Wastes CPU; status only needs to be current when the menu opens | `ContextMenuStrip.Opening` event |
 
 ---
 
 ## Version Compatibility
 
-| API / Package | Windows Requirement | Notes |
-|---------------|--------------------|----|
-| `GetWindowRect` | Windows 2000+ | Universal. Already generated by CsWin32 for many projects; just add to NativeMethods.txt. |
-| `GetDpiForWindow` | Windows 10, version 1607+ | Already satisfied by the project's supported OS (app.manifest). Returns per-monitor DPI when process is per-monitor aware. |
-| `GetDpiForMonitor` | Windows 8.1+ | Project targets Windows 10+ per app.manifest — satisfied. Use `MDT_EFFECTIVE_DPI` (0). |
-| `IsZoomed` | Windows 2000+ | Universal. |
-| `SetWindowPos` | Windows 2000+ | Already in NativeMethods.txt. `SWP_NOACTIVATE` is the critical flag. |
-| `CsWin32 0.3.269` | — | All new APIs (GetWindowRect, GetDpiForWindow, GetDpiForMonitor, IsZoomed) are in Win32Metadata. No version bump needed. |
+| Type / API | Assembly | .NET Requirement | Notes |
+|------------|----------|-----------------|-------|
+| `Environment.ProcessPath` | `System.Runtime` | .NET 6+ | Available in .NET 8. Returns `null` if path unavailable — null-check required. |
+| `TabControl`, `TableLayoutPanel`, `NumericUpDown`, `ColorDialog`, `LinkLabel` | `System.Windows.Forms` | .NET Core 3.0+ | All available in `net8.0-windows` with `UseWindowsForms=true`. |
+| `ContextMenuStrip.Opening` event | `System.Windows.Forms` | .NET Core 3.0+ | Fires before menu renders on every right-click. |
+| `ProcessStartInfo.UseShellExecute` | `System.Diagnostics` | All .NET versions | **Defaults to `false` in .NET Core/.NET 5+.** Must be set to `true` explicitly for URL opening. |
+| `System.Drawing.Bitmap`, `BinaryWriter` | `System.Drawing.Common`, `System.Runtime` | Windows only (already constrained by `net8.0-windows`) | `System.Drawing.Common` is Windows-only from .NET 6+. Already satisfied. |
+| `Assembly.GetManifestResourceStream` | `System.Runtime` | All .NET versions | Returns `null` if resource name is wrong — null-check required. |
+
+---
+
+## Alternatives Considered
+
+| Recommended | Alternative | When to Use Alternative |
+|-------------|-------------|-------------------------|
+| Hand-written ICO binary encoder | BluwolfIcons NuGet | Never — 30-line implementation vs. a dependency for a feature used once at startup |
+| `Environment.ProcessPath` | `Process.GetCurrentProcess().MainModule!.FileName` | Only if targeting .NET 5 or earlier (pre-`ProcessPath` API). .NET 8 → always prefer `ProcessPath`. |
+| `Form.Show()` (non-blocking) for settings | `Form.ShowDialog()` (blocking) | `ShowDialog` blocks the STA message pump, preventing tray icon interaction while settings are open. `Show()` keeps both live. |
+| `ContextMenuStrip.Opening` for status refresh | Background timer polling + Invoke | Timer approach wastes CPU when the menu is never opened; `Opening` event is precise and zero-cost. |
+| GDI DIB (existing renderer) to draw the source icon bitmap | External `.ico` asset checked into repo | GDI renderer is already proven; drawing a simple icon programmatically means no binary asset to manage. Both options are valid — external asset is acceptable if a designer provides one. |
 
 ---
 
 ## Sources
 
-- [SetWindowPos — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setwindowpos) — exact parameter types, SWP_ flags, coordinate system, no-activate semantics — HIGH confidence
-- [GetWindowRect — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getwindowrect) — "GetWindowRect is virtualized for DPI", invisible borders included, round-trip safe with SetWindowPos — HIGH confidence
-- [GetWindowRect remarks on invisible borders — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getwindowrect) — "In Windows Vista and later, the Window Rect now may include invisible resize borders. To get visible bounds, use DwmGetWindowAttribute" — HIGH confidence
-- [GetDpiForWindow — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getdpiforwindow) — Windows 10 1607+ requirement, User32.dll, returns per-monitor DPI when DPI_AWARENESS_PER_MONITOR_AWARE — HIGH confidence
-- [GetDpiForMonitor — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/api/shellscalingapi/nf-shellscalingapi-getdpiformonitor) — Shcore.dll, MDT_EFFECTIVE_DPI, Windows 8.1+, HRESULT return — HIGH confidence
-- [High DPI Desktop Application Development — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/hidpi/high-dpi-desktop-application-development-on-windows) — per-monitor v2 awareness, physical pixel coordinate model — HIGH confidence
-- [WM_DPICHANGED — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/hidpi/wm-dpichanged) — DPI change notification, GetDpiForWindow usage in move scenarios — HIGH confidence
-- [MONITORINFO / GetMonitorInfo — already validated in v2.0 STACK.md] — rcWork for work area, rcMonitor for full physical bounds — HIGH confidence (existing validated code)
+- [Generate a True ICO Format Image in .NET Core — Edi Wang](https://edi.wang/post/2019/11/12/generate-a-true-ico-format-image-in-net-core) — ICO encoder approach, confirmed `System.Drawing.Image.Save(ImageFormat.Icon)` bug — HIGH confidence
+- [Bitmap to ICO gist — darkfall](https://gist.github.com/darkfall/1656050) — ICO binary format structure, `BinaryWriter` pattern, PNG-per-size approach — HIGH confidence
+- [Application.Restart Method — Microsoft Learn](https://learn.microsoft.com/en-us/dotnet/api/system.windows.forms.application.restart?view=windowsdesktop-8.0) — confirms `NotSupportedException` for non-WinForms-entry-point apps — HIGH confidence
+- [ProcessStartInfo.UseShellExecute — Microsoft Learn](https://learn.microsoft.com/en-us/dotnet/api/system.diagnostics.processstartinfo.useshellexecute?view=net-8.0) — default `false` in .NET Core; must be `true` for URL opening — HIGH confidence
+- [Environment.ProcessPath — Microsoft Learn](https://learn.microsoft.com/en-us/dotnet/api/system.environment.processpath?view=net-6.0) — .NET 6+ preferred API for current executable path — HIGH confidence
+- [CA1839: Use Environment.ProcessPath — Microsoft Learn](https://learn.microsoft.com/en-us/dotnet/fundamentals/code-analysis/quality-rules/ca1839) — confirms `ProcessPath` preferred over `Process.GetCurrentProcess().MainModule.FileName` — HIGH confidence
+- [ContextMenuStrip — Microsoft Learn](https://learn.microsoft.com/en-us/dotnet/api/system.windows.forms.contextmenustrip?view=windowsdesktop-8.0) — `Opening` event documentation — HIGH confidence
+- [Link to Web Page with LinkLabel — Microsoft Learn](https://learn.microsoft.com/en-us/dotnet/desktop/winforms/controls/link-to-an-object-or-web-page-with-wf-linklabel-control) — `LinkClicked` + `Process.Start` pattern — HIGH confidence
+- [TableLayoutPanel Best Practices — Microsoft Learn](https://learn.microsoft.com/en-us/dotnet/desktop/winforms/controls/best-practices-for-the-tablelayoutpanel-control) — layout guidance for settings forms — HIGH confidence
 
 ---
-*Stack research for: Window focus navigation v3.1 — grid-snapped window move and resize*
-*Researched: 2026-03-02*
+
+*Stack research for: Window focus navigation v4.0 — system tray polish, settings UI, daemon restart*
+*Researched: 2026-03-03*

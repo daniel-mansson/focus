@@ -1196,3 +1196,429 @@ int insetBottom = windowRect.bottom - frameBounds.bottom;
 *Architecture research for: Win32 directional window focus navigation — daemon + overlay preview mode*
 *Parts 1-10 researched: 2026-02-28*
 *Part 11 (v3.1 window management) researched: 2026-03-02*
+
+---
+
+## Part 12: v4.0 Target Architecture — System Tray & Settings UI
+
+**Researched:** 2026-03-03
+**Scope:** How the new features (custom icon, enhanced context menu, daemon status, WinForms settings window, daemon restart) integrate with the existing daemon architecture.
+
+### What Changes and What Does Not
+
+**Does not change:**
+- The STA thread model — `DaemonApplicationContext` continues to own the message pump
+- `KeyboardHookHandler`, `CapsLockMonitor`, the Channel-based event pipeline
+- `OverlayOrchestrator`, `OverlayManager` — no overlay changes
+- `DaemonMutex` — replace semantics remain unchanged
+- `FocusConfig.Load()` — per-keypress fresh load continues to work; config-on-disk is the source of truth
+- `FocusConfig.WriteDefaults()` — already exists; settings window writes JSON via this pattern
+
+**Changes in existing files:**
+- `TrayIcon.cs` (`DaemonApplicationContext`) — enhanced context menu, custom icon, status labels, settings window launch, restart trigger
+- `FocusConfig.cs` — add `Save(FocusConfig config)` static method
+
+**New files:**
+- `Windows/Daemon/DaemonStatus.cs` — shared mutable status state (hook alive, start time, last action)
+- `Windows/Daemon/SettingsWindow.cs` — WinForms `Form` subclass for the settings UI
+
+---
+
+### System Overview: v4.0 Integration Points
+
+```
+┌────────────────────────────────────────────────────────────────────┐
+│                         DaemonCommand.Run()                         │
+│  Creates: mutex, config, channel, hook, monitor, CTS               │
+│  Spawns STA thread, blocks on CTS.Token.WaitHandle                 │
+│  Shutdown: orchestrator.RequestShutdown(), hook.Uninstall(),        │
+│            channel.Complete(), staThread.Join(), mutex.Release()    │
+│  NEW: creates DaemonStatus, passes to STA thread and callbacks      │
+└──────────────────────────────┬─────────────────────────────────────┘
+                               │ STA thread (Application.Run)
+                               v
+┌────────────────────────────────────────────────────────────────────┐
+│                   DaemonApplicationContext                           │
+│   (TrayIcon.cs — modified)                                          │
+│   Owns: NotifyIcon, ContextMenuStrip, PowerBroadcastWindow         │
+│   NEW: receives DaemonStatus ref; builds enhanced context menu;    │
+│        opens SettingsWindow on STA thread; triggers restart         │
+├──────────────┬─────────────────────────────────────────────────────┤
+│  NotifyIcon  │  ContextMenuStrip (enhanced)                         │
+│  Custom .ico │  ┌─────────────────────────────────────────────────┐│
+│  (embedded   │  │ [status label — hook alive, uptime, last action] ││
+│   resource)  │  │ ─────────────────────────────────────────────── ││
+│              │  │ Settings...                                       ││
+│              │  │ Restart Daemon                                    ││
+│              │  │ ─────────────────────────────────────────────── ││
+│              │  │ Exit                                              ││
+│              │  └─────────────────────────────────────────────────┘│
+└──────────────┴──────────────────────────────────────────────────────┘
+                      │ "Settings..." click (STA thread)
+                      v
+┌────────────────────────────────────────────────────────────────────┐
+│                       SettingsWindow (Form)                          │
+│   (Windows/Daemon/SettingsWindow.cs — new)                          │
+│   Opens: FocusConfig.Load() populates all controls                  │
+│   Edits: Strategy, GridFractionX/Y, OverlayDelayMs,                │
+│          OverlayColors (hex ARGB), NumberOverlayEnabled             │
+│   Saves: FocusConfig.Save(config) writes JSON to disk               │
+│   No daemon restart needed — next keypress loads fresh config       │
+│   About tab: project name, attribution, GitHub URL (LinkLabel)      │
+└────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────┐
+│                        DaemonStatus                                  │
+│   (Windows/Daemon/DaemonStatus.cs — new)                            │
+│   Fields: StartTime (DateTime), LastAction (string), HookAlive (bool)│
+│   Written by: DaemonCommand (start time + hook state),              │
+│               CapsLockMonitor callbacks (last action)               │
+│   Read by: ContextMenuStrip.Opening event handler (STA thread)      │
+│   Threading: volatile bool HookAlive, volatile string LastAction,   │
+│              DateTime StartTime is write-once (init only)           │
+└────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### Component Integration Details
+
+#### 1. DaemonStatus — New Shared State Object
+
+**What it is:** A plain C# class passed through `DaemonCommand.Run()` that accumulates observable daemon state. It is the only new cross-thread data structure introduced in v4.0.
+
+**Fields:**
+```csharp
+internal sealed class DaemonStatus
+{
+    // Written once at daemon startup by DaemonCommand.Run() before STA thread starts.
+    // Safe to read from any thread without synchronization.
+    public DateTime StartTime { get; init; }
+
+    // Written from the CapsLockMonitor worker thread (onHeld/onDirectionKeyDown callbacks).
+    // Read from the STA thread (ContextMenuStrip.Opening). volatile ensures visibility.
+    public volatile string LastAction = "idle";
+
+    // Written from DaemonCommand.Run() (after hook.Install()) and
+    // PowerBroadcastWindow.WndProc (hook reinstall on wake).
+    // volatile bool is sufficient — assignment is atomic on all .NET platforms.
+    public volatile bool HookAlive;
+}
+```
+
+**Threading analysis:**
+- `StartTime` is set before `staThread.Start()` — safe to read anywhere.
+- `LastAction` is written on the CapsLockMonitor worker thread and read on the STA thread during `ContextMenuStrip.Opening`. String assignment is atomic in .NET; `volatile` ensures cross-thread visibility without a lock.
+- `HookAlive` is a `volatile bool` — written from `DaemonCommand.Run()` and `PowerBroadcastWindow.WndProc`; read on the STA thread. No lock needed.
+
+**Integration into existing code:**
+- `DaemonCommand.Run()`: instantiate `DaemonStatus` before spawning the STA thread. Set `StartTime = DateTime.Now` and `HookAlive = true` after `hook.Install()`. Pass the instance to `DaemonApplicationContext` via a new constructor parameter. Before `hook.Uninstall()` during teardown, set `HookAlive = false`.
+- CapsLockMonitor callbacks in `DaemonCommand.Run()`: the `onHeld` and `onDirectionKeyDown` lambdas are already closures over local variables. Extend them to also write `status.LastAction`, e.g. `onHeld: () => { status.LastAction = "caps held"; orchestrator?.OnCapsLockHeld(); }`.
+- `PowerBroadcastWindow`: receives a `DaemonStatus` reference; sets `HookAlive = false` before `_hook.Uninstall()` and `HookAlive = true` after `_hook.Install()` on resume.
+
+#### 2. DaemonApplicationContext (TrayIcon.cs) — Modified
+
+**Current state:** Creates a `ContextMenuStrip` with a single "Exit" item. Assigns `SystemIcons.Application` as the tray icon.
+
+**Constructor signature change:**
+```csharp
+public DaemonApplicationContext(
+    KeyboardHookHandler hook,
+    CapsLockMonitor monitor,
+    Action onExit,
+    FocusConfig config,
+    bool verbose,
+    DaemonStatus status,          // NEW
+    out OverlayOrchestrator orchestrator)
+```
+
+**Icon loading:**
+```csharp
+// Load custom icon from embedded resource; fall back to system icon on failure.
+Icon trayIcon;
+try
+{
+    using var stream = typeof(DaemonApplicationContext).Assembly
+        .GetManifestResourceStream("Focus.focus.ico")!;
+    trayIcon = new Icon(stream, 16, 16);
+}
+catch
+{
+    trayIcon = SystemIcons.Application;
+}
+_trayIcon = new NotifyIcon { Icon = trayIcon, ... };
+```
+
+**Enhanced context menu construction:**
+```csharp
+var menu = new ContextMenuStrip();
+
+var statusItem = new ToolStripMenuItem("...") { Enabled = false };
+menu.Opening += (_, _) => statusItem.Text = FormatStatus(_status);
+
+menu.Items.Add(statusItem);
+menu.Items.Add(new ToolStripSeparator());
+menu.Items.Add("Settings...", null, OnSettingsClicked);
+menu.Items.Add("Restart Daemon", null, OnRestartClicked);
+menu.Items.Add(new ToolStripSeparator());
+menu.Items.Add("Exit", null, OnExitClicked);
+```
+
+**Status text format** (composed in `FormatStatus`):
+```
+Hook alive  |  Up 2h 14m  |  Last: navigate left
+```
+A single disabled `ToolStripMenuItem` renders in muted gray, giving the correct visual weight for informational status.
+
+**Settings window launch (`OnSettingsClicked`):**
+```csharp
+private SettingsWindow? _settingsWindow;
+
+private void OnSettingsClicked(object? sender, EventArgs e)
+{
+    // Reuse existing window if already open rather than opening a second instance.
+    if (_settingsWindow is { Visible: true })
+    {
+        _settingsWindow.BringToFront();
+        return;
+    }
+    _settingsWindow = new SettingsWindow();
+    _settingsWindow.Show();  // Non-modal: STA pump continues; keyboard hook keeps working
+}
+```
+
+**Restart daemon (`OnRestartClicked`):**
+```csharp
+private void OnRestartClicked(object? sender, EventArgs e)
+{
+    // Launch a new daemon process before calling onExit so there is no gap.
+    // The new process's DaemonMutex.AcquireOrReplace() handles killing this process
+    // if it is slow to exit.
+    var exe = Environment.ProcessPath;
+    if (exe is not null)
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(exe, "daemon --background")
+        {
+            UseShellExecute = false
+        });
+
+    // Signal teardown of this instance.
+    _onExit();
+}
+```
+
+The `OnExitClicked` implementation is unchanged: hide the icon, call `_onExit()`, call `Application.ExitThread()`.
+
+#### 3. SettingsWindow — New WinForms Form
+
+**What it is:** A modeless `Form` opened from the tray "Settings..." menu item. It runs on the STA thread. Non-modal, so the keyboard hook and overlay system continue operating while settings are open.
+
+**Control layout:**
+```
+SettingsWindow (Form, 480x520, non-resizable, non-modal)
+├── TabControl (fills client area)
+│   ├── TabPage: Navigation
+│   │   ├── Label + ComboBox: Strategy  (6 enum values)
+│   │   └── Label + ComboBox: Wrap behavior (3 enum values)
+│   ├── TabPage: Grid
+│   │   ├── Label + NumericUpDown: GridFractionX (4–64, default 16)
+│   │   └── Label + NumericUpDown: GridFractionY (4–64, default 12)
+│   ├── TabPage: Overlay
+│   │   ├── Label + NumericUpDown: OverlayDelayMs (0–2000)
+│   │   ├── Label + TextBox: Left color  (8-char ARGB hex, e.g. "E000CC00")
+│   │   ├── Label + TextBox: Right color
+│   │   ├── Label + TextBox: Up color
+│   │   ├── Label + TextBox: Down color
+│   │   └── CheckBox: Enable number labels
+│   └── TabPage: About
+│       ├── Label: "Focus — directional window navigator"
+│       ├── Label: version (Assembly.GetExecutingAssembly().GetName().Version)
+│       ├── LinkLabel: https://github.com/[repo]
+│       └── Label: attribution
+└── Panel (bottom)
+    ├── Button: Save
+    └── Button: Cancel
+```
+
+**On Load:** call `FocusConfig.Load()`, populate all controls from config fields.
+
+**On Save:** read all control values, build `FocusConfig`, call `FocusConfig.Save(config)`, close the form.
+
+**Validation:** hex color fields use `uint.TryParse(text.Trim(), System.Globalization.NumberStyles.HexNumber, null, out _)` to validate. Invalid fields get a red border (`TextBox.BackColor = Color.MistyRose`) and the Save button is disabled until all fields are valid.
+
+**About tab link:** `Process.Start(new ProcessStartInfo(url) { UseShellExecute = true })` opens the URL in the default browser.
+
+**SettingsWindow does not hold a reference to `DaemonStatus`.** It is purely a config editor — no runtime daemon state is displayed in it. Status belongs in the tray context menu.
+
+#### 4. FocusConfig.cs — Modified
+
+**New static method:**
+```csharp
+public static void Save(FocusConfig config)
+{
+    var path = GetConfigPath();
+    var options = new JsonSerializerOptions
+    {
+        WriteIndented = true,
+        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.KebabCaseLower) }
+    };
+    var json = JsonSerializer.Serialize(config, options);
+    Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+    File.WriteAllText(path, json);
+}
+```
+
+This mirrors `WriteDefaults()` exactly but serializes a provided config rather than `new FocusConfig()`. The existing `WriteDefaults()` can be refactored to call `Save(new FocusConfig())` or left as-is.
+
+#### 5. Custom Tray Icon
+
+**Approach A — Embedded `.ico` resource (recommended):**
+Add `focus.ico` to the project. In the `.csproj`:
+```xml
+<ItemGroup>
+  <EmbeddedResource Include="focus.ico" />
+</ItemGroup>
+```
+Load via `Assembly.GetManifestResourceStream("Focus.focus.ico")`. The resource name follows the pattern `[AssemblyName].[filename]`.
+
+A `.ico` must contain at minimum the 16x16 image used by the system tray. A 32x32 image is recommended for DPI-aware setups. The icon should be visually distinctive from the system default application icon.
+
+**Approach B — Programmatic GDI+ icon:**
+Generate the icon at runtime using a small `Bitmap` + `Graphics` + `Icon.FromHandle()`. This avoids managing a binary asset. Example: draw the letter "F" or a directional arrow on a 16x16 bitmap. This aligns with the project's existing GDI pattern for overlay rendering.
+
+Either approach is compatible with the existing embedded resource workflow (`UseWindowsForms = true` in `.csproj` already enables `System.Drawing`).
+
+---
+
+### Data Flow Changes
+
+#### Context Menu Status Refresh (event-driven, no polling)
+
+```
+User right-clicks tray icon
+    → Windows delivers WM_CONTEXTMENU to STA thread's message pump
+    → ContextMenuStrip.Opening fires on STA thread
+    → Opening handler reads _status.StartTime, _status.LastAction, _status.HookAlive
+    → Computes uptime: TimeSpan.FromSeconds((DateTime.Now - _status.StartTime).TotalSeconds)
+    → Sets statusItem.Text = formatted string
+    → Menu displays with current values
+```
+
+No polling timer. Status is read exactly once per menu open.
+
+#### Settings Save → Config Live Reload
+
+```
+User opens SettingsWindow
+    → FocusConfig.Load() populates controls
+User edits values, clicks Save
+    → SettingsWindow builds FocusConfig from control values
+    → FocusConfig.Save(config) writes JSON to %APPDATA%\focus\config.json
+    → Form closes
+User next holds CAPSLOCK
+    → OverlayOrchestrator.ShowOverlaysForCurrentForeground() calls FocusConfig.Load()
+    → NavigateSta() calls FocusConfig.Load()
+    → New settings take effect immediately (no daemon restart needed)
+```
+
+The existing per-keypress `FocusConfig.Load()` already provides the live-reload behavior for free.
+
+#### Daemon Restart Data Flow (re-exec pattern)
+
+```
+User clicks "Restart Daemon"
+    → OnRestartClicked on STA thread
+    → Process.Start("focus.exe", "daemon --background") — new process starts
+    → New process: DaemonMutex.AcquireOrReplace() — waits for / kills old process
+    → _onExit() called — cts.Cancel() fires
+    → cts.Token.Register(() => Application.Exit()) posts WM_QUIT
+    → STA thread exits Application.Run() → DaemonApplicationContext.Dispose()
+    → DaemonCommand.Run() performs ordered teardown
+    → mutex.Release() — new process can now acquire mutex cleanly
+    → Old process exits
+```
+
+The `--background` flag is essential when re-launching from the tray: the new process calls `PInvoke.FreeConsole()` and runs without a console window.
+
+---
+
+### New vs Modified — Explicit Summary
+
+| Component | File | Status | Change |
+|-----------|------|--------|--------|
+| `DaemonStatus` | `Windows/Daemon/DaemonStatus.cs` | **New** | Shared status (hook alive, uptime, last action) |
+| `SettingsWindow` | `Windows/Daemon/SettingsWindow.cs` | **New** | WinForms Form for settings UI |
+| `DaemonApplicationContext` | `Windows/Daemon/TrayIcon.cs` | **Modified** | Enhanced menu, custom icon, status refresh, settings launch, restart |
+| `FocusConfig` | `Windows/FocusConfig.cs` | **Modified** | Add `Save(FocusConfig config)` static method |
+| `DaemonCommand` | `Windows/Daemon/DaemonCommand.cs` | **Modified** | Create and thread `DaemonStatus`; update callback lambdas |
+| `focus.ico` | `focus/focus.ico` | **New** | Custom tray icon (16x16 + 32x32) |
+
+**Unchanged:** `KeyboardHookHandler`, `CapsLockMonitor`, `OverlayOrchestrator`, `OverlayManager`, `OverlayWindow`, `KeyEvent`, `WindowManagerService`, `GridCalculator`, `NavigationService`, `FocusActivator`, `WindowEnumerator`, `ExcludeFilter`, `DaemonMutex`, `Program.cs`.
+
+---
+
+### Build Order (Dependency-Driven)
+
+Each step is independently testable before the next.
+
+**Step 1 — FocusConfig.Save() (no UI deps)**
+Add the `Save()` method to `FocusConfig.cs`. Manually verify: call `Save(FocusConfig.Load())` and confirm the file is written correctly. This unblocks `SettingsWindow` save logic in Step 5.
+
+**Step 2 — DaemonStatus scaffolding (no UI deps)**
+Create `DaemonStatus.cs`. Wire into `DaemonCommand.Run()`: instantiate, set `StartTime`, set `HookAlive` around hook install/uninstall, write `LastAction` in the `onHeld` / `onDirectionKeyDown` lambdas. Pass to `DaemonApplicationContext`. No visible change yet — just the data flow plumbing.
+
+**Step 3 — Custom tray icon (depends on nothing else)**
+Add `focus.ico` as an embedded resource. Load it in `DaemonApplicationContext`. Verify the new icon appears in the system tray. Add the `SystemIcons.Application` fallback.
+
+**Step 4 — Enhanced context menu (depends on Step 2)**
+Replace the single "Exit" item with the full menu (status label, separators, Settings, Restart, Exit). Wire the `Opening` event to format the status label. Verify: right-click shows all items; status updates correctly; "Exit" still works; "Settings..." and "Restart" can be stubbed (show `MessageBox` or do nothing) while remaining steps are built.
+
+**Step 5 — SettingsWindow skeleton (depends on Step 1)**
+Create `SettingsWindow.cs` with the full control layout but no save logic. Open it from "Settings..." in Step 4's menu. Verify: form opens, tabs work, controls are present, keyboard hook continues operating while the form is open (test CAPSLOCK while settings window is visible).
+
+**Step 6 — SettingsWindow save logic (depends on Steps 1 and 5)**
+Implement Load() and Save() in `SettingsWindow`. Add hex color validation. Verify end-to-end: change a setting → save → press CAPSLOCK → confirm the change takes effect.
+
+**Step 7 — About tab (depends on Step 5)**
+Add About `TabPage` with version label and GitHub `LinkLabel`. Wire `LinkLabel.LinkClicked` to open the URL. No functional dependencies.
+
+**Step 8 — Daemon restart (depends on Step 4)**
+Implement `OnRestartClicked`: `Process.Start` the new process, then call `_onExit()`. Verify: new tray icon appears, old one disappears, keyboard hook is operational in the new process.
+
+---
+
+### Anti-Patterns Specific to v4.0
+
+#### Anti-Pattern 10: Opening SettingsWindow with ShowDialog()
+
+**What people do:** `new SettingsWindow().ShowDialog()` — opens the settings as a modal dialog.
+
+**Why it's wrong:** `ShowDialog()` runs a nested message loop that blocks the STA thread from processing messages until the dialog closes. `Control.Invoke()` calls from the CapsLockMonitor worker thread queue up but are not dispatched while the modal loop runs. The keyboard hook keeps firing (it is system-wide), but CAPSLOCK state changes cannot be processed, effectively freezing the overlay system while settings are open.
+
+**Do this instead:** `_settingsWindow.Show()` (non-modal). The form runs within the existing STA message pump. All `Invoke()` calls from the worker thread continue to be dispatched normally.
+
+#### Anti-Pattern 11: Polling DaemonStatus on a Timer for Status Display
+
+**What people do:** Create a `System.Windows.Forms.Timer` that fires every 1–5 seconds to refresh the tray tooltip or context menu text.
+
+**Why it's wrong:** The status label is only visible when the menu is open. Polling continuously for text that is rarely viewed wastes CPU and complicates shutdown (timer must be stopped before disposal). The tray tooltip (`NotifyIcon.Text`) has a hard 127-character limit and cannot display multiline status.
+
+**Do this instead:** Use `ContextMenuStrip.Opening` to refresh the status label synchronously, exactly once per menu open. No timer, no background thread, no shutdown complexity.
+
+#### Anti-Pattern 12: Restarting Daemon by Stopping and Recreating the STA Thread In-Process
+
+**What people do:** On "Restart Daemon", call `Application.ExitThread()`, then start a new `Thread` with a fresh `DaemonApplicationContext`.
+
+**Why it's wrong:** After `Application.ExitThread()`, WinForms handles created on the first STA thread are owned by that dead thread. Recreating a second STA thread in the same process risks subtle lifetime bugs across `NotifyIcon`, `NativeWindow` (PowerBroadcastWindow), and the 16+ `OverlayWindow` instances. The existing `DaemonMutex` is also in an inconsistent released state during this transition.
+
+**Do this instead:** `Process.Start` a new daemon process, then call `_onExit()`. The new process starts fresh with its own STA thread and Win32 handles. `DaemonMutex.AcquireOrReplace()` in the new process handles any race between old and new instances.
+
+#### Anti-Pattern 13: Writing Config Fields Directly in DaemonApplicationContext
+
+**What people do:** Handle config reads and writes in event handlers within `DaemonApplicationContext`, bypassing `SettingsWindow`.
+
+**Why it's wrong:** `DaemonApplicationContext` already manages tray icon lifecycle, power broadcast, and orchestrator exposure. Adding config I/O as a fourth concern violates single responsibility and makes config logic hard to find and test. It also prevents the settings UI from validating user input before writing.
+
+**Do this instead:** All config reading and writing belongs exclusively in `SettingsWindow`. `DaemonApplicationContext` only opens the window. It never reads or writes config directly.
+
+---
+*Part 12 (v4.0 system tray and settings UI) researched: 2026-03-03*

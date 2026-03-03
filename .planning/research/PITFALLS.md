@@ -689,3 +689,466 @@ The hook callback must return in under the `LowLevelHooksTimeout` registry value
 
 *Pitfalls research for: Win32 grid-snapped window move/resize added to keyboard hook daemon (v3.1)*
 *Researched: 2026-03-02*
+
+---
+
+## Section D: v4.0 New Pitfalls — System Tray, Settings UI, Context Menu, Daemon Restart
+
+---
+
+### Pitfall D-1: Ghost Tray Icon Persists After Daemon Kill or Abnormal Exit
+
+**What goes wrong:**
+When the daemon is killed (Task Manager, taskkill /F, or the "Restart Daemon" path kills the old process), its NotifyIcon stays visible in the system tray. The user sees two icons briefly — the dead instance ghost and the new instance icon. The ghost disappears only when the mouse is moved over it (Windows sends a test message and removes the stale entry). On slower machines the ghost can linger for several seconds.
+
+The same problem occurs if the daemon crashes before DaemonApplicationContext.Dispose runs (uncaught exception on a background thread that tears down the process without invoking Application.Exit).
+
+**Why it happens:**
+NotifyIcon relies on Shell_NotifyIcon(NIM_DELETE) being called during disposal to remove the icon from the shell. If the process exits before DaemonApplicationContext.Dispose runs — because it was killed, crashed, or called Environment.Exit() without going through Application.ExitThread — the NIM_DELETE call never happens. Windows detects the dead window handle only when the shell tries to deliver a mouse-over message to the tray icon host window, which it can only check lazily.
+
+**How to avoid:**
+Two layers of protection:
+
+1. Always call _trayIcon.Visible = false before _trayIcon.Dispose(). The existing DaemonApplicationContext.Dispose already does this on the clean-exit path. The problem is the crash/kill path where Dispose does not run.
+
+2. For the "Restart Daemon" menu item: start the new instance first using "daemon --background" (so it self-replaces via DaemonMutex.AcquireOrReplace), then trigger the existing clean-exit path in the current instance. The new process will kill us if we are slow. Prefer graceful exit over forced kill so Dispose runs cleanly.
+
+**Warning signs:**
+- Two tray icons briefly visible after daemon restart
+- Ghost icon persists until mouse hover
+- Repeated restarts accumulate ghost icons that only clear on hover
+
+**Phase to address:**
+Phase implementing "Restart Daemon" context menu item. The ghost is cosmetic but confusing. Eliminate it for the graceful-restart path by ensuring NotifyIcon.Visible = false runs before exit.
+
+---
+
+### Pitfall D-2: ICO File Wrong Size Displayed in System Tray on Windows 11
+
+**What goes wrong:**
+A custom .ico file embedded as an EmbeddedResource and assigned directly to NotifyIcon.Icon displays blurry or incorrectly scaled in the system tray, especially at non-100% DPI scales (125%, 150%, 200%) on Windows 11. The icon may look fine at 100% DPI but blurry on high-DPI monitors.
+
+**Why it happens:**
+NotifyIcon does not select the correct icon size from a multi-resolution ICO file. It uses whatever size System.Drawing.Icon was constructed with (typically the default 32x32), then Windows scales it down. On Windows 11 at 125% DPI, the tray icon should be 20x20 physical pixels, but the 32x32 frame is scaled down, losing quality. On Windows 10 the tray icon matches the notifications icon; on Windows 11 they can diverge.
+
+The confirmed workaround (dotnet/winforms issue #6955) is to explicitly construct the Icon at SystemInformation.SmallIconSize:
+
+```csharp
+// Wrong: _trayIcon.Icon = new Icon("focus.ico");
+// Wrong: _trayIcon.Icon = SystemIcons.Application;
+
+// Correct: let Windows select the right frame for the actual system tray size
+_trayIcon.Icon = new Icon(iconStream, SystemInformation.SmallIconSize);
+```
+
+Loading from an embedded resource stream and sizing to SystemInformation.SmallIconSize causes the Icon constructor to select the closest matching frame from the ICO file.
+
+**How to avoid:**
+- Include ICO frames at minimum: 16x16, 20x20, 24x24, 32x32. Microsoft recommends also 48x48, 256x256 for Windows Explorer.
+- When creating the NotifyIcon.Icon, always construct as new Icon(stream, SystemInformation.SmallIconSize).
+- Do not assign SystemIcons.Application for the final shipped icon — it is a placeholder only.
+- Test at 100%, 125%, 150%, 200% DPI settings using Windows display settings before shipping.
+
+**Warning signs:**
+- Icon appears blurry at any DPI setting other than 100%
+- Icon in taskbar notification area looks different from icon in "hidden icons" popup
+- Icon quality differs between Windows 10 and Windows 11 at the same DPI
+
+**Phase to address:**
+Phase implementing the custom tray icon (ICO file creation and embedding). Set the SystemInformation.SmallIconSize pattern from the start rather than discovering the blurriness after artwork is finalized.
+
+---
+
+### Pitfall D-3: Settings Window Opened Multiple Times from Tray — No Singleton Guard
+
+**What goes wrong:**
+Clicking "Settings" from the tray context menu multiple times opens multiple settings windows. Each window independently reads from the config file. Saving from multiple windows can overwrite each other's changes. The user may not notice the second window is behind the first.
+
+**Why it happens:**
+new SettingsForm().Show() creates a new form each time the menu item is clicked with no check for an existing open instance.
+
+**How to avoid:**
+Keep a reference to the settings window and bring it to front if already open:
+
+```csharp
+private SettingsForm? _settingsForm;
+
+private void OnSettingsClicked(object? sender, EventArgs e)
+{
+    if (_settingsForm is { IsDisposed: false })
+    {
+        // Already open — bring to front instead of opening another
+        _settingsForm.WindowState = FormWindowState.Normal;
+        _settingsForm.BringToFront();
+        _settingsForm.Activate();
+        return;
+    }
+
+    _settingsForm = new SettingsForm();
+    _settingsForm.FormClosed += (_, _) => _settingsForm = null;
+    _settingsForm.Show();
+}
+```
+
+Use Show() (not ShowDialog()) so the tray icon remains interactive while settings are open — see Pitfall D-4.
+
+**Warning signs:**
+- Multiple settings windows open simultaneously
+- Config file saved by one window is immediately overwritten by another
+- User reports "Save did not work" because the second window overwrote the first
+
+**Phase to address:**
+Phase implementing the settings window. Add the singleton guard as the first thing in the click handler, before any form creation code.
+
+---
+
+### Pitfall D-4: Settings Window Uses ShowDialog — Blocks STA Message Pump, Stalls Keyboard Hook Dispatch
+
+**What goes wrong:**
+Opening the settings window with ShowDialog() from the STA thread blocks the Application.Run message pump. While blocked, WH_KEYBOARD_LL hook callbacks can still fire (they have their own thread affinity), but any hook callback that dispatches work to the STA thread via Control.Invoke will deadlock — the STA thread is blocked waiting for ShowDialog to return, while the Invoke call is waiting for the STA thread to process the dispatched message.
+
+The overlay orchestrator dispatches work to the STA thread via the Control.Invoke pattern used in OverlayOrchestrator. If the user holds CAPSLOCK while the settings dialog is open (modal), and the overlay tries to show via Invoke, it will deadlock for the duration of the dialog.
+
+**Why it happens:**
+ShowDialog() is modal: it runs its own nested message loop but blocks the calling thread from returning. Control.Invoke is synchronous and waits for the target thread to process the message. Whether the nested loop correctly processes Invoke messages depends on undocumented internal WinForms behavior. Do not rely on it.
+
+**How to avoid:**
+Use Show() instead of ShowDialog() for the settings window. This is consistent with how DaemonApplicationContext already manages all its windows. ShowDialog is acceptable only for small sub-dialogs opened from within an already-showing settings form (color picker, confirmation dialogs) — those do not block the main message pump.
+
+**Warning signs:**
+- Holding CAPSLOCK while settings window is open causes overlay to not appear
+- Keyboard shortcuts stop working while settings window is open
+- Overlay appears with a delay after settings window is closed (queued Invoke calls finally process)
+
+**Phase to address:**
+Phase implementing the settings window. Use Show() exclusively; add a comment near the handler noting ShowDialog is forbidden for daemon-lifecycle windows.
+
+---
+
+### Pitfall D-5: Config File Race — Settings Window Writes While Daemon Reads the Same File
+
+**What goes wrong:**
+The daemon reads config.json fresh on every CAPSLOCK hold (by design: "fresh config load per keypress" from the key decisions table). The settings window writes to the same file when the user clicks Save. If a CAPSLOCK hold triggers FocusConfig.Load() at the exact moment the settings window is in the middle of File.WriteAllText, the read gets a partial or empty JSON payload. JsonSerializer.Deserialize fails, falls back to defaults, and the daemon silently ignores the config for that keypress.
+
+**Why it happens:**
+File.WriteAllText is not atomic on Windows: it opens the file, truncates, writes, and closes. Another process can observe the file mid-write. File.ReadAllText in that window gets an incomplete file. The existing FocusConfig.Load() has a try/catch that falls back to defaults on parse error — which means the race produces silent degradation rather than a crash. The timing window is tiny in practice but non-zero.
+
+**How to avoid:**
+Use an atomic write pattern: write to a .tmp file on the same volume, then rename over the target:
+
+```csharp
+// In settings form Save:
+var configPath = FocusConfig.GetConfigPath();
+var tmpPath = configPath + ".tmp";
+File.WriteAllText(tmpPath, json);                     // Write to temp file
+File.Move(tmpPath, configPath, overwrite: true);      // Atomic rename on NTFS same-volume
+```
+
+File.Move with overwrite: true on the same NTFS volume is an atomic operation (single rename syscall). The daemon sees either the old complete file or the new complete file — never a partial write.
+
+**Warning signs:**
+- Daemon behaves with default settings immediately after clicking Save in the settings window
+- Verbose log shows "config parse error" entries coinciding with Save operations
+- The problem is non-deterministic and rarely reproducible (timing-sensitive)
+
+**Phase to address:**
+Phase implementing the settings form Save action. Use the write-to-temp-then-rename pattern from the start. FocusConfig.Load() does not need to change.
+
+---
+
+### Pitfall D-6: Daemon Restart with CAPSLOCK Physically Held — Toggle State Leaks to OS During Hook Gap
+
+**What goes wrong:**
+The user clicks "Restart Daemon" from the tray menu while CAPSLOCK is physically held. The old daemon kills itself with CAPSLOCK suppression active. Between the old daemon hook's Uninstall() and the new daemon hook's Install(), CAPSLOCK events pass through to the OS raw. If CAPSLOCK is physically held during this gap, the OS receives the raw toggle and activates system-wide CAPS LOCK. The new daemon starts, calls ForceCapsLockOff() which corrects the toggle — but timing scenarios exist where the correction races with the key release.
+
+**Why it happens:**
+There is always a gap between hook.Uninstall() in the old daemon and hook.Install() in the new daemon startup. During this gap, raw CAPSLOCK events reach the OS. ForceCapsLockOff() in the new daemon corrects the toggle state after the fact, and is already called before hook.Install() — which is the correct ordering. The existing design handles this, but the restart path must be careful not to skip ForceCapsLockOff() by taking a non-standard exit route.
+
+**How to avoid:**
+Before initiating restart, explicitly dismiss overlays and reset state:
+
+```csharp
+private void OnRestartClicked(object? sender, EventArgs e)
+{
+    // Dismiss overlay immediately — prevents stale overlay if restart is slow
+    _orchestrator.OnCapsLockReleased();
+
+    // Hide tray icon before starting new process to reduce ghost icon window
+    _trayIcon.Visible = false;
+
+    // Start new daemon instance before exiting this one (minimize gap)
+    var selfPath = Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule!.FileName;
+    Process.Start(new ProcessStartInfo(selfPath, "daemon --background") { UseShellExecute = false });
+
+    // Exit via existing clean path — DaemonMutex in new process kills us if slow
+    _onExit();
+    Application.ExitThread();
+}
+```
+
+The existing ForceCapsLockOff() in the new daemon startup corrects any leaked toggle state. Verify explicitly by testing restart while CAPSLOCK physically held.
+
+**Warning signs:**
+- After restart, CAPSLOCK is toggled ON system-wide (all typed letters are uppercase)
+- Overlays from the previous daemon instance remain visible after restart
+- Restart sometimes leaves system in CAPS LOCK mode; requires manual CAPS LOCK press to clear
+
+**Phase to address:**
+Phase implementing "Restart Daemon" context menu item. Test the restart path with CAPSLOCK physically held at the moment of the restart click.
+
+---
+
+### Pitfall D-7: Dynamic Context Menu Status Labels Updated from Background Thread — Cross-Thread Access
+
+**What goes wrong:**
+The context menu's status items (e.g., "Hook: Active | Uptime: 2m 34s | Last action: left") must be kept current. A background timer or the CapsLockMonitor worker thread updates these strings, then directly modifies ToolStripItem.Text on a ContextMenuStrip that lives on the STA thread. This causes a cross-thread exception: InvalidOperationException: Cross-thread operation not valid.
+
+In some cases the exception is swallowed silently — the status labels then show stale values indefinitely.
+
+**Why it happens:**
+All System.Windows.Forms controls, including ContextMenuStrip and its items, must be accessed only from the thread that created them. The STA thread in this daemon owns all WinForms objects. The CapsLockMonitor runs on a Task.Run thread pool thread. Any callback from the monitor that touches a ToolStripItem directly violates the threading contract.
+
+**How to avoid:**
+Populate status text inside the ContextMenuStrip.Opening event handler, which fires on the STA thread just before the menu appears:
+
+```csharp
+_contextMenu.Opening += (_, e) =>
+{
+    e.Cancel = false; // CRITICAL: must explicitly not cancel or menu will not show
+    _statusItem.Text = BuildStatusText(); // Safe: Opening fires on STA thread
+};
+```
+
+This avoids background-thread updates entirely. Status is read at the moment the menu opens — always accurate, zero threading complexity required. Context menus only display while open, so point-in-time reads are sufficient — no live ticker needed.
+
+**Warning signs:**
+- InvalidOperationException: Cross-thread operation not valid with stack trace pointing to ToolStripItem.set_Text
+- Status labels show stale data even after daemon has been running for minutes
+- Status updates correctly when debugger is attached but not in production (timing-sensitive race)
+
+**Phase to address:**
+Phase implementing the enhanced context menu. Use the Opening event pattern exclusively. Do not use a background timer to update menu item text.
+
+---
+
+### Pitfall D-8: ContextMenuStrip.Opening Handler Does Not Set e.Cancel = false — Menu Never Appears
+
+**What goes wrong:**
+When a ContextMenuStrip.Opening handler is added for dynamic population, the menu never appears on the first right-click. The tray icon right-click produces no visible result. The menu starts working on subsequent attempts. Or: menu appears at the top-left corner of the screen rather than near the tray icon.
+
+**Why it happens:**
+The Opening event's CancelEventArgs.Cancel can be left in an indeterminate state if the handler throws an exception before completing, or if Items.Clear() is called and the handler exits early without repopulating. If e.Cancel is true when the handler returns, the menu is suppressed for that invocation.
+
+A related issue: the first Opening trigger after process start sometimes requires SetForegroundWindow to have been called on the tray icon's host window to correctly position the menu. Without it, the menu appears at the top-left corner of the screen. WinForms NotifyIcon handles this internally for right-click events.
+
+**How to avoid:**
+Structure the Opening handler defensively:
+
+```csharp
+_contextMenu.Opening += (_, e) =>
+{
+    e.Cancel = false; // Explicitly allow opening — first line, always
+    try
+    {
+        _contextMenu.Items.Clear();
+        PopulateMenuItems(); // Add status label, Settings, Restart, Exit
+    }
+    catch
+    {
+        // On failure, add a fallback item rather than leaving menu empty
+        _contextMenu.Items.Add("(menu error)");
+    }
+    // e.Cancel remains false — menu shows regardless of what happened above
+};
+```
+
+**Warning signs:**
+- Right-click on tray icon produces no menu on first click; works on second click
+- Menu appears at top-left corner of screen rather than near the tray icon
+- Menu disappears immediately after appearing without user input
+
+**Phase to address:**
+Phase implementing the enhanced context menu. Set e.Cancel = false as the first line of the Opening handler; populate items inside a try/catch.
+
+---
+
+### Pitfall D-9: Settings Form Close Button Discards Unsaved Changes Silently
+
+**What goes wrong:**
+The user edits settings (e.g., changes navigation strategy) and closes the window with the X button without clicking Save. Changes are silently discarded with no prompt. The user assumes their changes were saved.
+
+**Why it happens:**
+WinForms Form.FormClosing fires when the X button is clicked but by default the form just closes. Without a dirty-flag prompt or auto-save-on-change, the user has no feedback that their edits were lost.
+
+**How to avoid:**
+Choose one of two patterns and implement it completely — do not implement both half-way:
+
+Option A — Explicit Save with dirty-flag prompt: Track a _isDirty flag set in any control's Changed event. On FormClosing, if _isDirty, show a YesNoCancel MessageBox. Yes: save then close. No: discard and close. Cancel: prevent close.
+
+Option B — Auto-save-on-change (recommended for this use case): Apply each setting change to the config file immediately as the user modifies controls. This matches modern settings UI conventions. The daemon rereads config fresh per keypress, so changes take effect instantly without a restart. This eliminates the dirty-flag problem entirely — there is nothing to lose because every change is immediately durable.
+
+For the focus daemon, auto-save-on-change is the cleaner pattern: it is consistent with the existing "fresh config load per keypress" design and removes the need for a Save button entirely.
+
+**Warning signs:**
+- User reports "I changed the strategy but it did not take effect"
+- Settings always revert to previous values after reopening the window
+- No save confirmation is shown when closing
+
+**Phase to address:**
+Phase implementing the settings form. Decide on explicit-Save vs auto-save-on-change in the design before writing any form code. Do not leave both patterns half-implemented.
+
+---
+
+### Pitfall D-10: ARGB Hex Color Input Accepts Invalid Values — Daemon Falls Back to Default Color Silently
+
+**What goes wrong:**
+The settings form includes text fields for overlay colors in hex ARGB format (e.g., FF2196F3). If the user enters an invalid value (such as #2196F3 with a hash prefix, 2196F3 without alpha, or ZZZZZZZZ), the value is saved to config.json as-is. FocusConfig.Load() deserializes the string; wherever the hex string is converted to a Color for rendering, it throws or silently uses a default. The daemon uses a default color without notifying the user. The settings form shows the user-entered value but the actual overlay color is different.
+
+**Why it happens:**
+Hex ARGB string parsing typically uses Convert.ToInt32(hex, 16) which throws FormatException on invalid input. If caught at config load time by the blanket catch in FocusConfig.Load(), the entire config is replaced by defaults — not just the invalid color field. The user loses all their other settings (strategy, grid fractions) along with the invalid color.
+
+**How to avoid:**
+Validate color input at the settings form level before writing to disk:
+
+```csharp
+private static bool TryParseArgbHex(string hex, out Color color)
+{
+    color = Color.Empty;
+    // Accept exactly 8 hex chars, no prefix — AARRGGBB format
+    if (hex.Length != 8) return false;
+    if (!long.TryParse(hex, System.Globalization.NumberStyles.HexNumber, null, out long argb))
+        return false;
+    color = Color.FromArgb((int)argb);
+    return true;
+}
+```
+
+Display inline validation errors (red border on the text field, descriptive error label). Prevent Save (or auto-save write) if any color is invalid. Do not write an invalid config to disk.
+
+**Warning signs:**
+- Overlay colors revert to defaults after saving from the settings form
+- User-entered hex values appear in text fields but do not affect the overlay color
+- Verbose log shows "config parse error" after settings are saved
+
+**Phase to address:**
+Phase implementing color fields in the settings form. Validate all hex fields client-side in the form before writing. Enforce the 8-hex-char AARRGGBB format. Show an inline error on invalid input.
+
+---
+
+### Pitfall D-11: Using Environment.Exit() in Restart Path — Skips Managed Cleanup, Leaves Ghost Icon
+
+**What goes wrong:**
+The "Restart Daemon" click handler uses Environment.Exit(0) to terminate the current process. Environment.Exit() terminates the CLR immediately without running any finalizers or IDisposable.Dispose() calls. The NotifyIcon.Dispose() call in DaemonApplicationContext.Dispose never runs. The tray icon ghost persists. The WH_KEYBOARD_LL hook is removed automatically by Windows when the process exits (OS-level cleanup), so stuck keys are not an issue — but the ghost icon is.
+
+**Why it happens:**
+Self-restart guides commonly recommend Environment.Exit() as a simple one-liner after Process.Start(). It works for cleanup-free console applications but bypasses WinForms lifecycle events and component disposal.
+
+**How to avoid:**
+For the restart path, route through the existing clean-exit mechanism (the same code path as the "Exit" menu item):
+
+```csharp
+private void OnRestartClicked(object? sender, EventArgs e)
+{
+    // Start new instance before exiting (minimize gap; new instance kills us via DaemonMutex if slow)
+    var selfPath = Environment.ProcessPath!;
+    Process.Start(new ProcessStartInfo(selfPath, "daemon --background") { UseShellExecute = false });
+
+    // Reuse existing exit path — sets Visible = false, calls _onExit(), calls Application.ExitThread()
+    OnExitClicked(sender, e);
+}
+```
+
+Do not introduce a separate Environment.Exit() call in the restart handler.
+
+**Warning signs:**
+- Ghost tray icon persists after restart
+- Clean restart via menu leaves ghost — indicates Environment.Exit() being used instead of ExitThread
+- Keyboard hook cleanup log messages do not appear after restart (Dispose path skipped)
+
+**Phase to address:**
+Phase implementing "Restart Daemon" context menu item. Route through OnExitClicked rather than introducing new exit code. Test that no ghost icon appears after restart.
+
+---
+
+## Updated Technical Debt Table (v4.0 Additions)
+
+| Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
+|----------|-------------------|----------------|-----------------|
+| ShowDialog for settings window | Modal dialog simpler to reason about | Blocks STA message pump; keyboard hook dispatches stall | Never |
+| No singleton guard on settings form | One less check | Multiple windows open; config file write conflicts | Never |
+| Background timer updating ToolStripItem.Text | Live uptime counter | Cross-thread exception on WinForms controls | Never — use Opening event instead |
+| Environment.Exit() in restart path | Simple one-liner | Skips managed cleanup; ghost tray icon | Never — use existing OnExitClicked path |
+| No dirty-flag prompt on settings form close | Less code | User silently loses edits | Acceptable only if auto-save-on-change is used instead |
+| Assign SystemIcons.Application permanently | No ICO asset needed | Generic icon; blurry at non-100% DPI | Acceptable for placeholder; never for shipped build |
+| Direct File.WriteAllText for config save | Simple file write | Race condition with daemon FocusConfig.Load() | Acceptable in practice (window tiny); eliminate with rename pattern |
+
+---
+
+## Updated Integration Gotchas (v4.0 Additions)
+
+| Integration | Common Mistake | Correct Approach |
+|-------------|----------------|------------------|
+| NotifyIcon disposal | Not setting Visible = false before Dispose() | Always Visible = false then Dispose(); accept ghost icon on forced kill |
+| Settings form open | new SettingsForm().Show() on every click | Keep reference; BringToFront() if already open |
+| Settings form modal | ShowDialog() from tray click handler | Show() only; ShowDialog forbidden for daemon-lifecycle windows |
+| Context menu dynamic labels | Background thread sets ToolStripItem.Text | Populate in Opening event (STA thread); do not use background timers |
+| Context menu not appearing | Forgetting e.Cancel = false in Opening | First line of handler: e.Cancel = false |
+| Config save race | File.WriteAllText concurrent with File.ReadAllText | Write to .tmp then File.Move with overwrite: true |
+| Restart daemon exit path | Environment.Exit() for self-termination | Reuse existing OnExitClicked path; Application.ExitThread() on STA thread |
+| CAPSLOCK state at restart | Restart while CAPSLOCK held leaks toggle to OS | ForceCapsLockOff() at new daemon startup already corrects; verify explicitly |
+| ICO size selection | new Icon("focus.ico") directly assigned | new Icon(stream, SystemInformation.SmallIconSize) for tray icon |
+| ARGB hex validation | Accepting invalid hex strings in color fields | Validate in settings form before saving; 8-char AARRGGBB only |
+
+---
+
+## Updated Looks-Done-But-Isnt Checklist (v4.0 Additions)
+
+- [ ] **Ghost icon on restart**: Click "Restart Daemon" — verify only one icon visible after restart (or ghost disappears within 2 seconds)
+- [ ] **ICO at 125% DPI**: Set Windows display to 125% DPI — verify tray icon is crisp, not blurry
+- [ ] **ICO at 150% DPI**: Set Windows display to 150% DPI — verify tray icon is crisp
+- [ ] **Settings singleton**: Click "Settings" from context menu three times rapidly — verify only one settings window opens; repeat click brings existing window to front
+- [ ] **ShowDialog check**: Open settings, hold CAPSLOCK — verify overlay appears normally (settings not blocking message pump)
+- [ ] **Opening event safety**: Right-click tray — verify menu appears on first click with current daemon status
+- [ ] **Config race**: Click Save in settings while rapidly holding/releasing CAPSLOCK — verify no "config parse error" in verbose log
+- [ ] **Restart clean exit**: Click "Restart Daemon" — verify old tray icon disappears cleanly, new icon appears
+- [ ] **CAPSLOCK after restart**: Click "Restart Daemon" — verify CAPSLOCK toggle is OFF after new daemon starts (no stuck uppercase mode)
+- [ ] **Dirty settings close**: Change a setting, close with X — verify either prompt appears or auto-save applied the change
+- [ ] **Invalid color input**: Enter ZZZZZZZZ in a color field, attempt save — verify inline error shown, save blocked, config file not corrupted
+- [ ] **Short uptime display**: Restart daemon; open context menu within 10 seconds — verify uptime shows correctly
+
+---
+
+## Updated Pitfall-to-Phase Mapping (v4.0 Additions)
+
+| Pitfall | Prevention Phase | Verification |
+|---------|------------------|--------------|
+| Ghost tray icon on kill (D-1) | Phase implementing Restart Daemon | Restart from menu — ghost icon visible less than 2 seconds; forced kill — ghost clears on hover |
+| ICO size wrong at non-100% DPI (D-2) | Phase implementing custom tray icon | 125% and 150% DPI — icon crisp, matches notification area size |
+| Settings opened multiple times (D-3) | Phase implementing settings window | Three rapid Settings clicks — one window; repeat click brings it to front |
+| ShowDialog blocks message pump (D-4) | Phase implementing settings window | Hold CAPSLOCK while settings open — overlay renders normally |
+| Config save race (D-5) | Phase implementing settings Save | Save during rapid CAPSLOCK hold/release — no config parse error in verbose log |
+| CAPSLOCK stuck at restart (D-6) | Phase implementing Restart Daemon | Restart while CAPSLOCK held — no system-wide CAPS LOCK mode after restart |
+| Context menu cross-thread update (D-7) | Phase implementing dynamic context menu | Open context menu after 10 minutes uptime — current uptime shown |
+| Opening e.Cancel not set (D-8) | Phase implementing context menu Opening handler | First right-click after process start — menu appears on first attempt |
+| Settings close without save (D-9) | Phase implementing settings form | Change strategy, close with X — prompt or auto-save; change persists |
+| Invalid hex color input (D-10) | Phase implementing color fields in settings | Enter invalid hex, attempt save — inline error shown, file not written |
+| Environment.Exit() in restart (D-11) | Phase implementing Restart Daemon | Click Restart — old tray icon gone cleanly; no ghost |
+
+---
+
+## Updated Sources (v4.0 Additions)
+
+- [NotifyIcon not deleted when application closes — dotnet/winforms issue #6996](https://github.com/dotnet/winforms/issues/6996) — HIGH confidence (official dotnet/winforms issue; confirmed disposal pattern)
+- [NotifyIcon does not use appropriate icon size — dotnet/winforms issue #6955](https://github.com/dotnet/winforms/issues/6955) — HIGH confidence (official dotnet/winforms issue; new Icon(stream, SystemInformation.SmallIconSize) workaround confirmed)
+- [Windows 11 always takes bigger PNG from ICO — Microsoft Q&A](https://learn.microsoft.com/en-us/answers/questions/1425442/windows-11-always-takes-a-bigger-png-from-ico) — HIGH confidence (official Microsoft Q&A; DPI-aware icon loading with multiple sizes documented)
+- [Handle ContextMenuStrip Opening Event — Microsoft Learn](https://learn.microsoft.com/en-us/dotnet/desktop/winforms/controls/how-to-handle-the-contextmenustrip-opening-event) — HIGH confidence (official docs; e.Cancel = false pattern)
+- [Cross-thread operations in WinForms — Microsoft Learn](https://learn.microsoft.com/en-us/dotnet/desktop/winforms/controls/how-to-make-thread-safe-calls) — HIGH confidence (official docs; Control.Invoke pattern)
+- [Creating Tray Applications in .NET: A Practical Guide — Red Gate Simple Talk](https://www.red-gate.com/simple-talk/development/dotnet-development/creating-tray-applications-in-net-a-practical-guide/) — MEDIUM confidence (practitioner guide; ApplicationContext tray-centric design)
+- [Form.ShowDialog Method — Microsoft Learn](https://learn.microsoft.com/en-us/dotnet/api/system.windows.forms.form.showdialog) — HIGH confidence (official docs; blocking behavior documented)
+- [Application.Exit vs Environment.Exit — C# Corner](https://www.c-sharpcorner.com/forums/applicationexit-vs-applicationshutdown-vs-environmentexit) — MEDIUM confidence (practitioner; consistent with WinForms docs on message pump teardown)
+
+---
+
+*v4.0 additions: System tray polish, settings UI, dynamic context menu, daemon restart*
+*Researched: 2026-03-03*
+
