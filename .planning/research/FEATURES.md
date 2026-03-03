@@ -1,10 +1,10 @@
 # Feature Research
 
-**Domain:** Grid-snapped keyboard window move/resize for Windows daemon (v3.1 milestone)
-**Researched:** 2026-03-02
-**Confidence:** MEDIUM-HIGH (grid step move/resize patterns verified against Hyprland dispatchers, dwm moveresize patch, Rectangle cross-monitor behavior, and Win32 API official docs; some conventions derived from i3/sway + Emacs community patterns where no single authoritative Win32 source exists)
+**Domain:** System tray polish — custom icon, enhanced context menu, WinForms settings window, daemon restart (v4.0 milestone)
+**Researched:** 2026-03-03
+**Confidence:** HIGH (Windows tray icon and WinForms patterns are stable, well-documented Win32 and .NET 8 APIs; verified against official Microsoft docs, established real-world app patterns, and WinForms API references)
 
-> **Scope note:** This file covers v3.1 features only — the grid-snapped window move/resize milestone. All prior features (navigation, overlays, chaining, number selection) are already shipped in v1.0–v3.0. This research focuses on: expected behavior for grid move/resize, edge-based grow/shrink semantics, snap tolerance, cross-monitor transitions, minimum size clamping, and overlay indicators for the new modes.
+> **Scope note:** This file covers v4.0 features only — system tray polish for the already-shipped daemon. All prior features (navigation, overlays, grid move/resize) are shipped in v1.0–v3.1. This research focuses on: expected UX for tray icon context menus, inline status display conventions, settings window behavior, color/config editing UX, and daemon self-restart.
 
 ---
 
@@ -12,131 +12,128 @@
 
 ### Table Stakes (Users Expect These)
 
-Features users of keyboard-driven window managers assume exist. Missing these = the move/resize feature feels broken.
+Features users of Windows background daemon tools assume exist. Missing these = the daemon feels unfinished or untrustworthy.
 
 | Feature | Why Expected | Complexity | Notes |
 |---------|--------------|------------|-------|
-| Move window by grid step (CAPS+TAB+direction) | Every keyboard window manager (i3, Hyprland, dwm, Rectangle) has a move-by-step command. Users from any tiling WM background expect this as the baseline. | MEDIUM | Use `SetWindowPos` with `SWP_NOSIZE`. Step = `(monitorWidth / gridFraction)` or `(monitorHeight / gridFraction)`. Must use physical pixel coordinates — not DPI-scaled virtual coords. |
-| Grow window edge outward by grid step (CAPS+LSHIFT+direction) | Edge-based grow is the standard resize idiom in all keyboard WMs (i3: `resize grow right`, dwm `moveresize` patch, Hyprland `resizeactive`). Users expect "direction = which edge expands". | MEDIUM | Direction maps to the moving edge: right = right edge moves right (width grows), left = left edge moves left (x decreases, width grows), up = top edge moves up (y decreases, height grows), down = bottom edge moves down (height grows). |
-| Shrink window edge inward by grid step (CAPS+LCTRL+direction) | Paired with grow — every WM that has grow also has shrink with same direction semantics reversed. | MEDIUM | Direction maps to the retreating edge: right = right edge moves left (width shrinks), left = left edge moves right (x increases, width shrinks), up = top edge moves down (y increases, height shrinks), down = bottom edge moves up (height shrinks). |
-| Grid fraction configurable (default 1/16th screen) | Users with different monitor sizes need to tune step size. Fixed pixel steps are wrong for 4K vs 1080p setups. Fraction of screen dimensions is the right unit. | LOW | JSON config key `gridFraction` (default: 16). Step = `monitorDimension / gridFraction` rounded to nearest integer. Per-monitor support means each monitor computes its own step from its own dimensions. |
-| Move window stops at monitor boundary (no-op or clamp) | Users expect a hard boundary at the screen edge — dragging past it with keyboard should stop, not push the window off-screen. | LOW | Clamp computed position: `newX = Max(monitorLeft, Min(newX, monitorRight - windowWidth))`. Same logic for vertical axis. This is standard behavior in all keyboard WMs researched. |
-| Minimum window size clamping for shrink | Applications define a minimum size via `WM_GETMINMAXINFO` / `MINMAXINFO.ptMinTrackSize`. Attempting to shrink below this must silently no-op rather than glitch. Additionally, a floor should prevent windows from being shrunk to zero size. | LOW | Query the target window's minimum size before shrinking. System minimum: `GetSystemMetrics(SM_CXMINTRACK)` and `SM_CYMINTRACK`. Also respect any app-defined minimum in MINMAXINFO. Clamp shrink result; no-op if already at minimum. Note: `SetWindowPos` itself may enforce the minimum — test behavior. |
-| Smart snap: first-press aligns to grid, subsequent presses step | When a window is between grid lines (e.g., manually positioned), the first move/resize keypress should align it to the nearest grid boundary, not step from current off-grid position. This prevents accumulated drift. Established pattern from grid window managers (retracile.net grid WM, WindowGrid). | MEDIUM | On each operation: compute where the window "should be" if snapped, compare to current. If current is within snap tolerance (~10% of grid step) of a grid line, treat as on-grid and step. If outside tolerance, snap to nearest grid line as the operation (consuming the keypress without additional step). |
-| Works only on the foreground window | All keyboard WMs operate on the active/focused window. Moving non-focused windows via keyboard creates disorientation. | LOW | Use `GetForegroundWindow()` — already established pattern in the existing daemon for all CAPSLOCK combos. No change to this behavior. |
+| Custom tray icon (recognizable, not generic) | `SystemIcons.Application` (the generic Windows gear) signals "unfinished software" to every experienced Windows user. Any tool that lives in the tray permanently needs a distinct icon. | LOW | Load from embedded .ico resource via `new Icon(Assembly.GetExecutingAssembly().GetManifestResourceStream(...))`. Icon must be provided at both 16x16 and 32x32 (HiDPI). Use `LoadIconMetric` via P/Invoke or load both sizes in the .ico file. WinForms `NotifyIcon.Icon` accepts `System.Drawing.Icon`. |
+| Hover tooltip showing app name | The tray tooltip (shown on hover) should identify what the app is. `NotifyIcon.Text` defaults to empty — users hovering over an unidentified icon can't tell which process it belongs to. | LOW | `NotifyIcon.Text` max 63 chars (Win32 NOTIFYICONDATA.szTip limit). Set to "Focus — Navigation Daemon" or similar. Can include brief status ("Focus — Running"). |
+| Right-click opens a context menu | Every tray icon user right-clicks to get options. No context menu = the icon appears non-functional. The existing single-item ("Exit") menu meets the minimum bar; this milestone expands it. | LOW | `NotifyIcon.ContextMenuStrip` (ContextMenuStrip is the modern .NET replacement for the deprecated ContextMenu class). Attach before setting `Visible = true`. |
+| Exit menu item | Every tray app must provide a way to quit. Not having Exit forces users to Task Manager. | LOW | Already exists. Keep as the last item, separated by a separator from other menu items. |
+| Settings menu item that opens a settings window | Users expect a configuration surface reachable from the tray. Without it, configuration requires manually editing JSON — acceptable for power users, unacceptable as the only path. | MEDIUM | `ToolStripMenuItem` labeled "Settings". Opens a WinForms Form. If window already exists and is open, bring it to the foreground (`form.BringToFront()`, `form.Activate()`) rather than opening a second instance. |
 
 ### Differentiators (Competitive Advantage)
 
-Features that set this tool apart from generic keyboard WMs.
+Features that set this daemon apart from a generic background process with a tray icon.
 
 | Feature | Value Proposition | Complexity | Notes |
 |---------|-------------------|------------|-------|
-| Per-monitor grid (not global pixel step) | Most simple Windows keyboard WM tools use a fixed pixel step globally (e.g., "move 50px"). A fraction-of-monitor grid means the step feels consistent regardless of monitor resolution or DPI. Useful for mixed 1080p/4K setups. | MEDIUM | Requires `MonitorFromWindow` to identify which monitor the window is currently on, then `GetMonitorInfo` to get that monitor's work area. Compute step from work area dimensions. Already have monitor info logic for the navigation system — reuse. |
-| Cross-monitor move support | When a window is moved to the edge of one monitor, continuing to press move in that direction should place the window on the adjacent monitor. Most simple tools silently stop; the best tools (Rectangle's "traverse across displays") cross over. | HIGH | Detect when the step would push the window's center past the current monitor's boundary. Find the adjacent monitor in that direction (using existing virtual screen coordinate logic). Place window at the corresponding position on the new monitor, scaled for the new monitor's dimensions. Edge case: DPI difference between monitors — must recompute grid step for the new monitor. |
-| Mode-specific overlay indicators | Generic move/resize tools give zero visual feedback about what mode you're in. An overlay showing mode-appropriate arrows (move arrows vs. grow/shrink edge arrows pointing outward/inward) reduces cognitive load and helps users confirm the right modifier was held. No comparable Windows tool provides this. | MEDIUM | Extend `IOverlayRenderer` interface with a mode parameter (move / grow / shrink). Add a directional arrow icon to the overlay for the active mode. Existing overlay windows already show during CAPS hold — add mode label/arrow to overlay content. |
-| Configurable snap tolerance | Fixed snap tolerances don't fit all workflows. A tolerance of 10% of grid step is a reasonable default (established in FancyZones zone merge behavior), but power users with fine grid fractions may want zero (pure step, no snap) or larger tolerances (aggressive alignment). | LOW | JSON config key `snapTolerancePercent` (default: 10). Applied as: `tolerancePixels = gridStep * snapTolerancePercent / 100`. Zero disables snap-first behavior. |
-| Instant operations (no animation) | The existing tool already established "instant over animated" as a key UX decision (tested and validated in v2.0 fade removal). Move/resize should be instantaneous — window jumps to new position. No slide or transition. | LOW | `SetWindowPos` with `SWP_NOACTIVATE | SWP_NOZORDER` — already instant by default in Win32. Do not add any animation machinery. |
+| Inline status in context menu (non-clickable labels) | Most tray apps make you open a settings window to see daemon health. Showing hook status, uptime, and last action directly in the right-click menu gives instant confidence that the daemon is alive and working — no navigation required. Well-designed tools (Docker Desktop, Tailscale) use this pattern. | MEDIUM | Use disabled `ToolStripMenuItem` items as read-only status labels — `item.Enabled = false` renders grayed text that is non-interactive. Alternatively use `ToolStripLabel` which is inherently non-clickable. Status lines: "Hook: Active" / "Hook: FAILED", "Uptime: 2h 14m", "Last: Navigate Left". Rebuild the menu `Opening` event so values are fresh each time the menu appears. |
+| Restart Daemon menu item | Power users who modify config files or notice behavioral issues expect a restart option without killing and relaunching the daemon manually. Direct competition: most background daemons require CLI or Task Manager to restart. | MEDIUM | `ToolStripMenuItem` labeled "Restart Daemon". On click: dispose `NotifyIcon`, call `Process.Start(Application.ExecutablePath, "daemon")`, then `Application.Exit()`. The existing "replace semantics" (kill existing on new daemon launch) handles the singleton concern — no extra orchestration needed. |
+| WinForms settings window for live config editing | The daemon already hot-reloads config per keypress. A settings UI that writes to the same JSON file means changes take effect immediately on next keypress — no restart required. This closes the gap between "power user who edits JSON" and "user who wants a GUI." | HIGH | Form with: `ComboBox` for navigation strategy (the six enum values), `NumericUpDown` for gridFractionX/Y and overlayDelayMs, color swatch buttons (click opens `ColorDialog`) for the four overlay colors, and a Save button that writes `FocusConfig` back to the JSON file. About section with GitHub link (`LinkLabel`). |
+| About section with attribution and GitHub link | Establishes provenance and gives users a path to contribute or report issues. Small but expected for any polished developer tool. | LOW | A tab or group box in the settings form labeled "About". Static labels: app name, version (`Assembly.GetName().Version`), author attribution, `LinkLabel` for GitHub URL (calls `Process.Start` with the URL to open in default browser). |
+| Daemon status display (hook alive, uptime, last action) | Surfacing daemon health confirms that the low-level keyboard hook is functioning. A daemon that silently fails its hook leaves users confused when CAPSLOCK navigation stops working. Uptime and last-action log give confidence the daemon is processing keystrokes. | MEDIUM | Hook status: boolean from the daemon's hook installation result. Uptime: `DateTime.UtcNow - _startTime`. Last action: a `string _lastAction` updated on every navigation/move operation (e.g., "Navigate Left", "Grow Right"). These can be shown both in the context menu (read-only labels) and in the settings window (dedicated status panel). |
 
 ### Anti-Features (Commonly Requested, Often Problematic)
 
-Features that seem useful but create disproportionate complexity or conflict with design goals.
-
 | Feature | Why Requested | Why Problematic | Alternative |
 |---------|---------------|-----------------|-------------|
-| Animated window movement | Smoother UX feel during moves | Animation requires a timer loop updating window position per frame. Introduces latency, CPU usage on every move keypress, and complexity around interrupt (what if another key arrives mid-animation?). Already validated as worse UX than instant in v2.0 overlay testing. | Instant `SetWindowPos` is the right answer. Window snaps to new grid position immediately. |
-| Pixel-exact move (no grid) | Maximum flexibility for precise placement | Without grid alignment, repeated moves accumulate floating-point drift. Windows end up at arbitrary pixel positions that are hard to reason about. The whole value proposition of this feature is grid discipline. If users want pixel-level control, they have the mouse. | Keep grid-only movement. Expose `gridFraction` for fine-grained control (gridFraction: 64 = 1/64th of screen ≈ very fine on 1080p). |
-| Window layout memory / restoration | Restore windows to their "last managed position" after layout disruption | State tracking per window (per HWND) introduces a dictionary that must be maintained across window creation/destruction, monitor changes, and process restarts. This is layout manager territory (FancyZones, Komorebi) — far outside the scope of a focus navigation tool. | Implement a "snap all to grid" CLI command as a future consideration. Single-shot, no persistent state needed. |
-| Simultaneous grow on both axes (diagonal resize) | Fewer keystrokes to resize to a corner | Diagonal resize breaks the "one edge per direction key" model and requires a two-key combo interpretation that conflicts with the existing single-direction model. The four edge-based grow/shrink operations cover all resize needs with consistent semantics. | Chain two resize operations (grow right, then grow down) for diagonal resize. |
-| Automatic grid enforcement (snap on focus change) | Windows stay on grid automatically without user action | Windows that were manually positioned (by the user, or by apps themselves) getting forcibly snapped on focus change is hostile. Many apps position themselves intentionally (IDE tool windows, dialog boxes, floating panels). | Snap is always user-initiated via the CAPS+modifier+direction combo. No automatic enforcement. |
-| Resize mode (modal state) | Enter a persistent "resize mode" (like i3's `$mod+r`) where arrows resize until Escape | Modal state means the daemon must track and expose a "current mode" that overrides normal navigation. This conflicts with the existing CAPS+direction = navigate binding, requiring fallback logic. The non-modal combo approach (CAPS+LSHIFT vs CAPS+LCTRL) avoids all mode state. | Non-modal: modifier keys determine the operation. CAPS+LSHIFT+direction = grow. CAPS+LCTRL+direction = shrink. CAPS+TAB+direction = move. Clear, no state required. |
-| Window tiling (auto-arrange into zones) | Automatic layout enforcement | Window tiling is a full layout management system (FancyZones, Komorebi) — not move/resize primitives. Would require zone definition, layout algorithms, window assignment logic, and conflict with non-managed windows. Far outside scope. | Grid-based keyboard move/resize IS the primitive that enables manual tiling workflows without the overhead of a full tiling system. |
+| Balloon tip notifications on every navigation action | "Visual confirmation" that the daemon did something | Navigation happens 10-50 times per minute during active use. Balloon tips at that frequency are maximally disruptive — Windows 7+ even allows users to suppress all notifications from an app, risking loss of any future legitimate notifications. | Use the context menu status "Last: Navigate Left" as the confirmation surface. Zero interruptions, always fresh on demand. |
+| System tray icon that animates or changes color to show state | "Quick glance" status | Animated tray icons draw attention constantly — the tray is not a status monitor. Windows guidelines explicitly state the notification area is for temporary status, not a persistent dashboard. Also: maintaining multiple icon states and a refresh timer adds complexity. | Static icon with a clear, distinct design. Hover tooltip can show one-line status if needed. |
+| Settings window that auto-applies changes as you type | "Instant feedback" | The daemon reloads config per keypress already, but mid-edit state (e.g., a partially typed hex color) will be invalid JSON and crash the reload. Applying on every keystroke would cause continuous parse errors during editing. | Save button (or OK/Apply) that writes the file only when all values are valid. The daemon picks up the change on next keypress automatically — there is effectively zero delay from the user's perspective. |
+| Full-featured color wheel / custom color designer in settings | "Better color control" | System `ColorDialog` (Windows common dialog) provides a full color picker including custom colors, RGB sliders, and hex input — sufficient for overlay color selection. Building a custom color picker is weeks of unneeded work. | `ColorDialog` via `new ColorDialog { Color = currentColor, FullOpen = true }`. Shows both palette and custom color input. Exactly what users expect. |
+| Minimize-to-tray behavior for the settings window | "Keep settings accessible" | Settings is a modal-ish configuration surface — users open it, change settings, close it. There is no reason for it to persist. Minimize-to-tray requires overriding form close, tracking shown/hidden state, and adding a "Show Settings" tray action. | Open settings from the tray icon. When the window is closed, it is gone. Re-open from the tray. Single instance: if already open, bring to front. |
+| Multi-tab settings window with pages for every config key | "Organized settings" | There are ~8-10 config keys total. Tabs add navigation overhead for trivial content. The entire config fits comfortably on one vertical form with labeled sections (Navigation, Grid, Overlay Colors, Overlay Timing). | Single-pane form with `GroupBox` sections. Tabs only if the form becomes taller than 600px. |
+| "Restore defaults" button that resets to factory config | Users sometimes lose track of their changes | Factory defaults are arbitrary — what counts as the default overlay color? The config already has sensible defaults baked into `FocusConfig` initialization. Resetting to them loses intentional customization without confirmation. | If desired later: "Reset to Defaults" with a confirmation dialog. Not needed for v4.0. |
 
 ---
 
 ## Feature Dependencies
 
 ```
-[Grid configuration (gridFraction, snapTolerancePercent in FocusConfig)]
-    └──required by──> [Grid step calculation per monitor]
-                          └──required by──> [Move by grid step (CAPS+TAB+direction)]
-                          └──required by──> [Grow edge by grid step (CAPS+LSHIFT+direction)]
-                          └──required by──> [Shrink edge by grid step (CAPS+LCTRL+direction)]
+[Embedded .ico resource in assembly]
+    └──required by──> [Custom tray icon (NotifyIcon.Icon)]
+                          └──required by──> [All tray UX]
 
-[MonitorFromWindow + GetMonitorInfo (existing multi-monitor logic)]
-    └──required by──> [Per-monitor grid step]
-                          └──required by──> [Cross-monitor move transition]
-                                                └──requires──> [Adjacent monitor detection]
+[NotifyIcon (already exists)]
+    └──required by──> [Hover tooltip]
+    └──required by──> [Context menu (ContextMenuStrip)]
+                          └──required by──> [Status labels (disabled ToolStripMenuItem)]
+                          └──required by──> [Settings menu item → settings window]
+                          └──required by──> [Restart Daemon menu item]
+                          └──required by──> [Exit menu item (already exists)]
 
-[Minimum size query (GetSystemMetrics SM_CXMINTRACK/SM_CYMINTRACK)]
-    └──required by──> [Shrink clamp to minimum]
+[Daemon state: hook status bool, start time, last action string]
+    └──required by──> [Inline status display in context menu]
+    └──required by──> [Status panel in settings window]
 
-[Smart snap logic (tolerance check vs. current position)]
-    └──required by──> [Snap-first-then-step behavior]
-    └──depends on──> [Grid step calculation per monitor]
+[FocusConfig (existing JSON config class)]
+    └──required by──> [Settings form fields (read values on open)]
+    └──required by──> [Settings Save button (write values to JSON)]
+    └──enhanced by──> [Hot reload on keypress (already ships) — settings saves are immediately live]
 
-[CAPS+TAB detection in keyboard hook]
-    └──required by──> [Move mode activation]
+[Settings WinForms Form]
+    └──required by──> [Navigation strategy ComboBox]
+    └──required by──> [Grid fraction NumericUpDown fields]
+    └──required by──> [Overlay color buttons → ColorDialog]
+    └──required by──> [Overlay delay NumericUpDown]
+    └──required by──> [About section with GitHub LinkLabel]
+    └──required by──> [Daemon status panel]
+    └──depends on──> [Single-instance form pattern: track reference, bring to front if open]
 
-[CAPS+LSHIFT detection in keyboard hook]
-    └──required by──> [Grow mode activation]
-
-[CAPS+LCTRL detection in keyboard hook]
-    └──required by──> [Shrink mode activation]
-
-[IOverlayRenderer (existing v2.0 interface)]
-    └──required by──> [Mode-specific overlay icons (move arrows / grow arrows / shrink arrows)]
-    └──enhances──> [Move/resize operations] (visual confirmation of active mode)
-
-[SetWindowPos Win32 call]
-    └──required by──> [All move and resize operations]
-    └──depends on──> [Physical pixel coordinates, not DPI-virtualized]
+[Process.Start self-restart]
+    └──required by──> [Restart Daemon menu item]
+    └──depends on──> [Existing single-instance replace semantics (kill existing on launch)]
 ```
 
 ### Dependency Notes
 
-- **Grid step before everything:** All move and resize features compute a step size from the monitor dimensions. The grid config and monitor detection logic must be in place before any move/resize feature can work. This is the first thing to implement.
-- **MonitorFromWindow already available:** The navigation system already does multi-monitor work. Reuse `MonitorFromWindow` and `GetMonitorInfo` — don't reimplement. The extension needed is "find the adjacent monitor in a direction," which is new logic.
-- **Smart snap depends on grid step and current position:** The snap tolerance check needs the computed grid step AND the current window position. Both are cheap — this is arithmetic, not a Win32 call.
-- **Overlay mode indicators extend, not replace, existing overlay:** The mode icons (move/grow/shrink arrows) should be additions to the existing overlay, triggered only during CAPS+TAB or CAPS+LSHIFT/LCTRL holds. They reuse the existing overlay window infrastructure. Do not rebuild overlays from scratch.
-- **LSHIFT/LCTRL detection is new for the hook:** The existing hook tracks CAPS and direction keys. LSHIFT and LCTRL must be added as tracked modifiers. Verify the hook callback receives these in the chord alongside CAPS. Note: LSHIFT suppresses direction key characters in some apps — verify no interference with existing CAPS+direction navigation.
-- **SetWindowPos coordinates are physical pixels in virtual screen space:** When using DwmGetWindowAttribute for window bounds (existing code), coordinates are already in physical pixels. Ensure consistency — don't mix DWM-reported bounds with `GetWindowRect` if the process has DPI virtualization active. The existing code uses DWM bounds throughout — maintain that.
+- **Icon before anything else:** The tray icon visual identity is the first thing users see. Embed the .ico as a manifest resource before writing any other tray feature. Without it, the whole milestone still looks unpolished.
+- **ContextMenuStrip replaces ContextMenu:** The old `NotifyIcon.ContextMenu` is deprecated. Use `NotifyIcon.ContextMenuStrip` (System.Windows.Forms.ContextMenuStrip). Already available in .NET 8 WinForms.
+- **Status requires daemon state exposure:** The daemon currently doesn't track `_startTime` or `_lastAction` or expose hook status externally. These need to be added to the daemon class before the status display works. This is internal state tracking, not a new external dependency.
+- **Settings form single-instance pattern is critical:** If the user clicks Settings while the window is already open, it must focus the existing window — not open a second copy. Track the form reference (`_settingsForm`), check `!= null && !IsDisposed`, call `BringToFront()` + `Activate()`.
+- **Restart depends on existing replace semantics:** `Process.Start(Application.ExecutablePath, "daemon")` works because the daemon already kills any running instance on startup (the existing mutex replace behavior). The restart menu item just triggers a new launch and exits the current process. No extra coordination required.
+- **JSON write from settings must not break hot-reload:** Hot-reload reads the config file on every CAPSLOCK keypress. If the settings form writes a partial file (e.g., truncated mid-save), the next keypress will get a parse error. Use atomic write: write to a `.tmp` file, then `File.Replace(tmpPath, configPath, null)`. Same pattern as any config file writer.
 
 ---
 
 ## MVP Definition
 
-This milestone has one goal: keyboard-driven grid-snapped window move and resize, with mode feedback overlays.
+This milestone has one goal: make the daemon feel like a polished, installed Windows tool with an identity, accessible configuration, and operational transparency.
 
-### Launch With (v3.1)
+### Launch With (v4.0)
 
-Minimum viable product for the window move/resize milestone.
+Minimum viable product for the system tray polish milestone.
 
-- [ ] Detect CAPS+TAB held as "move mode" in the keyboard hook
-- [ ] Detect CAPS+LSHIFT held as "grow mode" in the keyboard hook
-- [ ] Detect CAPS+LCTRL held as "shrink mode" in the keyboard hook
-- [ ] Compute grid step per monitor (monitorDimension / gridFraction, default gridFraction=16)
-- [ ] Config keys `gridFraction` and optional `snapTolerancePercent` (default: 10) in JSON config
-- [ ] Move foreground window by grid step in direction (CAPS+TAB+direction)
-- [ ] Clamp move to monitor work area — no off-screen positions
-- [ ] Grow window edge outward by grid step in direction (CAPS+LSHIFT+direction) — right edge for right, top edge for up, left edge for left, bottom edge for down
-- [ ] Shrink window edge inward by grid step in direction (CAPS+LCTRL+direction) — matching edge retreats
-- [ ] Clamp shrink to minimum window size (system minimum + app minimum from MINMAXINFO)
-- [ ] Smart snap: align to nearest grid line on first press if outside tolerance, step on subsequent presses within tolerance
-- [ ] Cross-monitor move: when move would push window past current monitor boundary, transition to adjacent monitor
-- [ ] Mode-specific overlay icons: show directional arrow(s) indicating move vs. grow vs. shrink during operation
-- [ ] All operations are instant (no animation) via SetWindowPos
+- [ ] Custom .ico file embedded as assembly resource, loaded as `NotifyIcon.Icon`
+- [ ] Hover tooltip set: "Focus — Navigation Daemon"
+- [ ] `ContextMenuStrip` replacing any use of `ContextMenu`
+- [ ] Status section at top of context menu (non-clickable): hook status, uptime, last action
+- [ ] Separator below status
+- [ ] "Settings" menu item → opens single-instance settings form
+- [ ] "Restart Daemon" menu item → `Process.Start` self + `Application.Exit()`
+- [ ] Separator above Exit
+- [ ] "Exit" menu item (existing, moved to bottom)
+- [ ] Settings form: navigation strategy ComboBox (six values from existing enum)
+- [ ] Settings form: gridFractionX / gridFractionY NumericUpDown
+- [ ] Settings form: overlayDelayMs NumericUpDown
+- [ ] Settings form: four overlay color buttons (Left/Right/Up/Down), each opens `ColorDialog`, swatch shows current color
+- [ ] Settings form: Save button writes to the JSON config file (atomic write)
+- [ ] Settings form: About section — app name, version, attribution, GitHub LinkLabel
+- [ ] Settings form: daemon status panel — hook status, uptime, last action (refreshes on form open or on a timer)
+- [ ] Context menu rebuilds on `Opening` event to show fresh status values each time
 
-### Add After Validation (v3.1.x)
+### Add After Validation (v4.0.x)
 
-- [ ] Per-monitor grid fraction override in config — add if users with heterogeneous monitor setups report the global fraction doesn't suit all monitors
-- [ ] Configurable snap tolerance override per operation mode (move vs. grow vs. shrink) — add if users report the single tolerance doesn't work well for both operations
-- [ ] "Snap to edge" variant: CAPS+TAB+direction held vs. tapped — tap = step, hold-and-release = snap to monitor edge — add if users want quick edge-snap without full move sequence
+- [ ] Tray icon tooltip updated dynamically to include status (e.g., "Focus — Hook: Active") — add if users want at-a-glance status without opening the menu
+- [ ] Settings form "Cancel" / discard-changes behavior — add if users report accidentally saving while exploring
+- [ ] Configurable tooltip text in About section — add if name/version conventions change
 
-### Future Consideration (v4+)
+### Future Consideration (v5+)
 
-- [ ] Snap all windows to grid CLI command (`focus snap-all`) — single-shot cleanup for after monitor reconnects, no persistent state
-- [ ] Window position memory / restore for specific apps — explicit opt-in in config, not automatic; very complex, deferred until there's clear user demand
-- [ ] DPI-aware grid step scaling for per-monitor overlays — visual step indicators showing the actual pixel span in a DPI-mixed setup
+- [ ] Full `excludeList` editor in settings form (add/remove app names) — deferred because it requires a list control UI and is low frequency usage; editing JSON directly is sufficient for now
+- [ ] Settings window keyboard shortcuts (Enter = Save, Escape = Close) — polish iteration after core UX validated
+- [ ] Config file path displayed in settings (so users can find and edit directly if they prefer) — low priority, advanced user feature
 
 ---
 
@@ -144,106 +141,146 @@ Minimum viable product for the window move/resize milestone.
 
 | Feature | User Value | Implementation Cost | Priority |
 |---------|------------|---------------------|----------|
-| CAPS+TAB+direction → move window | HIGH | MEDIUM | P1 |
-| CAPS+LSHIFT+direction → grow edge | HIGH | MEDIUM | P1 |
-| CAPS+LCTRL+direction → shrink edge | HIGH | MEDIUM | P1 |
-| Grid step from configurable fraction | HIGH | LOW | P1 |
-| Clamp move to monitor boundary | HIGH | LOW | P1 |
-| Clamp shrink to minimum size | HIGH | LOW | P1 |
-| Smart snap (snap-first, then step) | MEDIUM | MEDIUM | P1 |
-| Mode-specific overlay icons | MEDIUM | MEDIUM | P1 |
-| Per-monitor grid step | HIGH | LOW | P1 (reuses existing MonitorFromWindow) |
-| JSON config for gridFraction + snapTolerancePercent | MEDIUM | LOW | P1 |
-| Cross-monitor move transition | MEDIUM | HIGH | P1 |
-| Per-monitor gridFraction override in config | LOW | LOW | P2 |
-| Snap to monitor edge on hold | LOW | MEDIUM | P2 |
-| Snap-all CLI command | LOW | MEDIUM | P3 |
+| Custom tray icon | HIGH | LOW | P1 |
+| Hover tooltip | HIGH | LOW | P1 |
+| Context menu status labels | HIGH | MEDIUM | P1 |
+| Settings menu item | HIGH | LOW | P1 |
+| Settings form: strategy, grid, timing | HIGH | MEDIUM | P1 |
+| Settings form: overlay color pickers | HIGH | MEDIUM | P1 |
+| Settings form: About + GitHub link | MEDIUM | LOW | P1 |
+| Settings form: daemon status panel | MEDIUM | LOW | P1 |
+| Restart Daemon menu item | MEDIUM | LOW | P1 |
+| Context menu rebuilds on Opening | HIGH | LOW | P1 |
+| Atomic JSON config write | HIGH | LOW | P1 (correctness requirement) |
+| Single-instance settings form | HIGH | LOW | P1 (correctness requirement) |
+| Tooltip showing live status | LOW | LOW | P2 |
+| Settings form Cancel/discard | LOW | LOW | P2 |
+| excludeList editor in settings | LOW | HIGH | P3 |
 
 **Priority key:**
-- P1: Must have for v3.1 launch
-- P2: Should have, add when possible in v3.1.x
+- P1: Must have for v4.0 launch
+- P2: Should have, add when possible
 - P3: Nice to have, future milestone
+
+---
+
+## UX Conventions Research
+
+### Context Menu Structure (Standard Windows Pattern)
+
+The established pattern for daemon/agent tray apps (Docker Desktop, Tailscale, Dropbox, OneDrive) is:
+
+```
+[App name or status header — non-clickable]
+─────────────────────────────────────────
+Hook: Active
+Uptime: 2h 14m
+Last: Navigate Left
+─────────────────────────────────────────
+Settings...
+─────────────────────────────────────────
+Restart Daemon
+─────────────────────────────────────────
+Exit
+```
+
+Key conventions from official Windows UX guidelines and common practice:
+- Status items at the **top** of the menu, above actions — users see state before they see commands
+- **Separators** (`ToolStripSeparator`) group related items; status / primary actions / destructive actions are three natural groups
+- Status items use **disabled state** (`Enabled = false`) to signal non-interactivity — visually grayed, not clickable
+- "Settings..." with ellipsis by convention (opens a window); "Exit" without ellipsis (immediate action)
+- "Restart Daemon" without ellipsis if immediate; add ellipsis only if a confirmation dialog is shown
+- **Rebuild on `Opening`** event — static menu text showing stale status is worse than no status
+
+### Settings Window Conventions
+
+WinForms settings dialogs for background tools follow these patterns:
+- **Save / Close buttons** (not OK/Cancel) — "Save" writes to file, "Close" dismisses without saving; this is clearer than OK/Cancel for persistent config
+- Alternatively: **OK (save + close) with Cancel** — valid if the user expects modal dialog semantics
+- For this tool: **Save button** writes JSON, form stays open so user can verify; **Close button** (or window X) dismisses. No cancel needed because the form doesn't hold uncommitted state once saved
+- Color swatches: a `Button` or `Panel` with `BackColor` set to the current color; clicking opens `ColorDialog`. After dialog confirms, update `BackColor` as live preview
+- Group related settings with `GroupBox` labels: "Navigation", "Grid", "Overlay Colors", "Overlay Timing", "About"
+- Daemon status in a read-only section at the bottom or a dedicated group box; use a `System.Windows.Forms.Timer` (500ms interval) to refresh uptime and last-action text while the form is open
+
+### Restart Pattern
+
+`Application.Restart()` has known issues with non-ClickOnce deployments in .NET and can throw `InvalidOperationException` (tracked WinForms issue). The reliable pattern for self-restart in a WinForms daemon context:
+
+```csharp
+string exePath = Application.ExecutablePath;
+Process.Start(new ProcessStartInfo(exePath, "daemon") { UseShellExecute = true });
+Application.Exit();
+```
+
+The existing replace semantics handle the race: the new instance will find and kill the old instance's mutex holder, so there is no need to delay or coordinate. `UseShellExecute = true` avoids common path quoting issues on Windows.
+
+### Icon Generation
+
+For v4.0, a hand-crafted or programmatically generated .ico file is required. Approach options (from high to low effort):
+1. **Design in Inkscape/Figma and export as multi-size .ico** — cleanest, fully custom
+2. **Generate programmatically at startup using GDI+** — draw a letter "F" (or focus arrows) on a `Bitmap` using `Graphics`, convert to `Icon` via `Icon.FromHandle(bitmap.GetHicon())` — no .ico file needed
+3. **Use a free icon from a public domain source (e.g., Phosphor Icons, Tabler Icons)** — fast but less distinctive
+
+The daemon already has GDI+ expertise (overlay rendering). Option 2 (programmatic generation at startup) is the fastest path with no external assets needed, and produces a result immediately. A proper .ico file can replace it later as a pure asset swap.
 
 ---
 
 ## Edge Case Coverage
 
-### Minimum Window Size Enforcement
+### ColorDialog and ARGB Hex Format
 
-Win32 provides two sources for minimum window size. The system minimum is `GetSystemMetrics(SM_CXMINTRACK)` / `SM_CYMINTRACK` (typically 115×27 pixels). App-defined minimums come from `WM_GETMINMAXINFO` / `MINMAXINFO.ptMinTrackSize`. Rather than querying `WM_GETMINMAXINFO` (which requires sending a message to the target window and handling its response), the simpler approach is to let `SetWindowPos` enforce the minimum naturally — the system will clamp below ptMinTrackSize automatically — then confirm the resulting dimensions match intent. If the result is smaller than requested, it was clamped, and further shrink no-ops.
+The existing config stores overlay colors as hex ARGB strings (e.g., `"#FF00FF00"` for opaque green). `System.Windows.Forms.ColorDialog.Color` returns a `System.Drawing.Color`. Conversion: `Color.FromArgb(alpha, r, g, b)` and back to hex via `$"#{color.A:X2}{color.R:X2}{color.G:X2}{color.B:X2}"`. The `ColorDialog` does not natively support alpha editing — it returns RGB only. If alpha transparency for overlays is important to expose, add a separate `NumericUpDown` (0–255) for the alpha channel alongside each color button.
 
-**Confidence:** MEDIUM — WM_GETMINMAXINFO is documented in Win32 docs; whether SetWindowPos auto-clamps is confirmed in Win32 window features docs. Exact behavior with external process windows needs testing.
+**Confidence:** HIGH — ColorDialog API verified in official .NET 8 docs.
 
-### Cross-Monitor Move with Different DPI
+### Context Menu Popup Position
 
-When moving a window from a 96-DPI monitor to a 192-DPI monitor, the window's physical pixel size stays the same but may appear visually different. The grid step on the new monitor is computed from the new monitor's physical dimensions (not DPI-scaled). No size change is applied during cross-monitor move — window moves, position updates, size stays. The app receiving `WM_DPICHANGED` handles its own scaling if it chooses to.
+Windows automatically positions context menus near the tray icon. WinForms `ContextMenuStrip` attached to `NotifyIcon` via `NotifyIcon.ContextMenuStrip` handles placement automatically — no manual coordinate calculation needed. The Win32 `CalculatePopupWindowPosition` is only needed for custom-drawn popup windows, not standard ContextMenuStrip.
 
-**Important:** Use DwmGetWindowAttribute for position (physical pixels, DPI-unaware offset) consistently. The existing daemon uses this — do not switch to `GetWindowRect` which may return virtualized coords for some processes.
+**Confidence:** HIGH — confirmed in WinForms NotifyIcon documentation.
 
-**Confidence:** MEDIUM — DwmGetWindowAttribute behavior confirmed in Win32 docs and existing project use. DPI behavior on SetWindowPos for external windows: MEDIUM confidence based on community sources.
+### Settings Form DPI Scaling
 
-### TAB Key Interaction with CAPS
+The settings form must render correctly on HiDPI displays. WinForms on .NET 8 supports `AutoScaleMode.Dpi` and per-monitor DPI awareness if the manifest is set. The existing daemon already runs on multi-monitor setups with mixed DPI — the settings form should inherit the same DPI configuration from the application manifest.
 
-CAPS+TAB is already a common system shortcut on Windows (reverse Alt+Tab behavior in some contexts). The existing hook suppresses CAPS, so it does not reach Alt+Tab. However, plain TAB with CAPS held may or may not interact with the low-level hook depending on whether the app processes it. The hook must consume CAPS+TAB+direction triples, not pass them to `CallNextHookEx`. Validate that holding CAPS then pressing TAB does not trigger any system-level behavior.
+**Confidence:** MEDIUM — .NET 8 WinForms HiDPI support is documented; specific manifest requirements for per-monitor DPI awareness need validation against existing app manifest settings.
 
-**Confidence:** LOW — behavior of CAPS+TAB at the keyboard hook level requires empirical testing; no authoritative documentation found.
+### Config File Permissions
 
-### LSHIFT Conflict with Existing Navigation
+The JSON config file is typically in `%APPDATA%\focus\` or alongside the executable. Writing requires filesystem write permission. If the file is read-only or in a protected location, the save will fail. The settings form should catch `IOException` and `UnauthorizedAccessException` on save, display a `MessageBox` with the error, and leave the current config intact.
 
-The existing CAPS+direction navigation does NOT use LSHIFT as a modifier. CAPS+LSHIFT+direction for grow must be confirmed not to conflict. Additionally, holding LSHIFT while pressing direction keys changes the character produced in the focused app (e.g., selects text in text editors). The hook must consume CAPS+LSHIFT+direction triples. Test that LSHIFT chord is received correctly in `WH_KEYBOARD_LL` when CAPS is held.
-
-**Confidence:** MEDIUM — WH_KEYBOARD_LL receives all keystrokes including LSHIFT; consuming them is standard. Specific chord behavior is empirically testable.
-
-### Window at Monitor Edge with Grow
-
-If the foreground window is already at the monitor's right edge and the user presses grow-right, the right edge has no room to expand. The expected behavior is no-op (clamp). This is symmetric with move clamping. Specifically: compute `newRight = currentRight + gridStep`; clamp to `monitorWorkAreaRight`; if `newRight == currentRight`, no-op.
-
-**Confidence:** HIGH — arithmetic clamping, no API ambiguity.
-
-### Window Larger Than Monitor Grid Fits
-
-If a user grows a window beyond the monitor's work area height/width, the clamp logic prevents overshoot. Windows can technically be larger than the monitor via `SetWindowPos` (parts extend off-screen) — the clamp must prevent this by using `monitorWorkArea` as the hard limit, not `monitorBounds`.
-
-**Confidence:** HIGH — GetMonitorInfo returns both rcMonitor (full bounds) and rcWork (work area excluding taskbar). Use rcWork for all position/size clamping.
+**Confidence:** HIGH — standard exception handling pattern.
 
 ---
 
-## Competitor Feature Analysis
+## Competitor/Reference Feature Analysis
 
-How keyboard-driven window move/resize is handled in comparable tools:
+How system tray polish is handled in comparable background daemon tools:
 
-| Feature | i3/Sway | Hyprland | dwm moveresize patch | Rectangle (macOS) | This Tool (v3.1 plan) |
-|---------|---------|---------|----------------------|-------------------|----------------------|
-| Move trigger | Mod+Shift+Arrow | `moveactive` dispatcher | MODKEY+Arrow | Move-left/right/up/down actions | CAPS+TAB+direction |
-| Resize trigger | Mod+r then Arrow (modal) | `resizeactive` dispatcher | MODKEY+Shift+Arrow | Separate actions per size | CAPS+LSHIFT/LCTRL+direction (non-modal) |
-| Resize semantics | Grow/shrink in direction | Vec2 delta (x,y) | Separate x/y offset params | Discrete presets (halves, thirds, etc.) | Edge-in-direction model |
-| Step size unit | Pixel increment (configurable) | Pixel or percentage delta | Pixel increment (hardcoded in config) | Fixed layout fractions (1/2, 1/3, etc.) | Fraction of monitor (1/16th default) |
-| Snap on first press | No | No | No | Snaps to preset layout positions | Yes — snap-first then step |
-| Cross-monitor move | Yes (Mod+Shift+Arrow on tiling layout) | Yes (follows Hyprland monitor layout) | No (monitor-local only) | Yes (next-display action) | Yes (grid-aware transition) |
-| Minimum size enforcement | WM enforces internally | Hyprland enforces | SetWindowPos clamps | OS enforces | Clamp via SetWindowPos behavior |
-| Visual mode feedback | None for move (tiling layout is always visible) | None (floating only) | None | None | Mode icons in overlay |
-| Non-modal operation | Yes (always in layout) | Yes (dispatcher-based) | No (floating mode required) | Yes (hotkey-based) | Yes (modifier combo) |
-| Config for step size | Pixels in config file | Per-bind parameter | Pixels in config.h | Not configurable (preset fractions) | `gridFraction` in JSON config |
+| Feature | Docker Desktop | Tailscale | Windows Defender (system) | This Tool (v4.0 plan) |
+|---------|---------------|-----------|--------------------------|----------------------|
+| Custom icon | Yes (whale) | Yes (lock) | Yes (shield) | Custom icon (to be designed/generated) |
+| Status in context menu | Yes (Engine running / stopped) | Yes (Connected, IP shown) | No (action-only) | Hook status, uptime, last action |
+| Settings via tray | Yes (full Settings window) | Yes (Settings menu opens window) | Yes (opens Windows Security) | WinForms settings form |
+| Restart from tray | Yes (Restart Docker Desktop) | Yes (Restart Tailscale) | No | Restart Daemon menu item |
+| Exit from tray | Yes | Yes | No (system component) | Yes (existing) |
+| About section | Yes (in Settings window) | Yes (in Settings window) | No | In settings form |
+| Config editing UI | Yes (full GUI) | Yes (full GUI) | Yes | GUI for key config values; raw JSON remains available |
+| Balloon notifications | Rare (updates only) | Rare (connection changes only) | For security events only | None in v4.0 (noise risk outweighs benefit) |
 
 ---
 
 ## Sources
 
-- [Hyprland Dispatchers — moveactive, resizeactive](https://wiki.hypr.land/Configuring/Dispatchers/) — HIGH confidence (official Hyprland wiki, current)
-- [dwm moveresize patch](https://dwm.suckless.org/patches/moveresize/) — HIGH confidence (official suckless.org patch documentation, updated 2022)
-- [i3 User's Guide — move and resize](https://i3wm.org/docs/userguide.html) — HIGH confidence (official i3 documentation)
-- [Rectangle — rxhanson/Rectangle (GitHub)](https://github.com/rxhanson/Rectangle) — HIGH confidence (official README, cross-monitor traverse documented)
-- [SetWindowPos — Win32 docs](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setwindowpos) — HIGH confidence (official Win32 API reference)
-- [WM_GETMINMAXINFO — Win32 docs](https://learn.microsoft.com/en-us/windows/win32/winmsg/wm-getminmaxinfo) — HIGH confidence (official Win32 API reference)
-- [MINMAXINFO — Win32 docs](https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-minmaxinfo) — HIGH confidence (official Win32 API reference)
-- [High DPI Desktop Application Development on Windows](https://learn.microsoft.com/en-us/windows/win32/hidpi/high-dpi-desktop-application-development-on-windows) — HIGH confidence (official Win32 DPI docs)
-- [WM_DPICHANGED — Win32 docs](https://learn.microsoft.com/en-us/windows/win32/hidpi/wm-dpichanged) — HIGH confidence (official Win32 API reference)
-- [Grid-based Tiling Window Management, Mark II — retracile.net](https://retracile.net/blog/2022/08/27/00.00) — MEDIUM confidence (individual blog post; snap-first-then-step pattern and correction mechanism described from real implementation)
-- [FancyZones — PowerToys — Microsoft Learn](https://learn.microsoft.com/en-us/windows/powertoys/fancyzones) — HIGH confidence (official docs; snap tolerance behavior and zone merge behavior referenced)
-- [EmacsWiki: Grow Shrink Windows](https://www.emacswiki.org/emacs/GrowShrinkWindows) — MEDIUM confidence (community wiki; edge direction semantics described from Emacs border-move model)
-- [Moving and Resizing Windows — Sawfish WM manual](https://www.sawfish.tuxfamily.org/sawfish.html/Moving-and-Resizing-Windows.html) — MEDIUM confidence (official Sawfish WM docs; keyboard resize direction semantics)
-- [Window Features — Win32 docs](https://learn.microsoft.com/en-us/windows/win32/winmsg/window-features) — HIGH confidence (official Win32 reference; minimum tracking size behavior)
+- [Notifications and the Notification Area — Win32 docs (Microsoft Learn)](https://learn.microsoft.com/en-us/windows/win32/shell/notification-area) — HIGH confidence (official Win32 API reference, updated 2025)
+- [NotifyIcon — Add Application Icons to the TaskBar (Microsoft Learn)](https://learn.microsoft.com/en-us/dotnet/desktop/winforms/controls/app-icons-to-the-taskbar-with-wf-notifyicon) — HIGH confidence (official WinForms docs)
+- [Application Settings Architecture — Windows Forms (Microsoft Learn)](https://learn.microsoft.com/en-us/dotnet/desktop/winforms/advanced/application-settings-architecture) — HIGH confidence (official WinForms docs)
+- [ColorDialog Class — System.Windows.Forms (Microsoft Learn)](https://learn.microsoft.com/en-us/dotnet/api/system.windows.forms.colordialog?view=windowsdesktop-8.0) — HIGH confidence (official .NET 8 API reference)
+- [Application.Restart — Microsoft Learn](https://learn.microsoft.com/en-us/dotnet/api/system.windows.forms.application.restart?view=windowsdesktop-9.0) — HIGH confidence (official docs, caveats noted)
+- [Application.Restart throws InvalidOperationException — dotnet/winforms Issue #2769](https://github.com/dotnet/winforms/issues/2769) — HIGH confidence (official WinForms repo issue confirming non-ClickOnce limitation)
+- [Creating Tray Applications in .NET: A Practical Guide — Red Gate Simple Talk](https://www.red-gate.com/simple-talk/development/dotnet-development/creating-tray-applications-in-net-a-practical-guide/) — MEDIUM confidence (practitioner guide, patterns verified against official docs)
+- Windows UX guidelines: notification area best practices (referenced via Win32 docs above) — HIGH confidence (official Microsoft guidelines)
 
 ---
-*Feature research for: grid-snapped keyboard window move/resize (Windows daemon, v3.1 milestone)*
-*Researched: 2026-03-02*
+*Feature research for: system tray polish — custom icon, context menu, settings window, daemon restart (v4.0 milestone)*
+*Researched: 2026-03-03*
