@@ -2,6 +2,55 @@
 
 *A living document updated after each milestone. Lessons feed forward into future planning.*
 
+## Milestone: v3.1 — Window Management
+
+**Shipped:** 2026-03-03
+**Phases:** 3 | **Plans:** 8 | **Quick Tasks:** 1
+
+### What Was Built
+- GridCalculator with per-monitor grid computation, configurable per-axis fractions (16x12), and directional snap variants (Floor/Ceiling)
+- TAB interception and left-side modifier detection (VK_LSHIFT/VK_LCONTROL) for Move/Grow/Shrink mode routing
+- WindowManagerService with dual-rect coordinate pattern, snap-first grid stepping, boundary clamping, maximized/elevated window guards
+- Cross-monitor window transitions via adjacent monitor detection (overlapping-range algorithm on rcMonitor edges)
+- Mode-aware overlay indicators — amber borders/arrows for Move, cyan for Grow — using DIB-rasterized triangle renderer (ArrowRenderer)
+- Overlay refresh tracking through all move/resize operations with navigate-target suppression
+
+### What Worked
+- Dual-rect coordinate pattern (GetWindowRect for SetWindowPos, DwmGetWindowAttribute for overlay) prevented entire classes of border-offset bugs
+- Gap closure plans (11-02, 11-03, 10-03) were effective — UAT found real issues that formal verification caught and fixed systematically
+- GridCalculator being Win32-free (explicit int params, no RECT structs) made reasoning about math straightforward
+- Per-axis grid fractions (16x12) produced near-square grid cells on 16:9 monitors — good UX decision
+- Mode-at-event-time pattern eliminated race conditions between modifier release and event processing
+- Quick task for modifier remap (grow/shrink to LShift) was the right granularity for a UX binding change
+
+### What Was Inefficient
+- Phase 11 needed 3 gap closure plans after initial plan — UAT revealed directional snap, shrink edge inversion, and overlay refresh issues that could have been anticipated
+- ROADMAP.md phase detail checkboxes (11-02, 11-03, 12-02) were not updated to [x] after completion — cosmetic but suggests the update step needs automation
+- Some decisions in STATE.md accumulated heavily (25+ entries) — milestone completion should trim these more aggressively
+
+### Patterns Established
+- Dual-rect coordinate pattern: GetWindowRect for SetWindowPos input, DwmGetWindowAttribute for visual overlay positioning only
+- Snap-first pattern: check IsAligned on moving edge; if aligned step by grid, if not snap to nearest grid line
+- Directional snap: NearestGridLineFloor for edges moving toward smaller values, NearestGridLineCeiling for edges moving toward larger values
+- Silent no-op guards: IsZoomed (maximized) returns silently, elevated window SetWindowPos failure is silent
+- Post-computation no-op guard: verify dimensions actually changed before calling SetWindowPos
+- DIB pixel-write triangle rasterizer: bounding-box scan + cross-product sign test for filled triangles
+- _currentMode set before _staDispatcher.Invoke: worker thread writes, STA thread reads inside Invoke — no lock needed
+
+### Key Lessons
+1. Gap closure plans are a strength, not a weakness — UAT-driven corrections caught real bugs (directional snap, shrink edge mapping) that would have been user-facing
+2. The dual-rect coordinate pattern is essential for any Win32 window manipulation — mixing GetWindowRect and DwmGetWindowAttribute causes subtle positioning errors
+3. Per-axis grid fractions are worth the small config complexity — uniform grid cells improve UX significantly on non-square monitors
+4. Cross-monitor transitions need clean separation between adjacency detection (rcMonitor) and placement math (rcWork) — mixing them causes taskbar overlap
+5. DIB pixel-write rendering is a viable alternative to GDI path-based rendering for simple geometric overlays — produces consistent premultiplied alpha
+
+### Cost Observations
+- Model mix: ~60% opus, ~30% sonnet, ~10% haiku (estimated)
+- Sessions: ~3
+- Notable: 8 plans across 3 phases in 2 days. Gap closure plans (10-03, 11-02, 11-03) added 3 plans beyond initial scope but were all quick to execute (~3-4 min each). Total milestone was fast despite being the most complex (window management + overlays + cross-monitor).
+
+---
+
 ## Milestone: v3.0 — Integrated Navigation
 
 **Shipped:** 2026-03-02
@@ -131,11 +180,13 @@
 | v1.0 | 3 | 6 | Established CsWin32 + NativeMethods.txt pattern, debug-first approach |
 | v2.0 | 3 | 6 | Added human verification checkpoints, systematic deviation tracking |
 | v3.0 | 3 | 3 | Quick task workflow for UX polish, milestone audit caught pre-satisfied requirements |
+| v3.1 | 3 | 8 | Gap closure plans as first-class workflow, dual-rect coordinate pattern, DIB pixel-write rendering |
 
 ### Top Lessons (Verified Across Milestones)
 
-1. CsWin32 NativeMethods.txt entries must be explicit — transitive dependencies are never generated (verified in Phase 1, 4, 5, 6)
-2. Human verification catches real bugs that compilation alone misses — GDI alpha, overlay overlap, stale frames (verified in Phase 5, 6, 7, 8)
-3. Two-plan phase structure (build → wire+verify) consistently produces focused, testable increments (verified across all 9 phases)
+1. CsWin32 NativeMethods.txt entries must be explicit — transitive dependencies are never generated (verified in Phase 1, 4, 5, 6, 10)
+2. Human verification catches real bugs that compilation alone misses — GDI alpha, overlay overlap, stale frames, directional snap (verified in Phase 5, 6, 7, 8, 11, 12)
+3. Two-plan phase structure (build → wire+verify) consistently produces focused, testable increments (verified across all 12 phases)
 4. Milestone audit before completion saves wasted effort — Phase 9 was already working from v2.0 architecture (verified in v3.0)
-5. Quick tasks (`/gsd:quick`) are the right tool for UX polish between formal phases (verified in v3.0 — 6 quick tasks, ~40 min total)
+5. Quick tasks (`/gsd:quick`) are the right tool for UX polish between formal phases (verified in v3.0, v3.1)
+6. Gap closure plans are a natural part of execution, not a sign of poor planning — UAT-driven corrections catch real bugs systematically (verified in v3.1 — 3 gap closure plans)
