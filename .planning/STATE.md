@@ -1,14 +1,14 @@
 ---
 gsd_state_version: 1.0
-milestone: v3.1
-milestone_name: Window Management
-status: complete
+milestone: v4.0
+milestone_name: System Tray & Settings UI
+status: active
 last_updated: "2026-03-03"
 progress:
-  total_phases: 3
-  completed_phases: 3
-  total_plans: 8
-  completed_plans: 8
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
 ---
 
 # Project State
@@ -18,13 +18,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-03)
 
 **Core value:** Given a direction, reliably switch focus to the most intuitive window in that direction — fast enough for hotkey use, accurate enough to feel natural.
-**Current focus:** v3.1 shipped — planning next milestone
+**Current focus:** v4.0 System Tray & Settings UI
 
 ## Current Position
 
-Milestone v3.1 Window Management shipped 2026-03-03.
-All 12 phases across 4 milestones complete.
-Last activity: 2026-03-03 - Milestone v3.1 archived
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-03-03 — Milestone v4.0 started
 
 ## Accumulated Context
 
@@ -39,5 +40,5 @@ See .planning/PROJECT.md Key Decisions table for full history.
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: Milestone v3.1 archived
+Stopped at: Milestone v4.0 requirements definition
 Resume file: None
