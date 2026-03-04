@@ -27,7 +27,6 @@ internal sealed class SettingsForm : Form
     private NumericUpDown _gridYNumeric = null!;
     private NumericUpDown _snapNumeric = null!;
     private NumericUpDown _opacityNumeric = null!;
-    private NumericUpDown _delayNumeric = null!;
     private readonly Dictionary<Direction, Panel> _swatchPanels = new();
 
     // Grid preview overlay
@@ -91,7 +90,7 @@ internal sealed class SettingsForm : Form
         AutoScaleMode       = AutoScaleMode.Dpi;
         StartPosition       = FormStartPosition.CenterScreen;
         Padding             = new Padding(12);
-        ClientSize          = new Size(500, 640);
+        ClientSize          = new Size(500, 700);
 
         // Root panel stacks sections vertically with auto-scroll as safety net
         var root = new FlowLayoutPanel
@@ -161,7 +160,7 @@ internal sealed class SettingsForm : Form
             FlowDirection = FlowDirection.TopDown,
             WrapContents  = false,
             AutoSize      = true,
-            Width         = 476,
+            Width         = 456,
             Padding       = new Padding(4, 8, 4, 8),
         };
         panel.Controls.Add(titleLabel);
@@ -172,7 +171,7 @@ internal sealed class SettingsForm : Form
 
     private GroupBox BuildNavigationGroup()
     {
-        var group = MakeGroup("Navigation", 476, 64);
+        var group = MakeGroup("Navigation", 456, 64);
 
         var label = new Label
         {
@@ -199,7 +198,7 @@ internal sealed class SettingsForm : Form
 
     private GroupBox BuildGridGroup()
     {
-        var group = MakeGroup("Grid & Snapping", 476, 148);
+        var group = MakeGroup("Grid & Snapping", 456, 148);
 
         int y = 26;
         (_, _gridXNumeric) = AddLabeledNumeric(group, "Grid Fraction X:", 1, 64, _config.GridFractionX, ref y);
@@ -230,7 +229,7 @@ internal sealed class SettingsForm : Form
 
     private GroupBox BuildOverlaysGroup()
     {
-        var group = MakeGroup("Overlays", 476, 150);
+        var group = MakeGroup("Overlays", 456, 124);
 
         // Row 1: Color swatches
         var colorsLabel = new Label
@@ -261,7 +260,7 @@ internal sealed class SettingsForm : Form
 
             var swatch = new Panel
             {
-                Location    = new Point(swatchX, 44),
+                Location    = new Point(swatchX, 54),
                 Size        = new Size(36, 28),
                 BackColor   = _swatchColors[dir],
                 BorderStyle = BorderStyle.FixedSingle,
@@ -276,7 +275,7 @@ internal sealed class SettingsForm : Form
         }
 
         // Row 2: Opacity
-        int opacityY = 84;
+        int opacityY = 90;
         int opacityPercent = (int)Math.Round(_opacityAlpha / 255.0 * 100);
         (_, _opacityNumeric) = AddLabeledNumeric(group, "Opacity %:", 0, 100, opacityPercent, ref opacityY);
         _opacityNumeric.ValueChanged += (_, _) =>
@@ -285,10 +284,6 @@ internal sealed class SettingsForm : Form
             SaveConfig();
         };
 
-        // Row 3: Delay
-        int delayY = 112;
-        (_, _delayNumeric) = AddLabeledNumeric(group, "Delay (ms):", 0, 5000, _config.OverlayDelayMs, ref delayY);
-        _delayNumeric.ValueChanged += (_, _) => SaveConfig();
 
         return group;
     }
@@ -314,14 +309,14 @@ internal sealed class SettingsForm : Form
 
     private GroupBox BuildKeybindingsGroup()
     {
-        var group = MakeGroup("Keybindings", 476, 120);
+        var group = MakeGroup("Keybindings", 456, 125);
 
         const string content =
-            "CapsLock + Left/Right/Up/Down   Navigate to window in direction\r\n" +
-            "CapsLock + W/A/S/D              Navigate (WASD aliases)\r\n" +
-            "CapsLock + LAlt + Arrow         Move window in direction\r\n" +
-            "CapsLock + LWin + Arrow         Grow/shrink window in direction\r\n" +
-            "CapsLock + 1\u20139                  Jump to numbered window overlay";
+            "CAPS + Arrow      Navigate\r\n" +
+            "CAPS + WASD       Navigate\r\n" +
+            "CAPS + LAlt       Move\r\n" +
+            "CAPS + LWin       Resize\r\n" +
+            "CAPS + 1\u20139        Quick Navigate";
 
         var label = new Label
         {
@@ -386,7 +381,6 @@ internal sealed class SettingsForm : Form
         _config.GridFractionX        = (int)_gridXNumeric.Value;
         _config.GridFractionY        = (int)_gridYNumeric.Value;
         _config.SnapTolerancePercent = (int)_snapNumeric.Value;
-        _config.OverlayDelayMs       = (int)_delayNumeric.Value;
 
         _config.OverlayColors.Left  = ToHexColor(_opacityAlpha, _swatchColors[Direction.Left]);
         _config.OverlayColors.Right = ToHexColor(_opacityAlpha, _swatchColors[Direction.Right]);
