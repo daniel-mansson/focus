@@ -1,4 +1,5 @@
 using System.Drawing;
+using System.Reflection;
 using System.Runtime.Versioning;
 using System.Windows.Forms;
 using Focus.Windows;
@@ -49,11 +50,17 @@ internal sealed class DaemonApplicationContext : ApplicationContext
         var menu = new ContextMenuStrip();
         menu.Items.Add("Exit", null, OnExitClicked);
 
+        // Load custom icon from embedded assembly resource
+        var iconStream = Assembly.GetExecutingAssembly()
+            .GetManifestResourceStream("focus.ico")
+            ?? throw new InvalidOperationException("Embedded icon resource 'focus.ico' not found.");
+        var customIcon = new Icon(iconStream);
+
         _trayIcon = new NotifyIcon
         {
-            Icon = SystemIcons.Application,  // Built-in system icon — no embedded resource needed
+            Icon = customIcon,
             ContextMenuStrip = menu,
-            Text = "Focus Daemon",
+            Text = "Focus \u2014 Navigation Daemon",
             Visible = true
         };
 
