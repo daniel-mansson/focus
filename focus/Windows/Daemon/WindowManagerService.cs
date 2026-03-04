@@ -107,6 +107,7 @@ internal static class WindowManagerService
             }
         }
 
+
         int newX  = newWinRect.left;
         int newY  = newWinRect.top;
         int newCx = newWinRect.right  - newWinRect.left;
@@ -274,103 +275,111 @@ internal static class WindowManagerService
     /// <summary>
     /// Computes the new window rect for a Grow operation (CAPS+LSHIFT+direction).
     /// Direction encodes both axis and intent:
-    ///   right = grow horizontal: both left and right edges expand outward by half a grid step each.
-    ///   left  = shrink horizontal: both left and right edges contract inward by half a grid step each.
-    ///   up    = grow vertical: both top and bottom edges expand outward by half a grid step each.
-    ///   down  = shrink vertical: both top and bottom edges contract inward by half a grid step each.
-    /// Each edge snaps independently. Expand clamps to work area boundary. Minimum size = 1 grid step.
+    ///   right = grow horizontal, left = shrink horizontal,
+    ///   up = grow vertical, down = shrink vertical.
+    /// Resize uses a half-size grid (stepX/2, stepY/2). Size snaps to multiples of that grid.
+    /// Center position is preserved unless pushed by a screen border. Minimum size = 1 resize step.
     /// </summary>
     private static RECT ComputeGrow(string direction, RECT vis, RECT win, RECT work,
         int stepX, int stepY, int tolX, int tolY,
         int borderL, int borderT, int borderR, int borderB)
     {
-        int newVisLeft   = vis.left;
-        int newVisTop    = vis.top;
-        int newVisRight  = vis.right;
-        int newVisBottom = vis.bottom;
         int visW = vis.right  - vis.left;
         int visH = vis.bottom - vis.top;
 
-        int halfStepX = stepX / 4;
-        int halfStepY = stepY / 4;
+        // Resize uses a half-size grid compared to the move grid
+        int resizeStepX = Math.Max(1, stepX / 2);
+        int resizeStepY = Math.Max(1, stepY / 2);
+        int resizeTolX  = Math.Max(1, tolX / 2);
+        int resizeTolY  = Math.Max(1, tolY / 2);
+
+        int newVisW = visW;
+        int newVisH = visH;
 
         switch (direction)
         {
-            case "right":
-                // Grow horizontal: both edges expand outward
-                newVisLeft = GridCalculator.IsAligned(vis.left, work.left, stepX, tolX)
-                    ? vis.left - halfStepX
-                    : GridCalculator.NearestGridLineFloor(vis.left, work.left, stepX);
-                newVisRight = GridCalculator.IsAligned(vis.right, work.left, stepX, tolX)
-                    ? vis.right + halfStepX
-                    : GridCalculator.NearestGridLineCeiling(vis.right, work.left, stepX);
-                // Clamp to work area
-                newVisLeft  = Math.Max(newVisLeft, work.left);
-                newVisRight = Math.Min(newVisRight, work.right);
+            case "right": // Grow horizontal
+                if (GridCalculator.IsAligned(visW, 0, resizeStepX, resizeTolX))
+                    newVisW = GridCalculator.NearestGridLine(visW, 0, resizeStepX) + resizeStepX;
+                else
+                    newVisW = GridCalculator.NearestGridLineCeiling(visW, 0, resizeStepX);
                 break;
 
-            case "left":
-                // Shrink horizontal: both edges contract inward
-                if (visW <= stepX) return win;  // minimum size guard
-                newVisLeft = GridCalculator.IsAligned(vis.left, work.left, stepX, tolX)
-                    ? vis.left + halfStepX
-                    : GridCalculator.NearestGridLineCeiling(vis.left, work.left, stepX);
-                newVisRight = GridCalculator.IsAligned(vis.right, work.left, stepX, tolX)
-                    ? vis.right - halfStepX
-                    : GridCalculator.NearestGridLineFloor(vis.right, work.left, stepX);
-                // Minimum size clamp
-                if (newVisRight - newVisLeft < stepX)
-                {
-                    int center = (vis.left + vis.right) / 2;
-                    newVisLeft  = center - stepX / 2;
-                    newVisRight = center + stepX / 2;
-                }
+            case "left": // Shrink horizontal
+                if (visW <= resizeStepX) return win;
+                if (GridCalculator.IsAligned(visW, 0, resizeStepX, resizeTolX))
+                    newVisW = GridCalculator.NearestGridLine(visW, 0, resizeStepX) - resizeStepX;
+                else
+                    newVisW = GridCalculator.NearestGridLineFloor(visW, 0, resizeStepX);
+                if (newVisW < resizeStepX) newVisW = resizeStepX;
                 break;
 
-            case "up":
-                // Grow vertical: both edges expand outward
-                newVisTop = GridCalculator.IsAligned(vis.top, work.top, stepY, tolY)
-                    ? vis.top - halfStepY
-                    : GridCalculator.NearestGridLineFloor(vis.top, work.top, stepY);
-                newVisBottom = GridCalculator.IsAligned(vis.bottom, work.top, stepY, tolY)
-                    ? vis.bottom + halfStepY
-                    : GridCalculator.NearestGridLineCeiling(vis.bottom, work.top, stepY);
-                // Clamp to work area
-                newVisTop    = Math.Max(newVisTop, work.top);
-                newVisBottom = Math.Min(newVisBottom, work.bottom);
+            case "up": // Grow vertical
+                if (GridCalculator.IsAligned(visH, 0, resizeStepY, resizeTolY))
+                    newVisH = GridCalculator.NearestGridLine(visH, 0, resizeStepY) + resizeStepY;
+                else
+                    newVisH = GridCalculator.NearestGridLineCeiling(visH, 0, resizeStepY);
                 break;
 
-            case "down":
-                // Shrink vertical: both edges contract inward
-                if (visH <= stepY) return win;  // minimum size guard
-                newVisTop = GridCalculator.IsAligned(vis.top, work.top, stepY, tolY)
-                    ? vis.top + halfStepY
-                    : GridCalculator.NearestGridLineCeiling(vis.top, work.top, stepY);
-                newVisBottom = GridCalculator.IsAligned(vis.bottom, work.top, stepY, tolY)
-                    ? vis.bottom - halfStepY
-                    : GridCalculator.NearestGridLineFloor(vis.bottom, work.top, stepY);
-                // Minimum size clamp
-                if (newVisBottom - newVisTop < stepY)
-                {
-                    int center = (vis.top + vis.bottom) / 2;
-                    newVisTop    = center - stepY / 2;
-                    newVisBottom = center + stepY / 2;
-                }
+            case "down": // Shrink vertical
+                if (visH <= resizeStepY) return win;
+                if (GridCalculator.IsAligned(visH, 0, resizeStepY, resizeTolY))
+                    newVisH = GridCalculator.NearestGridLine(visH, 0, resizeStepY) - resizeStepY;
+                else
+                    newVisH = GridCalculator.NearestGridLineFloor(visH, 0, resizeStepY);
+                if (newVisH < resizeStepY) newVisH = resizeStepY;
                 break;
         }
 
-        // For shrink directions (left/down): if visible dimension did not actually shrink, no-op
-        int newVisW = newVisRight - newVisLeft;
-        int newVisH = newVisBottom - newVisTop;
-        if (direction is "left" && newVisW >= visW) return win;
-        if (direction is "down" && newVisH >= visH) return win;
+        // Preserve center position
+        int centerX = vis.left + visW / 2;
+        int centerY = vis.top  + visH / 2;
+
+        int newVisLeft   = centerX - newVisW / 2;
+        int newVisTop    = centerY - newVisH / 2;
+        int newVisRight  = newVisLeft + newVisW;
+        int newVisBottom = newVisTop  + newVisH;
+
+        // Clamp to work area boundaries, pushing center only when necessary
+        if (newVisLeft < work.left)
+        {
+            newVisLeft  = work.left;
+            newVisRight = newVisLeft + newVisW;
+        }
+        if (newVisRight > work.right)
+        {
+            newVisRight = work.right;
+            newVisLeft  = newVisRight - newVisW;
+        }
+        if (newVisTop < work.top)
+        {
+            newVisTop    = work.top;
+            newVisBottom = newVisTop + newVisH;
+        }
+        if (newVisBottom > work.bottom)
+        {
+            newVisBottom = work.bottom;
+            newVisTop    = newVisBottom - newVisH;
+        }
+
+        // Final safety: clamp if window is larger than work area
+        newVisLeft   = Math.Max(newVisLeft, work.left);
+        newVisTop    = Math.Max(newVisTop, work.top);
+        newVisRight  = Math.Min(newVisRight, work.right);
+        newVisBottom = Math.Min(newVisBottom, work.bottom);
+
+        // For shrink: if size didn't actually decrease, no-op
+        int finalW = newVisRight - newVisLeft;
+        int finalH = newVisBottom - newVisTop;
+        if (direction is "left" && finalW >= visW) return win;
+        if (direction is "down" && finalH >= visH) return win;
 
         // Translate visible coords back to GetWindowRect coordinate space
         return new RECT
         {
-            left   = newVisLeft  - borderL,
-            top    = newVisTop   - borderT,
-            right  = newVisRight + borderR,
+            left   = newVisLeft   - borderL,
+            top    = newVisTop    - borderT,
+            right  = newVisRight  + borderR,
             bottom = newVisBottom + borderB
         };
     }
