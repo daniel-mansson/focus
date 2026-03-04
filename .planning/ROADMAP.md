@@ -112,7 +112,7 @@ Plans:
 | 12. Cross-Monitor and Overlay Integration | v3.1 | 2/2 | Complete | 2026-03-02 |
 | 13. Tray Identity | v4.0 | Complete    | 2026-03-04 | 2026-03-04 |
 | 14. Context Menu and Daemon Lifecycle | 1/1 | Complete    | 2026-03-04 | - |
-| 15. Settings Form | 1/1 | Complete   | 2026-03-04 | - |
+| 15. Settings Form | 1/1 | Complete    | 2026-03-04 | - |
 
 ---
 *Full milestone details: See `.planning/milestones/` archives*
