@@ -50,7 +50,7 @@
 
 **Milestone Goal:** Polish the daemon's system tray presence with a custom icon, informative context menu with live daemon status and restart capability, and a WinForms settings UI for key configuration values.
 
-- [ ] **Phase 13: Tray Identity** - Custom icon embedded as assembly resource, tooltip set, tray presence established
+- [ ] **Phase 13: Tray Identity** (1 plan) - Custom icon embedded as assembly resource, tooltip set, tray presence established
 - [ ] **Phase 14: Context Menu and Daemon Lifecycle** - Enriched right-click menu with live status labels, restart action, and daemon status tracking
 - [ ] **Phase 15: Settings Form** - WinForms settings window with navigation config, overlay config, grid config, and About section
 
@@ -64,7 +64,9 @@
   1. Hovering the tray icon shows "Focus — Navigation Daemon" as the tooltip text
   2. The tray icon displays a custom multi-size icon (visually distinct from the generic Windows application icon) at all DPI levels
   3. The .ico file is embedded in the assembly — no external file is required at runtime
-**Plans**: TBD
+**Plans**: 1 plan
+Plans:
+- [ ] 13-01-PLAN.md -- Icon generator, assembly embedding, and tray integration
 
 ### Phase 14: Context Menu and Daemon Lifecycle
 **Goal**: Right-clicking the tray icon shows live daemon status and actionable menu items, and "Restart Daemon" correctly replaces the running process
