@@ -90,7 +90,9 @@ Plans:
   2. User can change navigation strategy, grid fractions, snap tolerance, overlay colors, and overlay delay — and save successfully writes the config file so the next keypress picks up the new values
   3. The settings form shows current keybinding reference and an About section with the project name, version, and a clickable GitHub link
   4. Saving config uses atomic write (temp file then replace) — a daemon keypress during save never produces a parse error
-**Plans**: TBD
+**Plans**: 1 plan
+Plans:
+- [ ] 15-01-PLAN.md -- SettingsForm construction, config I/O, and tray integration
 
 ## Progress
 
