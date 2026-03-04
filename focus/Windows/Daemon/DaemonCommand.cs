@@ -113,9 +113,10 @@ internal static class DaemonCommand
         // 11. Run STA message pump on dedicated thread — required for WH_KEYBOARD_LL.
         //     DaemonApplicationContext creates OverlayOrchestrator on the STA thread and assigns
         //     it to the captured 'orchestrator' variable via the out parameter.
+        var status = new DaemonStatus();
         var staThread = new Thread(() =>
         {
-            Application.Run(new DaemonApplicationContext(hook, monitor, () => cts.Cancel(), config, verbose, out orchestrator));
+            Application.Run(new DaemonApplicationContext(hook, monitor, () => cts.Cancel(), config, background, verbose, status, out orchestrator));
         });
         staThread.SetApartmentState(ApartmentState.STA);
         staThread.IsBackground = false;  // Keep process alive while message pump runs

@@ -97,6 +97,12 @@ internal sealed class KeyboardHookHandler : IDisposable
         }
     }
 
+    /// <summary>
+    /// Returns true when the keyboard hook is currently installed and valid.
+    /// Derived dynamically from the hook handle to avoid staleness after sleep/wake reinstalls.
+    /// </summary>
+    public bool IsInstalled => _hookHandle is { IsInvalid: false };
+
     public void Dispose() => Uninstall();
 
     private static bool IsDirectionKey(uint vkCode) => vkCode switch
