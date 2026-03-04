@@ -77,7 +77,9 @@ Plans:
   2. Menu items are visually grouped by separators (status block / action block / exit)
   3. Clicking "Settings..." opens the settings window (placeholder acceptable before Phase 15 ships)
   4. Clicking "Restart Daemon" terminates the current process and starts a fresh daemon instance with no ghost processes left behind
-**Plans**: TBD
+**Plans**: 1 plan
+Plans:
+- [ ] 14-01-PLAN.md -- DaemonStatus wiring, context menu expansion, restart and settings handlers
 
 ### Phase 15: Settings Form
 **Goal**: Users can view and edit all key configuration values through a WinForms settings window accessible from the tray menu
@@ -107,7 +109,7 @@ Plans:
 | 11. Move and Resize (Single Monitor) | v3.1 | 3/3 | Complete | 2026-03-02 |
 | 12. Cross-Monitor and Overlay Integration | v3.1 | 2/2 | Complete | 2026-03-02 |
 | 13. Tray Identity | v4.0 | Complete    | 2026-03-04 | 2026-03-04 |
-| 14. Context Menu and Daemon Lifecycle | v4.0 | 0/? | Not started | - |
+| 14. Context Menu and Daemon Lifecycle | v4.0 | 0/1 | Planned | - |
 | 15. Settings Form | v4.0 | 0/? | Not started | - |
 
 ---
