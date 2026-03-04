@@ -31,29 +31,30 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-03)
 
 **Core value:** Given a direction, reliably switch focus to the most intuitive window in that direction — fast enough for hotkey use, accurate enough to feel natural.
-**Current focus:** v4.0 Phase 13 — Tray Identity
+**Current focus:** v4.0 Phase 14 — Context Menu and Daemon Lifecycle
 
 ## Current Position
 
-Phase: 13 of 15 (Tray Identity)
+Phase: 14 of 15 (Context Menu and Daemon Lifecycle)
 Plan: 1 of 1 in current phase (complete)
-Status: Phase 13 complete — ready for Phase 14
-Last activity: 2026-03-04 — Completed 13-01: custom focus-bracket icon + tray tooltip update
+Status: Phase 14 Plan 01 complete
+Last activity: 2026-03-04 — Completed 14-01: context menu status labels, restart, and settings
 
-Progress: [███░░░░░░░] 10%
+Progress: [████░░░░░░] 20%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 1 (v4.0)
-- Average duration: 2 min
-- Total execution time: 0.03 hours
+- Total plans completed: 2 (v4.0)
+- Average duration: 5 min
+- Total execution time: 0.17 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 13 (Tray Identity) | 1 | 2 min | 2 min |
+| 14 (Context Menu and Daemon Lifecycle) | 1 | 8 min | 8 min |
 
 *Updated after each plan completion*
 
@@ -70,6 +71,11 @@ Recent decisions affecting v4.0:
 - Icon generator: committed output approach (standalone script, not pre-build MSBuild target) — avoids build latency and file-lock risks
 - EmbeddedResource LogicalName: eliminates namespace-prefix guessing for GetManifestResourceStream
 - Icon DPI sizes: 16/20/24/32px covers 100%/125%/150%/200% DPI on Windows 11
+- DaemonStatus: plain mutable STA-thread-only class (no locking) for tray menu status display
+- IsInstalled: derived from hookHandle validity not cached bool to avoid sleep/wake staleness
+- Tray menu refresh: ContextMenuStrip.Opening event refreshes labels on every open
+- Restart: no confirmation dialog, inherits --background/--verbose flags from current process state
+- Restart failure: surfaces error in LastAction, keeps current daemon alive
 
 ### Blockers/Concerns
 
@@ -79,5 +85,5 @@ Recent decisions affecting v4.0:
 ## Session Continuity
 
 Last session: 2026-03-04
-Stopped at: Completed 13-01-PLAN.md — Phase 13 (Tray Identity) complete
+Stopped at: Completed 14-01-PLAN.md — Phase 14 Plan 01 (Context Menu and Daemon Lifecycle) complete
 Resume file: None

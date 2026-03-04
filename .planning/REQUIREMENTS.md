@@ -15,11 +15,11 @@ Requirements for milestone v4.0 System Tray & Settings UI. Each maps to roadmap 
 
 ### Context Menu
 
-- [ ] **MENU-01**: Right-click shows non-clickable status labels: hook status, uptime, and last action
-- [ ] **MENU-02**: Status labels refresh on every menu open (no stale values)
-- [ ] **MENU-03**: Right-click menu includes "Settings..." entry that opens the settings window
-- [ ] **MENU-04**: Right-click menu includes "Restart Daemon" entry
-- [ ] **MENU-05**: Menu items are separated into logical groups (status / actions / exit)
+- [x] **MENU-01**: Right-click shows non-clickable status labels: hook status, uptime, and last action
+- [x] **MENU-02**: Status labels refresh on every menu open (no stale values)
+- [x] **MENU-03**: Right-click menu includes "Settings..." entry that opens the settings window
+- [x] **MENU-04**: Right-click menu includes "Restart Daemon" entry
+- [x] **MENU-05**: Menu items are separated into logical groups (status / actions / exit)
 
 ### Settings Form
 
@@ -34,9 +34,9 @@ Requirements for milestone v4.0 System Tray & Settings UI. Each maps to roadmap 
 
 ### Daemon Lifecycle
 
-- [ ] **LIFE-01**: Daemon tracks hook status, start time, and last action description internally
-- [ ] **LIFE-02**: "Restart Daemon" spawns new process via Environment.ProcessPath and exits current process
-- [ ] **LIFE-03**: Restart routes through existing replace-semantics mutex (no ghost processes)
+- [x] **LIFE-01**: Daemon tracks hook status, start time, and last action description internally
+- [x] **LIFE-02**: "Restart Daemon" spawns new process via Environment.ProcessPath and exits current process
+- [x] **LIFE-03**: Restart routes through existing replace-semantics mutex (no ghost processes)
 
 ## Future Requirements
 
@@ -71,11 +71,11 @@ Requirements for milestone v4.0 System Tray & Settings UI. Each maps to roadmap 
 | ICON-01 | Phase 13 | Complete (2026-03-04) |
 | ICON-02 | Phase 13 | Complete (2026-03-04) |
 | ICON-03 | Phase 13 | Complete (2026-03-04) |
-| MENU-01 | Phase 14 | Pending |
-| MENU-02 | Phase 14 | Pending |
-| MENU-03 | Phase 14 | Pending |
-| MENU-04 | Phase 14 | Pending |
-| MENU-05 | Phase 14 | Pending |
+| MENU-01 | Phase 14 | Complete |
+| MENU-02 | Phase 14 | Complete |
+| MENU-03 | Phase 14 | Complete |
+| MENU-04 | Phase 14 | Complete |
+| MENU-05 | Phase 14 | Complete |
 | SETS-01 | Phase 15 | Pending |
 | SETS-02 | Phase 15 | Pending |
 | SETS-03 | Phase 15 | Pending |
@@ -84,9 +84,9 @@ Requirements for milestone v4.0 System Tray & Settings UI. Each maps to roadmap 
 | SETS-06 | Phase 15 | Pending |
 | SETS-07 | Phase 15 | Pending |
 | SETS-08 | Phase 15 | Pending |
-| LIFE-01 | Phase 14 | Pending |
-| LIFE-02 | Phase 14 | Pending |
-| LIFE-03 | Phase 14 | Pending |
+| LIFE-01 | Phase 14 | Complete |
+| LIFE-02 | Phase 14 | Complete |
+| LIFE-03 | Phase 14 | Complete |
 
 **Coverage:**
 - v4.0 requirements: 19 total
