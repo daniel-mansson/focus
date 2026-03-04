@@ -23,14 +23,14 @@ Requirements for milestone v4.0 System Tray & Settings UI. Each maps to roadmap 
 
 ### Settings Form
 
-- [ ] **SETS-01**: Settings window opens as a non-modal WinForms form (single instance — focuses existing if already open)
-- [ ] **SETS-02**: User can select navigation strategy from a dropdown (six strategies)
-- [ ] **SETS-03**: User can edit grid fractions (gridFractionX, gridFractionY) and snap tolerance via numeric inputs
-- [ ] **SETS-04**: User can pick overlay colors for each direction via system ColorDialog
-- [ ] **SETS-05**: User can edit overlay delay (overlayDelayMs) via numeric input
-- [ ] **SETS-06**: Settings form displays current keybindings as a reference label
-- [ ] **SETS-07**: Save button writes config atomically (write .tmp, then File.Replace)
-- [ ] **SETS-08**: About section shows project name, version, attribution, and GitHub link
+- [x] **SETS-01**: Settings window opens as a non-modal WinForms form (single instance — focuses existing if already open)
+- [x] **SETS-02**: User can select navigation strategy from a dropdown (six strategies)
+- [x] **SETS-03**: User can edit grid fractions (gridFractionX, gridFractionY) and snap tolerance via numeric inputs
+- [x] **SETS-04**: User can pick overlay colors for each direction via system ColorDialog
+- [x] **SETS-05**: User can edit overlay delay (overlayDelayMs) via numeric input
+- [x] **SETS-06**: Settings form displays current keybindings as a reference label
+- [x] **SETS-07**: Save button writes config atomically (write .tmp, then File.Replace)
+- [x] **SETS-08**: About section shows project name, version, attribution, and GitHub link
 
 ### Daemon Lifecycle
 
@@ -76,14 +76,14 @@ Requirements for milestone v4.0 System Tray & Settings UI. Each maps to roadmap 
 | MENU-03 | Phase 14 | Complete |
 | MENU-04 | Phase 14 | Complete |
 | MENU-05 | Phase 14 | Complete |
-| SETS-01 | Phase 15 | Pending |
-| SETS-02 | Phase 15 | Pending |
-| SETS-03 | Phase 15 | Pending |
-| SETS-04 | Phase 15 | Pending |
-| SETS-05 | Phase 15 | Pending |
-| SETS-06 | Phase 15 | Pending |
-| SETS-07 | Phase 15 | Pending |
-| SETS-08 | Phase 15 | Pending |
+| SETS-01 | Phase 15 | Complete |
+| SETS-02 | Phase 15 | Complete |
+| SETS-03 | Phase 15 | Complete |
+| SETS-04 | Phase 15 | Complete |
+| SETS-05 | Phase 15 | Complete |
+| SETS-06 | Phase 15 | Complete |
+| SETS-07 | Phase 15 | Complete |
+| SETS-08 | Phase 15 | Complete |
 | LIFE-01 | Phase 14 | Complete |
 | LIFE-02 | Phase 14 | Complete |
 | LIFE-03 | Phase 14 | Complete |
