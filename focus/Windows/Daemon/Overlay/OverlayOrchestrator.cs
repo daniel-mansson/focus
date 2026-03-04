@@ -40,6 +40,7 @@ internal sealed class OverlayOrchestrator : IDisposable
     private readonly OverlayManager _overlayManager;
     private readonly FocusConfig _config;
     private readonly bool _verbose;
+    private readonly DaemonStatus _status;
 
     // WinForms control used for cross-thread Invoke from CapsLockMonitor worker thread to STA.
     private readonly Control _staDispatcher;
@@ -64,11 +65,12 @@ internal sealed class OverlayOrchestrator : IDisposable
     /// <summary>
     /// Creates the orchestrator. Must be called on the STA thread.
     /// </summary>
-    public OverlayOrchestrator(OverlayManager overlayManager, FocusConfig config, bool verbose = false)
+    public OverlayOrchestrator(OverlayManager overlayManager, FocusConfig config, bool verbose, DaemonStatus status)
     {
         _overlayManager = overlayManager;
         _config = config;
         _verbose = verbose;
+        _status = status;
 
         // Create a WinForms control to marshal cross-thread calls onto the STA thread.
         // Force handle creation immediately so Invoke is available before the message pump starts.
@@ -250,6 +252,13 @@ internal sealed class OverlayOrchestrator : IDisposable
             else if (result == 2)
                 Console.Error.WriteLine($"[{ts}] Navigate: {direction} -> all activations failed");
         }
+
+        // 9. Record last action for tray menu display.
+        if (result == 0 && ranked.Count > 0)
+        {
+            string dirCapitalized = char.ToUpper(direction[0]) + direction[1..];
+            _status.LastAction = $"Focus {dirCapitalized} \u2192 {ranked[0].Window.ProcessName}";
+        }
     }
 
     private void ActivateByNumberSta(int number)
@@ -275,6 +284,9 @@ internal sealed class OverlayOrchestrator : IDisposable
 
         var target = sorted[index];
         bool ok = FocusActivator.TryActivateWindow(target.Hwnd);
+
+        if (ok)
+            _status.LastAction = $"Focus #{number} \u2192 {target.ProcessName}";
 
         if (_verbose)
         {
