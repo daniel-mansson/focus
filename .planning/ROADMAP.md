@@ -52,7 +52,7 @@
 
 - [x] **Phase 13: Tray Identity** (1 plan) - Custom icon embedded as assembly resource, tooltip set, tray presence established — completed 2026-03-04
 - [x] **Phase 14: Context Menu and Daemon Lifecycle** - Enriched right-click menu with live status labels, restart action, and daemon status tracking (completed 2026-03-04)
-- [ ] **Phase 15: Settings Form** - WinForms settings window with navigation config, overlay config, grid config, and About section
+- [x] **Phase 15: Settings Form** - WinForms settings window with navigation config, overlay config, grid config, and About section (completed 2026-03-04)
 
 ## Phase Details
 
@@ -112,7 +112,7 @@ Plans:
 | 12. Cross-Monitor and Overlay Integration | v3.1 | 2/2 | Complete | 2026-03-02 |
 | 13. Tray Identity | v4.0 | Complete    | 2026-03-04 | 2026-03-04 |
 | 14. Context Menu and Daemon Lifecycle | 1/1 | Complete    | 2026-03-04 | - |
-| 15. Settings Form | v4.0 | 0/? | Not started | - |
+| 15. Settings Form | 1/1 | Complete   | 2026-03-04 | - |
 
 ---
 *Full milestone details: See `.planning/milestones/` archives*
