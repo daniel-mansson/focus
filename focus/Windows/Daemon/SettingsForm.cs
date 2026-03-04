@@ -14,10 +14,11 @@ namespace Focus.Windows.Daemon;
 internal sealed class SettingsForm : Form
 {
     private readonly FocusConfig _config;
+    private readonly Action? _onApply;
     private readonly Dictionary<Direction, Color> _swatchColors = new();
     private byte _opacityAlpha;
 
-    // Controls accessed in save handler
+    // Controls accessed in apply handler
     private ComboBox _strategyCombo = null!;
     private NumericUpDown _gridXNumeric = null!;
     private NumericUpDown _gridYNumeric = null!;
@@ -26,8 +27,9 @@ internal sealed class SettingsForm : Form
     private NumericUpDown _delayNumeric = null!;
     private readonly Dictionary<Direction, Panel> _swatchPanels = new();
 
-    public SettingsForm()
+    public SettingsForm(Action? onApply = null)
     {
+        _onApply = onApply;
         _config = FocusConfig.Load();
         InitializeColors();
         BuildUi();
@@ -110,8 +112,8 @@ internal sealed class SettingsForm : Form
         // ---- Keybindings GroupBox ----
         root.Controls.Add(BuildKeybindingsGroup());
 
-        // ---- Save button ----
-        root.Controls.Add(BuildSaveRow());
+        // ---- Apply button ----
+        root.Controls.Add(BuildApplyRow());
     }
 
     // ---- Section helpers ----
@@ -303,30 +305,30 @@ internal sealed class SettingsForm : Form
         return group;
     }
 
-    private Panel BuildSaveRow()
+    private Panel BuildApplyRow()
     {
-        var saveBtn = new Button
+        var applyBtn = new Button
         {
-            Text     = "Save",
+            Text     = "Apply",
             Width    = 80,
             Height   = 28,
             Anchor   = AnchorStyles.Right,
         };
-        saveBtn.Click += OnSaveClicked;
+        applyBtn.Click += OnApplyClicked;
 
         var panel = new Panel
         {
             Width  = 476,
             Height = 36,
         };
-        saveBtn.Location = new Point(panel.Width - saveBtn.Width - 4, 4);
-        panel.Controls.Add(saveBtn);
+        applyBtn.Location = new Point(panel.Width - applyBtn.Width - 4, 4);
+        panel.Controls.Add(applyBtn);
         return panel;
     }
 
-    // ---- Save handler ----
+    // ---- Apply handler ----
 
-    private void OnSaveClicked(object? sender, EventArgs e)
+    private void OnApplyClicked(object? sender, EventArgs e)
     {
         // Read control values back into config
         _config.Strategy             = (Strategy)_strategyCombo.SelectedItem!;
@@ -359,7 +361,10 @@ internal sealed class SettingsForm : Form
         else
             File.Move(tmpPath, configPath);
 
-        Close();
+        // Invoke the restart callback. The callback (OnRestartClicked in TrayIcon) handles
+        // full application teardown via Application.ExitThread, which disposes all forms.
+        // Do NOT call Close() here -- the restart exits the entire process.
+        _onApply?.Invoke();
     }
 
     // ---- Layout helpers ----
