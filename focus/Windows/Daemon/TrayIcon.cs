@@ -111,7 +111,7 @@ internal sealed class DaemonApplicationContext : ApplicationContext
     {
         if (_settingsForm == null || _settingsForm.IsDisposed)
         {
-            _settingsForm = new SettingsForm();
+            _settingsForm = new SettingsForm(onApply: () => OnRestartClicked(null, EventArgs.Empty));
             _settingsForm.Show();
         }
         else
