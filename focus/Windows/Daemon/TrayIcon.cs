@@ -22,6 +22,7 @@ internal sealed class DaemonApplicationContext : ApplicationContext
     private readonly bool _background;
     private readonly bool _verbose;
     private readonly DaemonStatus _status;
+    private SettingsForm? _settingsForm;
 
     /// <summary>
     /// Runs entirely on the STA thread. Creates OverlayOrchestrator here so all WinEvent hooks,
@@ -108,15 +109,17 @@ internal sealed class DaemonApplicationContext : ApplicationContext
 
     private void OnSettingsClicked(object? sender, EventArgs e)
     {
-        var configPath = FocusConfig.GetConfigPath();
-        if (!File.Exists(configPath))
-            FocusConfig.WriteDefaults(configPath);
-
-        Process.Start(new ProcessStartInfo
+        if (_settingsForm == null || _settingsForm.IsDisposed)
         {
-            FileName        = configPath,
-            UseShellExecute = true
-        });
+            _settingsForm = new SettingsForm();
+            _settingsForm.Show();
+        }
+        else
+        {
+            _settingsForm.BringToFront();
+            if (_settingsForm.WindowState == FormWindowState.Minimized)
+                _settingsForm.WindowState = FormWindowState.Normal;
+        }
     }
 
     private void OnRestartClicked(object? sender, EventArgs e)
@@ -167,6 +170,7 @@ internal sealed class DaemonApplicationContext : ApplicationContext
     {
         if (disposing)
         {
+            _settingsForm?.Close();
             _trayIcon.Visible = false;
             _trayIcon.Dispose();
             _powerWindow.DestroyHandle();
