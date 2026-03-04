@@ -51,7 +51,7 @@
 **Milestone Goal:** Polish the daemon's system tray presence with a custom icon, informative context menu with live daemon status and restart capability, and a WinForms settings UI for key configuration values.
 
 - [x] **Phase 13: Tray Identity** (1 plan) - Custom icon embedded as assembly resource, tooltip set, tray presence established — completed 2026-03-04
-- [ ] **Phase 14: Context Menu and Daemon Lifecycle** - Enriched right-click menu with live status labels, restart action, and daemon status tracking
+- [x] **Phase 14: Context Menu and Daemon Lifecycle** - Enriched right-click menu with live status labels, restart action, and daemon status tracking (completed 2026-03-04)
 - [ ] **Phase 15: Settings Form** - WinForms settings window with navigation config, overlay config, grid config, and About section
 
 ## Phase Details
@@ -109,7 +109,7 @@ Plans:
 | 11. Move and Resize (Single Monitor) | v3.1 | 3/3 | Complete | 2026-03-02 |
 | 12. Cross-Monitor and Overlay Integration | v3.1 | 2/2 | Complete | 2026-03-02 |
 | 13. Tray Identity | v4.0 | Complete    | 2026-03-04 | 2026-03-04 |
-| 14. Context Menu and Daemon Lifecycle | v4.0 | 0/1 | Planned | - |
+| 14. Context Menu and Daemon Lifecycle | 1/1 | Complete   | 2026-03-04 | - |
 | 15. Settings Form | v4.0 | 0/? | Not started | - |
 
 ---
