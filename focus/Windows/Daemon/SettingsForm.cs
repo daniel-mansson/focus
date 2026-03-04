@@ -17,26 +17,19 @@ internal sealed class SettingsForm : Form
     private readonly Dictionary<Direction, Color> _swatchColors = new();
     private byte _opacityAlpha;
 
-    // Controls accessed in apply handler
+    // Controls accessed in save handler
     private ComboBox _strategyCombo = null!;
     private NumericUpDown _gridXNumeric = null!;
     private NumericUpDown _gridYNumeric = null!;
     private NumericUpDown _snapNumeric = null!;
     private NumericUpDown _opacityNumeric = null!;
     private NumericUpDown _delayNumeric = null!;
-    private Button _applyBtn = null!;
     private readonly Dictionary<Direction, Panel> _swatchPanels = new();
-
-    // Snapshot of initial values for dirty tracking
-    private Strategy _initialStrategy;
-    private int _initialGridX, _initialGridY, _initialSnap, _initialOpacity, _initialDelay;
-    private readonly Dictionary<Direction, Color> _initialSwatchColors = new();
 
     public SettingsForm()
     {
         _config = FocusConfig.Load();
         InitializeColors();
-        SnapshotInitialValues();
         BuildUi();
     }
 
@@ -75,33 +68,6 @@ internal sealed class SettingsForm : Form
         _swatchColors[Direction.Down] = downRgb;
     }
 
-    private void SnapshotInitialValues()
-    {
-        _initialStrategy = _config.Strategy;
-        _initialGridX = _config.GridFractionX;
-        _initialGridY = _config.GridFractionY;
-        _initialSnap = _config.SnapTolerancePercent;
-        _initialOpacity = (int)Math.Round(_opacityAlpha / 255.0 * 100);
-        _initialDelay = _config.OverlayDelayMs;
-        foreach (var kvp in _swatchColors)
-            _initialSwatchColors[kvp.Key] = kvp.Value;
-    }
-
-    private bool IsDirty()
-    {
-        if ((Strategy)_strategyCombo.SelectedItem! != _initialStrategy) return true;
-        if ((int)_gridXNumeric.Value != _initialGridX) return true;
-        if ((int)_gridYNumeric.Value != _initialGridY) return true;
-        if ((int)_snapNumeric.Value != _initialSnap) return true;
-        if ((int)_opacityNumeric.Value != _initialOpacity) return true;
-        if ((int)_delayNumeric.Value != _initialDelay) return true;
-        foreach (var kvp in _swatchColors)
-            if (kvp.Value != _initialSwatchColors[kvp.Key]) return true;
-        return false;
-    }
-
-    private void UpdateApplyEnabled() => _applyBtn.Enabled = IsDirty();
-
     // -------------------------------------------------------------------------
     // UI construction
     // -------------------------------------------------------------------------
@@ -116,7 +82,7 @@ internal sealed class SettingsForm : Form
         AutoScaleMode       = AutoScaleMode.Dpi;
         StartPosition       = FormStartPosition.CenterScreen;
         Padding             = new Padding(12);
-        ClientSize          = new Size(500, 680);
+        ClientSize          = new Size(500, 640);
 
         // Root panel stacks sections vertically with auto-scroll as safety net
         var root = new FlowLayoutPanel
@@ -143,9 +109,6 @@ internal sealed class SettingsForm : Form
 
         // ---- Keybindings GroupBox ----
         root.Controls.Add(BuildKeybindingsGroup());
-
-        // ---- Apply button ----
-        root.Controls.Add(BuildApplyRow());
     }
 
     // ---- Section helpers ----
@@ -218,7 +181,7 @@ internal sealed class SettingsForm : Form
         foreach (Strategy s in Enum.GetValues<Strategy>())
             _strategyCombo.Items.Add(s);
         _strategyCombo.SelectedItem = _config.Strategy;
-        _strategyCombo.SelectedIndexChanged += (_, _) => UpdateApplyEnabled();
+        _strategyCombo.SelectedIndexChanged += (_, _) => SaveConfig();
 
         group.Controls.Add(label);
         group.Controls.Add(_strategyCombo);
@@ -234,9 +197,9 @@ internal sealed class SettingsForm : Form
         (_, _gridYNumeric) = AddLabeledNumeric(group, "Grid Fraction Y:", 1, 64, _config.GridFractionY, ref y);
         (_, _snapNumeric)  = AddLabeledNumeric(group, "Snap Tolerance %:", 0, 50, _config.SnapTolerancePercent, ref y);
 
-        _gridXNumeric.ValueChanged += (_, _) => UpdateApplyEnabled();
-        _gridYNumeric.ValueChanged += (_, _) => UpdateApplyEnabled();
-        _snapNumeric.ValueChanged  += (_, _) => UpdateApplyEnabled();
+        _gridXNumeric.ValueChanged += (_, _) => SaveConfig();
+        _gridYNumeric.ValueChanged += (_, _) => SaveConfig();
+        _snapNumeric.ValueChanged  += (_, _) => SaveConfig();
 
         return group;
     }
@@ -295,13 +258,13 @@ internal sealed class SettingsForm : Form
         _opacityNumeric.ValueChanged += (_, _) =>
         {
             _opacityAlpha = (byte)Math.Round((double)_opacityNumeric.Value / 100.0 * 255);
-            UpdateApplyEnabled();
+            SaveConfig();
         };
 
         // Row 3: Delay
         int delayY = 112;
         (_, _delayNumeric) = AddLabeledNumeric(group, "Delay (ms):", 0, 5000, _config.OverlayDelayMs, ref delayY);
-        _delayNumeric.ValueChanged += (_, _) => UpdateApplyEnabled();
+        _delayNumeric.ValueChanged += (_, _) => SaveConfig();
 
         return group;
     }
@@ -321,7 +284,7 @@ internal sealed class SettingsForm : Form
         {
             _swatchColors[dir] = dialog.Color;
             panel.BackColor    = dialog.Color;
-            UpdateApplyEnabled();
+            SaveConfig();
         }
     }
 
@@ -347,46 +310,21 @@ internal sealed class SettingsForm : Form
         return group;
     }
 
-    private Panel BuildApplyRow()
+    // ---- Auto-save on every change ----
+
+    private void SaveConfig()
     {
-        _applyBtn = new Button
-        {
-            Text     = "Apply",
-            Width    = 80,
-            Height   = 28,
-            Anchor   = AnchorStyles.Right,
-            Enabled  = false,
-        };
-        _applyBtn.Click += OnApplyClicked;
-
-        var panel = new Panel
-        {
-            Width  = 476,
-            Height = 36,
-        };
-        _applyBtn.Location = new Point(panel.Width - _applyBtn.Width - 4, 4);
-        panel.Controls.Add(_applyBtn);
-        return panel;
-    }
-
-    // ---- Apply handler ----
-
-    private void OnApplyClicked(object? sender, EventArgs e)
-    {
-        // Read control values back into config
         _config.Strategy             = (Strategy)_strategyCombo.SelectedItem!;
         _config.GridFractionX        = (int)_gridXNumeric.Value;
         _config.GridFractionY        = (int)_gridYNumeric.Value;
         _config.SnapTolerancePercent = (int)_snapNumeric.Value;
         _config.OverlayDelayMs       = (int)_delayNumeric.Value;
 
-        // Recompose ARGB hex strings from swatch colors + shared alpha
         _config.OverlayColors.Left  = ToHexColor(_opacityAlpha, _swatchColors[Direction.Left]);
         _config.OverlayColors.Right = ToHexColor(_opacityAlpha, _swatchColors[Direction.Right]);
         _config.OverlayColors.Up    = ToHexColor(_opacityAlpha, _swatchColors[Direction.Up]);
         _config.OverlayColors.Down  = ToHexColor(_opacityAlpha, _swatchColors[Direction.Down]);
 
-        // Atomic save: write .tmp then File.Replace (Pitfall 3: handle fresh install)
         var options = new JsonSerializerOptions
         {
             WriteIndented = true,
@@ -403,10 +341,6 @@ internal sealed class SettingsForm : Form
             File.Replace(tmpPath, configPath, null);
         else
             File.Move(tmpPath, configPath);
-
-        // Update snapshot so button grays out until next change
-        SnapshotInitialValues();
-        _applyBtn.Enabled = false;
     }
 
     // ---- Layout helpers ----
