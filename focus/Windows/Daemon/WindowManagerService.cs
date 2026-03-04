@@ -291,8 +291,8 @@ internal static class WindowManagerService
         int visW = vis.right  - vis.left;
         int visH = vis.bottom - vis.top;
 
-        int halfStepX = stepX / 2;
-        int halfStepY = stepY / 2;
+        int halfStepX = stepX / 4;
+        int halfStepY = stepY / 4;
 
         switch (direction)
         {
