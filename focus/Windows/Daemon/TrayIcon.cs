@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using System.Drawing;
+using System.IO;
 using System.Reflection;
 using System.Runtime.Versioning;
 using System.Windows.Forms;
@@ -17,17 +19,23 @@ internal sealed class DaemonApplicationContext : ApplicationContext
     private readonly PowerBroadcastWindow _powerWindow;
     private readonly OverlayOrchestrator _orchestrator;
     private readonly OverlayManager _overlayManager;
+    private readonly bool _background;
+    private readonly bool _verbose;
+    private readonly DaemonStatus _status;
 
     /// <summary>
     /// Runs entirely on the STA thread. Creates OverlayOrchestrator here so all WinEvent hooks,
     /// WinForms Controls, and timers are created on the correct thread.
     /// </summary>
     public DaemonApplicationContext(KeyboardHookHandler hook, CapsLockMonitor monitor, Action onExit,
-        FocusConfig config, bool verbose, out OverlayOrchestrator orchestrator)
+        FocusConfig config, bool background, bool verbose, DaemonStatus status, out OverlayOrchestrator orchestrator)
     {
-        _hook    = hook;
-        _monitor = monitor;
-        _onExit  = onExit;
+        _hook       = hook;
+        _monitor    = monitor;
+        _onExit     = onExit;
+        _background = background;
+        _verbose    = verbose;
+        _status     = status;
 
         // Install keyboard hook — safe here because Application.Run() starts the
         // message pump immediately after this constructor returns. The hook callback
@@ -40,15 +48,44 @@ internal sealed class DaemonApplicationContext : ApplicationContext
         // Control for cross-thread Invoke — both require the STA thread.
         var renderer = OverlayManager.CreateRenderer(config.OverlayRenderer);
         _overlayManager = new OverlayManager(renderer, config.OverlayColors);
-        _orchestrator = new OverlayOrchestrator(_overlayManager, config, verbose);
+        _orchestrator = new OverlayOrchestrator(_overlayManager, config, verbose, status);
 
         // Expose orchestrator to DaemonCommand.Run via out parameter so it can inject callbacks
         // and call RequestShutdown/Dispose during the ordered teardown sequence.
         orchestrator = _orchestrator;
 
-        // Create tray icon with Exit context menu
+        // Status labels (non-clickable, grayed out)
+        var hookLabel    = new ToolStripLabel("Hook: Active")  { Enabled = false };
+        var uptimeLabel  = new ToolStripLabel("Uptime: 0s")    { Enabled = false };
+        var lastActLabel = new ToolStripLabel("Last: \u2014")  { Enabled = false };
+
         var menu = new ContextMenuStrip();
+
+        // Block 1: Status
+        menu.Items.Add(hookLabel);
+        menu.Items.Add(uptimeLabel);
+        menu.Items.Add(lastActLabel);
+
+        // Separator 1
+        menu.Items.Add(new ToolStripSeparator());
+
+        // Block 2: Actions
+        menu.Items.Add("Settings...", null, OnSettingsClicked);
+        menu.Items.Add("Restart Daemon", null, OnRestartClicked);
+
+        // Separator 2
+        menu.Items.Add(new ToolStripSeparator());
+
+        // Block 3: Exit
         menu.Items.Add("Exit", null, OnExitClicked);
+
+        // Refresh status labels on every menu open (MENU-02)
+        menu.Opening += (_, _) =>
+        {
+            hookLabel.Text    = _hook.IsInstalled ? "Hook: Active" : "Hook: Inactive";
+            uptimeLabel.Text  = _status.FormatUptime();
+            lastActLabel.Text = _status.FormatLastAction();
+        };
 
         // Load custom icon from embedded assembly resource
         var iconStream = Assembly.GetExecutingAssembly()
@@ -67,6 +104,51 @@ internal sealed class DaemonApplicationContext : ApplicationContext
         // Create hidden NativeWindow to receive WM_POWERBROADCAST for sleep/wake recovery.
         // ApplicationContext does not expose WndProc, so we use a message-only window.
         _powerWindow = new PowerBroadcastWindow(_hook, _monitor);
+    }
+
+    private void OnSettingsClicked(object? sender, EventArgs e)
+    {
+        var configPath = FocusConfig.GetConfigPath();
+        if (!File.Exists(configPath))
+            FocusConfig.WriteDefaults(configPath);
+
+        Process.Start(new ProcessStartInfo
+        {
+            FileName        = configPath,
+            UseShellExecute = true
+        });
+    }
+
+    private void OnRestartClicked(object? sender, EventArgs e)
+    {
+        var args = new List<string> { "daemon" };
+        if (_background) args.Add("--background");
+        if (_verbose)    args.Add("--verbose");
+
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName        = Environment.ProcessPath!,
+                Arguments       = string.Join(' ', args),
+                UseShellExecute = false
+            });
+        }
+        catch (Exception ex)
+        {
+            // Surface error in status labels — keep current daemon running (locked decision)
+            _status.LastAction = $"Restart failed: {ex.Message}";
+            return;
+        }
+
+        // Hide tray icon before exit to prevent ghost icon (Pitfall 3)
+        _trayIcon.Visible = false;
+
+        // Signal daemon shutdown
+        _onExit();
+
+        // Exit the STA message pump — new instance will AcquireOrReplace the mutex
+        Application.ExitThread();
     }
 
     private void OnExitClicked(object? sender, EventArgs e)
