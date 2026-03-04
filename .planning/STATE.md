@@ -38,7 +38,7 @@ See: .planning/PROJECT.md (updated 2026-03-03)
 Phase: 15 of 15 (Settings Form)
 Plan: 1 of 1 in current phase (complete)
 Status: Phase 15 Plan 01 complete — v4.0 milestone fully delivered
-Last activity: 2026-03-04 — Completed 15-01: WinForms settings form with all UI sections and atomic config save
+Last activity: 2026-03-04 - Completed quick task 2: Change settings save button to Apply button that restarts daemon with new settings
 
 Progress: [██████████] 100%
 
@@ -86,6 +86,12 @@ Recent decisions affecting v4.0:
 
 - **DPI virtualization (MEDIUM confidence):** Code-constructed WinForms forms on PerMonitorV2 setups — AutoScaleMode.Dpi + FlowLayoutPanel used; visual validation at non-100% DPI still recommended.
 - **Build file-lock (OPERATIONAL):** dotnet build fails to copy output EXE when focus daemon is running (MSB3027). Kill daemon before rebuild.
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 2 | Change settings save button to Apply button that restarts daemon with new settings | 2026-03-04 | af59dc4 | [2-change-settings-save-button-to-apply-but](./quick/2-change-settings-save-button-to-apply-but/) |
 
 ## Session Continuity
 
