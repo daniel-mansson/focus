@@ -272,8 +272,8 @@ rootCommand.SetAction(parseResult =>
 
             // Create overlay on this thread (STA thread via UseWindowsForms=true in csproj)
             // Use Application.DoEvents() as a simple message pump for WM_PAINT handling
-            using var overlayManager = new OverlayManager(renderer, overlayConfig.OverlayColors);
-            overlayManager.ShowOverlay(overlayDirection.Value, fgBounds);
+            using var overlayManager = new OverlayManager(renderer);
+            overlayManager.ShowOverlay(overlayDirection.Value, fgBounds, overlayConfig.OverlayColors.GetArgb(overlayDirection.Value));
 
             // Wait for keypress on a background thread, then signal exit
             var exitEvent = new ManualResetEventSlim(false);
@@ -324,7 +324,7 @@ rootCommand.SetAction(parseResult =>
             Console.WriteLine($"  Strategy: {allConfig.Strategy}");
             Console.WriteLine();
 
-            using var overlayManager = new OverlayManager(allRenderer, allConfig.OverlayColors);
+            using var overlayManager = new OverlayManager(allRenderer);
 
             foreach (var dir in new[] { Direction.Left, Direction.Right, Direction.Up, Direction.Down })
             {
@@ -356,7 +356,7 @@ rootCommand.SetAction(parseResult =>
                     right  = topWindow.Right,
                     bottom = topWindow.Bottom
                 };
-                overlayManager.ShowOverlay(dir, targetBounds);
+                overlayManager.ShowOverlay(dir, targetBounds, allConfig.OverlayColors.GetArgb(dir));
 
                 Console.WriteLine();
             }

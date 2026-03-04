@@ -48,8 +48,8 @@ internal sealed class DaemonApplicationContext : ApplicationContext
         // OverlayOrchestrator installs a WinEvent hook (SetWinEventHook) and creates a WinForms
         // Control for cross-thread Invoke — both require the STA thread.
         var renderer = OverlayManager.CreateRenderer(config.OverlayRenderer);
-        _overlayManager = new OverlayManager(renderer, config.OverlayColors);
-        _orchestrator = new OverlayOrchestrator(_overlayManager, config, verbose, status);
+        _overlayManager = new OverlayManager(renderer);
+        _orchestrator = new OverlayOrchestrator(_overlayManager, verbose, status);
 
         // Expose orchestrator to DaemonCommand.Run via out parameter so it can inject callbacks
         // and call RequestShutdown/Dispose during the ordered teardown sequence.
@@ -111,7 +111,7 @@ internal sealed class DaemonApplicationContext : ApplicationContext
     {
         if (_settingsForm == null || _settingsForm.IsDisposed)
         {
-            _settingsForm = new SettingsForm(onApply: () => OnRestartClicked(null, EventArgs.Empty));
+            _settingsForm = new SettingsForm();
             _settingsForm.Show();
         }
         else

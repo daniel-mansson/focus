@@ -38,7 +38,6 @@ internal sealed class OverlayOrchestrator : IDisposable
     private const int LeftRightInset = 3;
 
     private readonly OverlayManager _overlayManager;
-    private readonly FocusConfig _config;
     private readonly bool _verbose;
     private readonly DaemonStatus _status;
 
@@ -65,10 +64,9 @@ internal sealed class OverlayOrchestrator : IDisposable
     /// <summary>
     /// Creates the orchestrator. Must be called on the STA thread.
     /// </summary>
-    public OverlayOrchestrator(OverlayManager overlayManager, FocusConfig config, bool verbose, DaemonStatus status)
+    public OverlayOrchestrator(OverlayManager overlayManager, bool verbose, DaemonStatus status)
     {
         _overlayManager = overlayManager;
-        _config = config;
         _verbose = verbose;
         _status = status;
 
@@ -312,9 +310,10 @@ internal sealed class OverlayOrchestrator : IDisposable
     {
         _capsLockHeld = true;
 
-        if (_config.OverlayDelayMs > 0)
+        var delayMs = FocusConfig.Load().OverlayDelayMs;
+        if (delayMs > 0)
         {
-            _delayTimer.Interval = _config.OverlayDelayMs;
+            _delayTimer.Interval = delayMs;
             _delayTimer.Start();
         }
         else
@@ -489,7 +488,7 @@ internal sealed class OverlayOrchestrator : IDisposable
 
                     ClampToMonitor(new HWND((nint)(IntPtr)wrapTarget.Hwnd), ref wrapBounds);
 
-                    _overlayManager.ShowOverlay(direction, wrapBounds);
+                    _overlayManager.ShowOverlay(direction, wrapBounds, config.OverlayColors.GetArgb(direction));
                     candidatesFound++;
                 }
                 else
@@ -524,7 +523,7 @@ internal sealed class OverlayOrchestrator : IDisposable
             // Clamp to the monitor so overlays on partially off-screen windows stay visible.
             ClampToMonitor(new HWND((nint)(IntPtr)top.Hwnd), ref bounds);
 
-            _overlayManager.ShowOverlay(direction, bounds);
+            _overlayManager.ShowOverlay(direction, bounds, config.OverlayColors.GetArgb(direction));
         }
 
         // OVERLAY-05 special case: solo window — all four directions have zero candidates.
