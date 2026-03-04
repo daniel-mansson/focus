@@ -9,9 +9,9 @@ Requirements for milestone v4.0 System Tray & Settings UI. Each maps to roadmap 
 
 ### Tray Identity
 
-- [ ] **ICON-01**: Daemon displays a custom multi-size .ico icon in the system tray (16, 20, 24, 32px)
-- [ ] **ICON-02**: Tray icon tooltip shows "Focus — Navigation Daemon" on hover
-- [ ] **ICON-03**: Custom .ico is embedded as assembly resource and replaceable by swapping the file
+- [x] **ICON-01**: Daemon displays a custom multi-size .ico icon in the system tray (16, 20, 24, 32px)
+- [x] **ICON-02**: Tray icon tooltip shows "Focus — Navigation Daemon" on hover
+- [x] **ICON-03**: Custom .ico is embedded as assembly resource and replaceable by swapping the file
 
 ### Context Menu
 
@@ -68,9 +68,9 @@ Requirements for milestone v4.0 System Tray & Settings UI. Each maps to roadmap 
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ICON-01 | Phase 13 | Pending |
-| ICON-02 | Phase 13 | Pending |
-| ICON-03 | Phase 13 | Pending |
+| ICON-01 | Phase 13 | Complete (2026-03-04) |
+| ICON-02 | Phase 13 | Complete (2026-03-04) |
+| ICON-03 | Phase 13 | Complete (2026-03-04) |
 | MENU-01 | Phase 14 | Pending |
 | MENU-02 | Phase 14 | Pending |
 | MENU-03 | Phase 14 | Pending |
@@ -95,4 +95,4 @@ Requirements for milestone v4.0 System Tray & Settings UI. Each maps to roadmap 
 
 ---
 *Requirements defined: 2026-03-04*
-*Last updated: 2026-03-04 after roadmap creation*
+*Last updated: 2026-03-04 after Phase 13 (Tray Identity) completion*

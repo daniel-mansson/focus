@@ -7,8 +7,8 @@ last_updated: "2026-03-04"
 progress:
   total_phases: 3
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  total_plans: 1
+  completed_plans: 1
 ---
 
 # Project State
@@ -23,24 +23,24 @@ See: .planning/PROJECT.md (updated 2026-03-03)
 ## Current Position
 
 Phase: 13 of 15 (Tray Identity)
-Plan: — of — in current phase
-Status: Ready to plan
-Last activity: 2026-03-04 — Roadmap created for v4.0 (3 phases, 19 requirements mapped)
+Plan: 1 of 1 in current phase (complete)
+Status: Phase 13 complete — ready for Phase 14
+Last activity: 2026-03-04 — Completed 13-01: custom focus-bracket icon + tray tooltip update
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [███░░░░░░░] 10%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 0 (v4.0)
-- Average duration: — min
-- Total execution time: 0 hours
+- Total plans completed: 1 (v4.0)
+- Average duration: 2 min
+- Total execution time: 0.03 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| - | - | - | - |
+| 13 (Tray Identity) | 1 | 2 min | 2 min |
 
 *Updated after each plan completion*
 
@@ -54,6 +54,9 @@ Recent decisions affecting v4.0:
 - Restart: Environment.ProcessPath + Process.Start + Application.ExitThread (not Application.Restart — throws NotSupportedException)
 - Overlay color alpha: preserve existing alpha from config, apply to RGB chosen via ColorDialog
 - Settings form: single-instance pattern via _settingsForm reference + IsDisposed check + BringToFront
+- Icon generator: committed output approach (standalone script, not pre-build MSBuild target) — avoids build latency and file-lock risks
+- EmbeddedResource LogicalName: eliminates namespace-prefix guessing for GetManifestResourceStream
+- Icon DPI sizes: 16/20/24/32px covers 100%/125%/150%/200% DPI on Windows 11
 
 ### Blockers/Concerns
 
@@ -63,5 +66,5 @@ Recent decisions affecting v4.0:
 ## Session Continuity
 
 Last session: 2026-03-04
-Stopped at: Roadmap created — v4.0 phases 13-15 defined, ready to plan Phase 13
+Stopped at: Completed 13-01-PLAN.md — Phase 13 (Tray Identity) complete
 Resume file: None
