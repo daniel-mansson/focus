@@ -17,7 +17,6 @@ namespace Focus.Windows.Daemon.Overlay;
 internal sealed class OverlayManager : IDisposable
 {
     private readonly IOverlayRenderer _renderer;
-    private readonly OverlayColors _colors;
     private readonly Dictionary<Direction, OverlayWindow> _windows;
     private readonly OverlayWindow _foregroundWindow;
     private readonly OverlayWindow _modeArrowWindow;
@@ -28,10 +27,9 @@ internal sealed class OverlayManager : IDisposable
     /// Creates the manager and all four overlay windows plus 9 number label windows.
     /// Must be called on the STA thread.
     /// </summary>
-    public OverlayManager(IOverlayRenderer renderer, OverlayColors colors)
+    public OverlayManager(IOverlayRenderer renderer)
     {
         _renderer = renderer;
-        _colors   = colors;
 
         _windows = new Dictionary<Direction, OverlayWindow>
         {
@@ -52,28 +50,13 @@ internal sealed class OverlayManager : IDisposable
     /// <summary>
     /// Shows and paints the overlay for the given direction at the specified screen bounds.
     /// </summary>
-    public void ShowOverlay(Direction direction, RECT bounds)
+    public void ShowOverlay(Direction direction, RECT bounds, uint argbColor)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
         var window = _windows[direction];
         window.Reposition(bounds);
-        _renderer.Paint(window.Hwnd, bounds, _colors.GetArgb(direction), direction);
-        window.Show();
-    }
-
-    /// <summary>
-    /// Shows and paints the overlay for the given direction at the specified screen bounds,
-    /// using a color override instead of the configured direction color.
-    /// Used for the solo-window dim indicator.
-    /// </summary>
-    public void ShowOverlay(Direction direction, RECT bounds, uint colorOverride)
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-
-        var window = _windows[direction];
-        window.Reposition(bounds);
-        _renderer.Paint(window.Hwnd, bounds, colorOverride, direction);
+        _renderer.Paint(window.Hwnd, bounds, argbColor, direction);
         window.Show();
     }
 

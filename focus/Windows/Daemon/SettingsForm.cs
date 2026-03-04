@@ -14,7 +14,6 @@ namespace Focus.Windows.Daemon;
 internal sealed class SettingsForm : Form
 {
     private readonly FocusConfig _config;
-    private readonly Action? _onApply;
     private readonly Dictionary<Direction, Color> _swatchColors = new();
     private byte _opacityAlpha;
 
@@ -33,9 +32,8 @@ internal sealed class SettingsForm : Form
     private int _initialGridX, _initialGridY, _initialSnap, _initialOpacity, _initialDelay;
     private readonly Dictionary<Direction, Color> _initialSwatchColors = new();
 
-    public SettingsForm(Action? onApply = null)
+    public SettingsForm()
     {
-        _onApply = onApply;
         _config = FocusConfig.Load();
         InitializeColors();
         SnapshotInitialValues();
@@ -405,9 +403,6 @@ internal sealed class SettingsForm : Form
             File.Replace(tmpPath, configPath, null);
         else
             File.Move(tmpPath, configPath);
-
-        // Notify caller (e.g. daemon restart to pick up new config)
-        _onApply?.Invoke();
 
         // Update snapshot so button grays out until next change
         SnapshotInitialValues();
