@@ -2,11 +2,15 @@ using System.Diagnostics;
 using System.Drawing;
 using System.Globalization;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Windows.Forms;
 using Focus.Windows.Daemon.Overlay;
+using global::Windows.Win32;
+using global::Windows.Win32.Foundation;
+using global::Windows.Win32.Graphics.Gdi;
 
 namespace Focus.Windows.Daemon;
 
@@ -26,11 +30,16 @@ internal sealed class SettingsForm : Form
     private NumericUpDown _delayNumeric = null!;
     private readonly Dictionary<Direction, Panel> _swatchPanels = new();
 
+    // Grid preview overlay
+    private OverlayWindow? _gridOverlay;
+    private CheckBox _gridPreviewCheck = null!;
+
     public SettingsForm()
     {
         _config = FocusConfig.Load();
         InitializeColors();
         BuildUi();
+        FormClosing += (_, _) => HideGridPreview();
     }
 
     // -------------------------------------------------------------------------
@@ -190,15 +199,30 @@ internal sealed class SettingsForm : Form
 
     private GroupBox BuildGridGroup()
     {
-        var group = MakeGroup("Grid & Snapping", 476, 120);
+        var group = MakeGroup("Grid & Snapping", 476, 148);
 
         int y = 26;
         (_, _gridXNumeric) = AddLabeledNumeric(group, "Grid Fraction X:", 1, 64, _config.GridFractionX, ref y);
         (_, _gridYNumeric) = AddLabeledNumeric(group, "Grid Fraction Y:", 1, 64, _config.GridFractionY, ref y);
         (_, _snapNumeric)  = AddLabeledNumeric(group, "Snap Tolerance %:", 0, 50, _config.SnapTolerancePercent, ref y);
 
-        _gridXNumeric.ValueChanged += (_, _) => SaveConfig();
-        _gridYNumeric.ValueChanged += (_, _) => SaveConfig();
+        _gridPreviewCheck = new CheckBox
+        {
+            Text     = "Show Grid Preview",
+            AutoSize = true,
+            Location = new Point(12, y + 4),
+        };
+        _gridPreviewCheck.CheckedChanged += (_, _) =>
+        {
+            if (_gridPreviewCheck.Checked)
+                ShowGridPreview();
+            else
+                HideGridPreview();
+        };
+        group.Controls.Add(_gridPreviewCheck);
+
+        _gridXNumeric.ValueChanged += (_, _) => { SaveConfig(); RefreshGridPreview(); };
+        _gridYNumeric.ValueChanged += (_, _) => { SaveConfig(); RefreshGridPreview(); };
         _snapNumeric.ValueChanged  += (_, _) => SaveConfig();
 
         return group;
@@ -308,6 +332,50 @@ internal sealed class SettingsForm : Form
         };
         group.Controls.Add(label);
         return group;
+    }
+
+    // ---- Grid preview ----
+
+    private unsafe RECT GetWorkArea()
+    {
+        var handle = new HWND(Handle);
+        var hMon = PInvoke.MonitorFromWindow(handle, MONITOR_FROM_FLAGS.MONITOR_DEFAULTTONEAREST);
+        MONITORINFO mi = default;
+        mi.cbSize = (uint)sizeof(MONITORINFO);
+        if (PInvoke.GetMonitorInfo(hMon, ref mi))
+            return mi.rcWork;
+        return default;
+    }
+
+    private void ShowGridPreview()
+    {
+        var workArea = GetWorkArea();
+        int w = workArea.right - workArea.left;
+        int h = workArea.bottom - workArea.top;
+        if (w <= 0 || h <= 0) return;
+
+        _gridOverlay ??= new OverlayWindow();
+
+        var (stepX, stepY) = GridCalculator.GetGridStep(w, h, (int)_gridXNumeric.Value, (int)_gridYNumeric.Value);
+
+        _gridOverlay.Reposition(workArea);
+        GridRenderer.PaintGrid(_gridOverlay.Hwnd, workArea, stepX, stepY);
+        _gridOverlay.Show();
+    }
+
+    private void HideGridPreview()
+    {
+        if (_gridOverlay != null)
+        {
+            _gridOverlay.Dispose();
+            _gridOverlay = null;
+        }
+    }
+
+    private void RefreshGridPreview()
+    {
+        if (_gridPreviewCheck.Checked)
+            ShowGridPreview();
     }
 
     // ---- Auto-save on every change ----

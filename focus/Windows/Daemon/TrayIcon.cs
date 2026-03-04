@@ -101,6 +101,7 @@ internal sealed class DaemonApplicationContext : ApplicationContext
             Text = "Focus \u2014 Navigation Daemon",
             Visible = true
         };
+        _trayIcon.MouseDoubleClick += (_, _) => OnSettingsClicked(null, EventArgs.Empty);
 
         // Create hidden NativeWindow to receive WM_POWERBROADCAST for sleep/wake recovery.
         // ApplicationContext does not expose WndProc, so we use a message-only window.
