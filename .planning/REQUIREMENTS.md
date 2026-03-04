@@ -68,31 +68,31 @@ Requirements for milestone v4.0 System Tray & Settings UI. Each maps to roadmap 
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ICON-01 | — | Pending |
-| ICON-02 | — | Pending |
-| ICON-03 | — | Pending |
-| MENU-01 | — | Pending |
-| MENU-02 | — | Pending |
-| MENU-03 | — | Pending |
-| MENU-04 | — | Pending |
-| MENU-05 | — | Pending |
-| SETS-01 | — | Pending |
-| SETS-02 | — | Pending |
-| SETS-03 | — | Pending |
-| SETS-04 | — | Pending |
-| SETS-05 | — | Pending |
-| SETS-06 | — | Pending |
-| SETS-07 | — | Pending |
-| SETS-08 | — | Pending |
-| LIFE-01 | — | Pending |
-| LIFE-02 | — | Pending |
-| LIFE-03 | — | Pending |
+| ICON-01 | Phase 13 | Pending |
+| ICON-02 | Phase 13 | Pending |
+| ICON-03 | Phase 13 | Pending |
+| MENU-01 | Phase 14 | Pending |
+| MENU-02 | Phase 14 | Pending |
+| MENU-03 | Phase 14 | Pending |
+| MENU-04 | Phase 14 | Pending |
+| MENU-05 | Phase 14 | Pending |
+| SETS-01 | Phase 15 | Pending |
+| SETS-02 | Phase 15 | Pending |
+| SETS-03 | Phase 15 | Pending |
+| SETS-04 | Phase 15 | Pending |
+| SETS-05 | Phase 15 | Pending |
+| SETS-06 | Phase 15 | Pending |
+| SETS-07 | Phase 15 | Pending |
+| SETS-08 | Phase 15 | Pending |
+| LIFE-01 | Phase 14 | Pending |
+| LIFE-02 | Phase 14 | Pending |
+| LIFE-03 | Phase 14 | Pending |
 
 **Coverage:**
 - v4.0 requirements: 19 total
-- Mapped to phases: 0
-- Unmapped: 19 (pending roadmap)
+- Mapped to phases: 19
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-04*
-*Last updated: 2026-03-04 after initial definition*
+*Last updated: 2026-03-04 after roadmap creation*
