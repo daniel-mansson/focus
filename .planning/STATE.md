@@ -2,28 +2,15 @@
 gsd_state_version: 1.0
 milestone: v5.0
 milestone_name: Installer
-status: ready-to-plan
-stopped_at: Phase 16 context gathered
-last_updated: "2026-03-05T21:42:41.497Z"
-last_activity: 2026-03-05 -- v5.0 roadmap created (phases 16-18)
+status: executing
+stopped_at: Completed 16-01-PLAN.md
+last_updated: "2026-03-05T22:02:10Z"
+last_activity: 2026-03-05 -- Phase 16 Plan 01 complete (build pipeline & installer)
 progress:
   total_phases: 3
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
----
-
----
-gsd_state_version: 1.0
-milestone: v5.0
-milestone_name: Installer
-status: ready-to-plan
-last_updated: "2026-03-05"
-progress:
-  total_phases: 3
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  completed_phases: 1
+  total_plans: 1
+  completed_plans: 1
 ---
 
 # Project State
@@ -33,16 +20,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-05)
 
 **Core value:** Given a direction, reliably switch focus to the most intuitive window in that direction -- fast enough for hotkey use, accurate enough to feel natural.
-**Current focus:** Phase 16 - Build Pipeline & Installer
+**Current focus:** Phase 17 - Task Scheduler Integration
 
 ## Current Position
 
-Phase: 16 of 18 (Build Pipeline & Installer)
-Plan: 0 of TBD in current phase
-Status: Ready to plan
-Last activity: 2026-03-05 -- v5.0 roadmap created (phases 16-18)
+Phase: 16 of 18 (Build Pipeline & Installer) -- COMPLETE
+Plan: 1 of 1 in current phase (all plans complete)
+Status: Phase 16 complete, ready for Phase 17
+Last activity: 2026-03-05 -- Phase 16 Plan 01 complete (build pipeline & installer)
 
-Progress: [░░░░░░░░░░] 0% (0/3 v5.0 phases)
+Progress: [███░░░░░░░] 33% (1/3 v5.0 phases)
 
 ## Accumulated Context
 
@@ -55,22 +42,30 @@ Recent decisions affecting current work:
 - [v5.0 research]: Use PublishSingleFile=true with IncludeNativeLibrariesForSelfExtract=true
 - [v5.0 research]: Task Scheduler with /SC ONLOGON (interactive session), never "run whether logged on or not"
 - [v5.0 research]: Installer never touches %AppData%\focus\config.json -- config owned by daemon runtime
+- [16-01]: ISCC.exe must be on PATH -- no hardcoded path or parameter override
+- [16-01]: AppMutex=Global\focus-daemon matches DaemonMutex.cs exactly for daemon stop on upgrade
+- [16-01]: Parameters: "daemon" on both shortcut and post-install launch (without it, shows CLI help)
 
 ### Pending Todos
 
-None yet.
+None.
 
 ### Blockers/Concerns
 
 - Phase 17 (Task Scheduler): /SC ONLOGON with /RL LIMITED may require admin -- validate before finalizing approach
 - Phase 17: 72-hour default task timeout needs override for long-running daemon
-- Inno Setup 6.7.1 must be available as build-time dependency
+
+## Performance Metrics
+
+| Phase | Plan | Duration | Tasks | Files |
+|-------|------|----------|-------|-------|
+| 16 | 01 | 8min | 3 | 3 |
 
 ## Session Continuity
 
-Last session: 2026-03-05T21:42:41.494Z
-Stopped at: Phase 16 context gathered
-Resume file: .planning/phases/16-build-pipeline-installer/16-CONTEXT.md
+Last session: 2026-03-05T22:02:10Z
+Stopped at: Completed 16-01-PLAN.md
+Resume file: .planning/phases/16-build-pipeline-installer/16-01-SUMMARY.md
 
 ### Quick Tasks Completed
 
