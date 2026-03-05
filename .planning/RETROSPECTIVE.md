@@ -2,6 +2,51 @@
 
 *A living document updated after each milestone. Lessons feed forward into future planning.*
 
+## Milestone: v4.0 — System Tray & Settings UI
+
+**Shipped:** 2026-03-05
+**Phases:** 3 | **Plans:** 3 | **Quick Tasks:** 1
+
+### What Was Built
+- Custom focus-bracket ICO icon (16/20/24/32px PNG frames) generated from drawing primitives and embedded as assembly resource
+- DaemonStatus class with live hook status, uptime tracking, and last action recording through navigation pipeline
+- Three-group tray context menu with live status labels (hook, uptime, last action), Settings, Restart Daemon, and Exit
+- WinForms settings form with About, Navigation, Grid & Snapping, Overlays (color swatches + shared opacity), and Keybindings sections
+- Atomic config save via File.Replace with temp-file swap pattern; File.Move fallback for fresh installs
+- Single-instance non-modal form pattern integrated into tray menu with Dispose cleanup
+
+### What Worked
+- Code-only WinForms (no designer/resx) with FlowLayoutPanel — compact, DPI-aware, no generated code to manage
+- One plan per phase was sufficient — each phase was well-scoped and executed in 2-8 minutes
+- Plain mutable DaemonStatus class (STA-thread-only, no locking) was simpler and correct — avoided over-engineering concurrency
+- ContextMenuStrip.Opening event for live label refresh eliminated all stale-data bugs
+- Quick task for Apply button UX change was the right granularity — small, tracked, atomic
+
+### What Was Inefficient
+- Icon generator approach (standalone script) works but commits output binary — pre-build MSBuild target was rejected due to build latency and file-lock risks, but it means focus.ico is a committed artifact
+- Shared opacity across four direction colors is lossy if manually set to different alphas in JSON — acceptable tradeoff for simpler UI but worth noting
+
+### Patterns Established
+- ICO binary encoding: hand-written BinaryWriter with PNG frames — zero dependency icon generation
+- EmbeddedResource with LogicalName: eliminates namespace-prefix guessing for GetManifestResourceStream
+- Single-instance form pattern: nullable field + IsDisposed check + BringToFront
+- ARGB hex parsing: uint.Parse + bit shifts for decomposition, ToHexColor for recomposition
+- Atomic config write: WriteAllText(.tmp) then File.Replace; File.Move fallback for fresh install
+
+### Key Lessons
+1. Code-only WinForms with layout panels is viable for settings forms — no designer needed for ~300 lines of UI code
+2. STA-thread-only state holders avoid concurrency complexity — if all access is on one thread, don't add locks
+3. ContextMenuStrip.Opening is the correct event for live menu data — never cache status labels
+4. File.Replace is not safe for fresh installs (throws if target doesn't exist) — always provide File.Move fallback
+5. Tray icon ghost prevention: set Visible = false before exit/restart to avoid stale icons in notification area
+
+### Cost Observations
+- Model mix: ~50% sonnet, ~40% opus, ~10% haiku (estimated)
+- Sessions: ~2
+- Notable: Fastest milestone — 3 phases, 3 plans, all completed in <15 minutes of execution time total. Well-scoped phases with clear research and single-plan structure executed cleanly.
+
+---
+
 ## Milestone: v3.1 — Window Management
 
 **Shipped:** 2026-03-03
@@ -181,6 +226,7 @@
 | v2.0 | 3 | 6 | Added human verification checkpoints, systematic deviation tracking |
 | v3.0 | 3 | 3 | Quick task workflow for UX polish, milestone audit caught pre-satisfied requirements |
 | v3.1 | 3 | 8 | Gap closure plans as first-class workflow, dual-rect coordinate pattern, DIB pixel-write rendering |
+| v4.0 | 3 | 3 | Single-plan phases, code-only WinForms, fastest milestone (<15 min total execution) |
 
 ### Top Lessons (Verified Across Milestones)
 
@@ -190,3 +236,5 @@
 4. Milestone audit before completion saves wasted effort — Phase 9 was already working from v2.0 architecture (verified in v3.0)
 5. Quick tasks (`/gsd:quick`) are the right tool for UX polish between formal phases (verified in v3.0, v3.1)
 6. Gap closure plans are a natural part of execution, not a sign of poor planning — UAT-driven corrections catch real bugs systematically (verified in v3.1 — 3 gap closure plans)
+7. Single-plan phases work when scope is tight — v4.0 proved that 1 plan per phase with thorough research can execute cleanly without gap closure (verified in v4.0 — 0 deviations in Phase 15)
+8. Code-only WinForms with layout panels is viable for settings UIs — avoids designer files and handles DPI scaling (verified in v4.0 Phase 15)
