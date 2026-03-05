@@ -29,6 +29,9 @@ internal sealed class OverlayOrchestrator : IDisposable
     // ~88% opacity white — thin full-perimeter border on the currently focused window.
     private const uint ForegroundBorderColor = 0xE0FFFFFF;
 
+    // ~88% opacity red — shown when navigating to an elevated (admin) window the daemon can't control.
+    private const uint ElevatedWarningColor = 0xE0FF2222;
+
     // Mode-specific border and arrow colors (OVRL-01, OVRL-02, OVRL-03).
     private const uint MoveModeColor = 0xE0FF9900; // ~88% opacity amber/orange
     private const uint GrowModeColor = 0xE000CCBB; // ~88% opacity cyan/teal
@@ -48,6 +51,13 @@ internal sealed class OverlayOrchestrator : IDisposable
 
     // Optional activation delay (config.OverlayDelayMs). Fired once, then the Tick handler stops it.
     private readonly System.Windows.Forms.Timer _delayTimer;
+
+    // Auto-dismiss timer for the elevated-window red border warning (2 seconds).
+    private readonly System.Windows.Forms.Timer _elevatedWarningTimer;
+
+    // True while the elevated-window red border is being shown. Suppresses OnForegroundChanged
+    // from overwriting the red border with normal overlays.
+    private bool _elevatedWarningActive;
 
     private bool _capsLockHeld;
 
@@ -82,6 +92,10 @@ internal sealed class OverlayOrchestrator : IDisposable
         // Activation delay timer — fires once, then the Tick handler stops it.
         _delayTimer = new System.Windows.Forms.Timer();
         _delayTimer.Tick += OnDelayTimerTick;
+
+        // Elevated window warning timer — auto-dismiss red border after 2 seconds.
+        _elevatedWarningTimer = new System.Windows.Forms.Timer { Interval = 2000 };
+        _elevatedWarningTimer.Tick += OnElevatedWarningTimerTick;
     }
 
     // -----------------------------------------------------------------------------------------
@@ -238,10 +252,29 @@ internal sealed class OverlayOrchestrator : IDisposable
                 $"[{ts}] Navigate: {direction} | origin: 0x{fgHwnd:X8} center=({originX:F0}, {originY:F0}) | candidates: {ranked.Count}");
         }
 
-        // 7. Activate best candidate with wrap handling.
+        // 7. Pre-activation elevation check on best candidate.
+        //    Must show the red border BEFORE activating, because after activation
+        //    the elevated window owns the z-order and UIPI prevents our overlay from appearing on top.
+        bool targetIsElevated = false;
+        if (ranked.Count > 0)
+        {
+            targetIsElevated = FocusActivator.IsWindowElevated(ranked[0].Window.Hwnd,
+                _verbose ? ex => Console.Error.WriteLine($"[{DateTime.Now:HH:mm:ss.fff}] IsWindowElevated error: {ex}") : null);
+            if (targetIsElevated)
+            {
+                if (_verbose)
+                {
+                    var ts = DateTime.Now.ToString("HH:mm:ss.fff");
+                    Console.Error.WriteLine($"[{ts}] Navigate: target is elevated (admin) — showing warning before activation");
+                }
+                ShowElevatedWarning(new HWND((nint)(IntPtr)ranked[0].Window.Hwnd));
+            }
+        }
+
+        // 8. Activate best candidate with wrap handling.
         int result = FocusActivator.ActivateWithWrap(ranked, filtered, dir.Value, config.Strategy, config.Wrap, _verbose);
 
-        // 8. Verbose: log outcome. result==1 (no candidates) is a silent no-op per user decision.
+        // 9. Verbose: log outcome. result==1 (no candidates) is a silent no-op per user decision.
         if (_verbose)
         {
             var ts = DateTime.Now.ToString("HH:mm:ss.fff");
@@ -251,11 +284,18 @@ internal sealed class OverlayOrchestrator : IDisposable
                 Console.Error.WriteLine($"[{ts}] Navigate: {direction} -> all activations failed");
         }
 
-        // 9. Record last action for tray menu display.
+        // 10. Record last action for tray menu display.
         if (result == 0 && ranked.Count > 0)
         {
             string dirCapitalized = char.ToUpper(direction[0]) + direction[1..];
             _status.LastAction = $"Focus {dirCapitalized} \u2192 {ranked[0].Window.ProcessName}";
+        }
+
+        // If we showed the warning but activation failed, hide it
+        if (targetIsElevated && result != 0)
+        {
+            _elevatedWarningTimer.Stop();
+            _overlayManager.HideAll();
         }
     }
 
@@ -281,10 +321,24 @@ internal sealed class OverlayOrchestrator : IDisposable
         }
 
         var target = sorted[index];
+
+        // Show warning BEFORE activation so overlay renders above the non-elevated foreground
+        bool targetIsElevated = FocusActivator.IsWindowElevated(target.Hwnd,
+            _verbose ? ex => Console.Error.WriteLine($"[{DateTime.Now:HH:mm:ss.fff}] IsWindowElevated error: {ex}") : null);
+        if (targetIsElevated)
+            ShowElevatedWarning(new HWND((nint)(IntPtr)target.Hwnd));
+
         bool ok = FocusActivator.TryActivateWindow(target.Hwnd);
 
         if (ok)
+        {
             _status.LastAction = $"Focus #{number} \u2192 {target.ProcessName}";
+        }
+        else if (targetIsElevated)
+        {
+            _elevatedWarningTimer.Stop();
+            _overlayManager.HideAll();
+        }
 
         if (_verbose)
         {
@@ -349,6 +403,10 @@ internal sealed class OverlayOrchestrator : IDisposable
         // Stop delay timer — user released before delay elapsed, preventing a spurious trigger.
         _delayTimer.Stop();
 
+        // Stop elevated warning timer if active.
+        _elevatedWarningTimer.Stop();
+        _elevatedWarningActive = false;
+
         _overlayManager.HideAll();
     }
 
@@ -364,10 +422,45 @@ internal sealed class OverlayOrchestrator : IDisposable
         }
     }
 
+    /// <summary>
+    /// Shows a red border on an elevated window for 2 seconds, then hides all overlays.
+    /// Called on the STA thread after successfully navigating to an admin-elevated window.
+    /// </summary>
+    private unsafe void ShowElevatedWarning(HWND hwnd)
+    {
+        _elevatedWarningActive = true;
+        _overlayManager.HideAll();
+
+        RECT bounds = default;
+        var boundsBytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref bounds, 1));
+        var hr = PInvoke.DwmGetWindowAttribute(
+            hwnd,
+            DWMWINDOWATTRIBUTE.DWMWA_EXTENDED_FRAME_BOUNDS,
+            boundsBytes);
+
+        if (hr.Succeeded && (bounds.right - bounds.left) > 0)
+        {
+            _overlayManager.ShowForegroundOverlay(bounds, ElevatedWarningColor);
+        }
+
+        _elevatedWarningTimer.Stop();
+        _elevatedWarningTimer.Start();
+    }
+
+    private void OnElevatedWarningTimerTick(object? sender, EventArgs e)
+    {
+        _elevatedWarningTimer.Stop();
+        _elevatedWarningActive = false;
+        _overlayManager.HideAll();
+    }
+
     private void OnForegroundChanged(HWND hwnd)
     {
         // Only reposition while CapsLock is held.
         if (!_capsLockHeld) return;
+
+        // Don't overwrite the red elevated-window warning border.
+        if (_elevatedWarningActive) return;
 
         ShowOverlaysForCurrentForeground();
     }
@@ -617,6 +710,9 @@ internal sealed class OverlayOrchestrator : IDisposable
 
         _delayTimer.Stop();
         _delayTimer.Dispose();
+
+        _elevatedWarningTimer.Stop();
+        _elevatedWarningTimer.Dispose();
 
         _staDispatcher.Dispose();
     }

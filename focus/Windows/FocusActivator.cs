@@ -9,6 +9,17 @@ namespace Focus.Windows;
 [SupportedOSPlatform("windows5.0")]
 internal static class FocusActivator
 {
+    // advapi32 P/Invoke for elevation check (not available via CsWin32)
+    private const uint TOKEN_QUERY = 0x0008;
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    private static extern bool OpenProcessToken(IntPtr ProcessHandle, uint DesiredAccess, out IntPtr TokenHandle);
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    private static extern bool GetTokenInformation(IntPtr TokenHandle, int TokenInformationClass,
+        out int TokenInformation, int TokenInformationLength, out int ReturnLength);
+
+    private const int TokenElevationType = 18; // TOKEN_INFORMATION_CLASS.TokenElevationType
     /// <summary>
     /// Attempts to activate a single window using the SendInput ALT bypass followed by SetForegroundWindow.
     /// </summary>
@@ -137,6 +148,95 @@ internal static class FocusActivator
         PInvoke.MessageBeep((global::Windows.Win32.UI.WindowsAndMessaging.MESSAGEBOX_STYLE)0xFFFFFFFF); // system default beep (0xFFFFFFFF = simple beep)
         return 1; // still exit code 1 (no focus switch)
     }
+
+    /// <summary>
+    /// Returns true if the window belongs to an elevated (admin) process and this daemon is NOT elevated.
+    /// When both are elevated, UIPI is not a problem — returns false.
+    /// </summary>
+    public static unsafe bool IsWindowElevated(nint hwnd, Action<Exception>? onError = null)
+    {
+        try
+        {
+            var targetHwnd = new HWND((void*)(IntPtr)hwnd);
+            PInvoke.GetWindowThreadProcessId(targetHwnd, out uint pid);
+            if (pid == 0) return false;
+
+            var hProcess = PInvoke.OpenProcess(
+                global::Windows.Win32.System.Threading.PROCESS_ACCESS_RIGHTS.PROCESS_QUERY_LIMITED_INFORMATION,
+                false, pid);
+            if (hProcess.IsNull) return true; // can't open = assume elevated
+
+            try
+            {
+                if (!OpenProcessToken(hProcess, TOKEN_QUERY, out var hToken))
+                {
+                    // OpenProcessToken fails with ACCESS_DENIED for elevated processes
+                    // when the caller is not elevated — this IS the elevation signal.
+                    int err = Marshal.GetLastWin32Error();
+                    return err == 5; // ERROR_ACCESS_DENIED = elevated target
+                }
+
+                try
+                {
+                    if (GetTokenInformation(hToken, TokenElevationType,
+                            out int elevationType, sizeof(int), out _))
+                    {
+                        // TokenElevationTypeFull (2) = process is running elevated via UAC
+                        // TokenElevationTypeDefault (1) = UAC disabled or standard user
+                        // TokenElevationTypeLimited (3) = filtered token (non-elevated admin)
+                        if (elevationType != 2) return false;
+
+                        // Target is fully elevated — check if WE are too
+                        return !IsCurrentProcessElevated();
+                    }
+                    return false;
+                }
+                finally
+                {
+                    CloseHandleRaw(hToken);
+                }
+            }
+            finally
+            {
+                PInvoke.CloseHandle(hProcess);
+            }
+        }
+        catch (Exception ex)
+        {
+            onError?.Invoke(ex);
+            return false; // never crash the daemon for an elevation check
+        }
+    }
+
+    private static bool IsCurrentProcessElevated()
+    {
+        try
+        {
+            var hProcess = System.Diagnostics.Process.GetCurrentProcess().Handle;
+            if (!OpenProcessToken(hProcess, TOKEN_QUERY, out var hToken))
+                return false;
+
+            try
+            {
+                if (GetTokenInformation(hToken, TokenElevationType,
+                        out int elevationType, sizeof(int), out _))
+                    return elevationType == 2; // TokenElevationTypeFull
+                return false;
+            }
+            finally
+            {
+                CloseHandleRaw(hToken);
+            }
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    [DllImport("kernel32.dll", EntryPoint = "CloseHandle", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CloseHandleRaw(IntPtr hObject);
 
     private static string Truncate(string value, int maxLen) =>
         value.Length <= maxLen ? value : value[..(maxLen - 3)] + "...";
