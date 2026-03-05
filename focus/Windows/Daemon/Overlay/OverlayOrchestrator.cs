@@ -52,12 +52,23 @@ internal sealed class OverlayOrchestrator : IDisposable
     // Optional activation delay (config.OverlayDelayMs). Fired once, then the Tick handler stops it.
     private readonly System.Windows.Forms.Timer _delayTimer;
 
-    // Auto-dismiss timer for the elevated-window red border warning (2 seconds).
-    private readonly System.Windows.Forms.Timer _elevatedWarningTimer;
+    // Flash animation timer for elevated-window red border (150ms toggle interval).
+    private readonly System.Windows.Forms.Timer _flashTimer;
 
     // True while the elevated-window red border is being shown. Suppresses OnForegroundChanged
     // from overwriting the red border with normal overlays.
     private bool _elevatedWarningActive;
+
+    // Two-step elevated navigation confirmation state.
+    // First attempt flashes once without navigating; second attempt within 2s confirms navigation.
+    private nint _pendingElevatedHwnd;         // HWND awaiting confirmation (0 = none pending)
+    private DateTime _pendingElevatedTimestamp; // when the first attempt was made
+
+    // Flash animation state.
+    private int _flashCount;       // tracks toggle count for the flash animation
+    private int _flashMaxCount;    // max toggles (1 flash = 2 toggles for first-attempt; ~20 toggles = 3s for confirmed nav)
+    private RECT _flashBounds;     // cached bounds of the window being flashed
+    private bool _flashVisible;    // current toggle state (on/off)
 
     private bool _capsLockHeld;
 
@@ -97,9 +108,9 @@ internal sealed class OverlayOrchestrator : IDisposable
         _delayTimer = new System.Windows.Forms.Timer();
         _delayTimer.Tick += OnDelayTimerTick;
 
-        // Elevated window warning timer — auto-dismiss red border after 2 seconds.
-        _elevatedWarningTimer = new System.Windows.Forms.Timer { Interval = 2000 };
-        _elevatedWarningTimer.Tick += OnElevatedWarningTimerTick;
+        // Flash animation timer for elevated-window red border (150ms toggle interval).
+        _flashTimer = new System.Windows.Forms.Timer { Interval = 150 };
+        _flashTimer.Tick += OnFlashTimerTick;
     }
 
     /// <summary>
@@ -264,8 +275,8 @@ internal sealed class OverlayOrchestrator : IDisposable
         }
 
         // 7. Pre-activation elevation check on best candidate.
-        //    Must show the red border BEFORE activating, because after activation
-        //    the elevated window owns the z-order and UIPI prevents our overlay from appearing on top.
+        //    Two-step confirmation: first attempt flashes red once without navigating;
+        //    second attempt within 2 seconds confirms and navigates with 3-second flash.
         bool targetIsElevated = false;
         if (ranked.Count > 0)
         {
@@ -273,12 +284,35 @@ internal sealed class OverlayOrchestrator : IDisposable
                 _verbose ? ex => Console.Error.WriteLine($"[{DateTime.Now:HH:mm:ss.fff}] IsWindowElevated error: {ex}") : null);
             if (targetIsElevated)
             {
+                nint targetHwnd = ranked[0].Window.Hwnd;
+
+                // Check if this is a second attempt within 2 seconds to the SAME elevated window
+                bool isConfirmedAttempt = _pendingElevatedHwnd == targetHwnd
+                    && (DateTime.UtcNow - _pendingElevatedTimestamp).TotalMilliseconds < 2000;
+
+                if (!isConfirmedAttempt)
+                {
+                    // FIRST ATTEMPT: flash red border once, do NOT navigate
+                    _pendingElevatedHwnd = targetHwnd;
+                    _pendingElevatedTimestamp = DateTime.UtcNow;
+                    StartFlash(new HWND((nint)(IntPtr)targetHwnd), maxFlashes: 1);
+                    if (_verbose)
+                    {
+                        var ts = DateTime.Now.ToString("HH:mm:ss.fff");
+                        Console.Error.WriteLine($"[{ts}] Navigate: target is elevated — flash warning, awaiting confirmation");
+                    }
+                    return; // Do NOT proceed to activation
+                }
+
+                // CONFIRMED (second attempt): clear pending state, will navigate below
+                _pendingElevatedHwnd = 0;
                 if (_verbose)
                 {
                     var ts = DateTime.Now.ToString("HH:mm:ss.fff");
-                    Console.Error.WriteLine($"[{ts}] Navigate: target is elevated (admin) — showing warning before activation");
+                    Console.Error.WriteLine($"[{ts}] Navigate: elevated target confirmed — navigating with 3s flash");
                 }
-                ShowElevatedWarning(new HWND((nint)(IntPtr)ranked[0].Window.Hwnd));
+                // Show the 3-second flash BEFORE activation (overlay must render above non-elevated foreground)
+                StartFlash(new HWND((nint)(IntPtr)targetHwnd), maxFlashes: 10);
             }
         }
 
@@ -309,10 +343,11 @@ internal sealed class OverlayOrchestrator : IDisposable
             ForceReleaseForElevatedWindow();
         }
 
-        // If we showed the warning but activation failed, hide it
+        // If we showed the flash but activation failed, stop the flash and hide
         if (targetIsElevated && result != 0)
         {
-            _elevatedWarningTimer.Stop();
+            _flashTimer.Stop();
+            _elevatedWarningActive = false;
             _overlayManager.HideAll();
         }
     }
@@ -340,11 +375,36 @@ internal sealed class OverlayOrchestrator : IDisposable
 
         var target = sorted[index];
 
-        // Show warning BEFORE activation so overlay renders above the non-elevated foreground
+        // Two-step confirmation for elevated windows (same pattern as NavigateSta)
         bool targetIsElevated = FocusActivator.IsWindowElevated(target.Hwnd,
             _verbose ? ex => Console.Error.WriteLine($"[{DateTime.Now:HH:mm:ss.fff}] IsWindowElevated error: {ex}") : null);
         if (targetIsElevated)
-            ShowElevatedWarning(new HWND((nint)(IntPtr)target.Hwnd));
+        {
+            nint targetHwnd = target.Hwnd;
+            bool isConfirmedAttempt = _pendingElevatedHwnd == targetHwnd
+                && (DateTime.UtcNow - _pendingElevatedTimestamp).TotalMilliseconds < 2000;
+
+            if (!isConfirmedAttempt)
+            {
+                _pendingElevatedHwnd = targetHwnd;
+                _pendingElevatedTimestamp = DateTime.UtcNow;
+                StartFlash(new HWND((nint)(IntPtr)targetHwnd), maxFlashes: 1);
+                if (_verbose)
+                {
+                    var ts = DateTime.Now.ToString("HH:mm:ss.fff");
+                    Console.Error.WriteLine($"[{ts}] Number: {number} -> elevated, awaiting confirmation");
+                }
+                return; // Do NOT activate
+            }
+
+            _pendingElevatedHwnd = 0;
+            if (_verbose)
+            {
+                var ts = DateTime.Now.ToString("HH:mm:ss.fff");
+                Console.Error.WriteLine($"[{ts}] Number: {number} -> elevated confirmed, navigating with 3s flash");
+            }
+            StartFlash(new HWND((nint)(IntPtr)targetHwnd), maxFlashes: 10);
+        }
 
         bool ok = FocusActivator.TryActivateWindow(target.Hwnd);
 
@@ -356,7 +416,8 @@ internal sealed class OverlayOrchestrator : IDisposable
         }
         else if (targetIsElevated)
         {
-            _elevatedWarningTimer.Stop();
+            _flashTimer.Stop();
+            _elevatedWarningActive = false;
             _overlayManager.HideAll();
         }
 
@@ -423,9 +484,12 @@ internal sealed class OverlayOrchestrator : IDisposable
         // Stop delay timer — user released before delay elapsed, preventing a spurious trigger.
         _delayTimer.Stop();
 
-        // Stop elevated warning timer if active.
-        _elevatedWarningTimer.Stop();
+        // Stop flash timer if active.
+        _flashTimer.Stop();
         _elevatedWarningActive = false;
+
+        // Clear pending elevated confirmation state.
+        _pendingElevatedHwnd = 0;
 
         _overlayManager.HideAll();
     }
@@ -443,12 +507,15 @@ internal sealed class OverlayOrchestrator : IDisposable
     }
 
     /// <summary>
-    /// Shows a red border on an elevated window for 2 seconds, then hides all overlays.
-    /// Called on the STA thread after successfully navigating to an admin-elevated window.
+    /// Starts a flashing red border animation on the given elevated window.
+    /// Each flash = show (150ms) + hide (150ms) = 300ms total.
+    /// First-attempt warning: maxFlashes=1 (~300ms total).
+    /// Confirmed navigation: maxFlashes=10 (~3 seconds total).
     /// </summary>
-    private unsafe void ShowElevatedWarning(HWND hwnd)
+    private unsafe void StartFlash(HWND hwnd, int maxFlashes)
     {
         _elevatedWarningActive = true;
+        _flashTimer.Stop();
         _overlayManager.HideAll();
 
         RECT bounds = default;
@@ -458,34 +525,58 @@ internal sealed class OverlayOrchestrator : IDisposable
             DWMWINDOWATTRIBUTE.DWMWA_EXTENDED_FRAME_BOUNDS,
             boundsBytes);
 
-        if (hr.Succeeded && (bounds.right - bounds.left) > 0)
-        {
-            _overlayManager.ShowForegroundOverlay(bounds, ElevatedWarningColor);
-        }
+        if (!hr.Succeeded || (bounds.right - bounds.left) <= 0)
+            return;
 
-        _elevatedWarningTimer.Stop();
-        _elevatedWarningTimer.Start();
+        _flashBounds = bounds;
+        _flashCount = 0;
+        _flashMaxCount = maxFlashes * 2; // Each flash = show + hide = 2 ticks
+        _flashVisible = false;
+
+        // Show immediately on first tick
+        _overlayManager.ShowForegroundOverlay(bounds, ElevatedWarningColor);
+        _flashVisible = true;
+        _flashCount = 1;
+
+        _flashTimer.Start();
     }
 
-    private void OnElevatedWarningTimerTick(object? sender, EventArgs e)
+    private void OnFlashTimerTick(object? sender, EventArgs e)
     {
-        _elevatedWarningTimer.Stop();
-        _elevatedWarningActive = false;
-        _overlayManager.HideAll();
+        _flashCount++;
+
+        if (_flashCount >= _flashMaxCount)
+        {
+            _flashTimer.Stop();
+            _elevatedWarningActive = false;
+            _overlayManager.HideAll();
+            return;
+        }
+
+        if (_flashVisible)
+        {
+            _overlayManager.HideAll();
+            _flashVisible = false;
+        }
+        else
+        {
+            _overlayManager.ShowForegroundOverlay(_flashBounds, ElevatedWarningColor);
+            _flashVisible = true;
+        }
     }
 
     /// <summary>
     /// Releases CapsLock hold state without hiding the elevated warning overlay.
-    /// Called after successfully activating an elevated window so that the overlay
-    /// does not reactivate when the user manually navigates away.
+    /// Called after successfully activating an elevated window so that the flash
+    /// animation continues for its full duration even after caps release.
     /// </summary>
     private void ForceReleaseForElevatedWindow()
     {
         _capsLockHeld = false;
         _currentMode = WindowMode.Navigate;
         _delayTimer.Stop();
-        // Do NOT stop _elevatedWarningTimer or set _elevatedWarningActive = false —
-        // the red border should remain visible for the full 2-second duration.
+        // Do NOT stop _flashTimer or set _elevatedWarningActive = false —
+        // the flashing red border should continue for the full 3-second duration.
 
         // Reset CapsLockMonitor state so the next CapsLock press is detected as a fresh hold.
         _onForceRelease?.Invoke();
@@ -748,8 +839,8 @@ internal sealed class OverlayOrchestrator : IDisposable
         _delayTimer.Stop();
         _delayTimer.Dispose();
 
-        _elevatedWarningTimer.Stop();
-        _elevatedWarningTimer.Dispose();
+        _flashTimer.Stop();
+        _flashTimer.Dispose();
 
         _staDispatcher.Dispose();
     }
