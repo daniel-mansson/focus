@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v5.0
 milestone_name: Installer
-status: defining-requirements
+status: ready-to-plan
 last_updated: "2026-03-05"
 progress:
-  total_phases: 0
+  total_phases: 3
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -17,20 +17,44 @@ progress:
 
 See: .planning/PROJECT.md (updated 2026-03-05)
 
-**Core value:** Given a direction, reliably switch focus to the most intuitive window in that direction — fast enough for hotkey use, accurate enough to feel natural.
-**Current focus:** v5.0 Installer — defining requirements
+**Core value:** Given a direction, reliably switch focus to the most intuitive window in that direction -- fast enough for hotkey use, accurate enough to feel natural.
+**Current focus:** Phase 16 - Build Pipeline & Installer
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-03-05 — Milestone v5.0 started
+Phase: 16 of 18 (Build Pipeline & Installer)
+Plan: 0 of TBD in current phase
+Status: Ready to plan
+Last activity: 2026-03-05 -- v5.0 roadmap created (phases 16-18)
+
+Progress: [░░░░░░░░░░] 0% (0/3 v5.0 phases)
+
+## Accumulated Context
+
+### Decisions
+
+Decisions are logged in PROJECT.md Key Decisions table.
+Recent decisions affecting current work:
+
+- [v5.0 research]: Use Inno Setup 6.7.1 with PrivilegesRequired=lowest and PrivilegesRequiredOverridesAllowed=dialog
+- [v5.0 research]: Use PublishSingleFile=true with IncludeNativeLibrariesForSelfExtract=true
+- [v5.0 research]: Task Scheduler with /SC ONLOGON (interactive session), never "run whether logged on or not"
+- [v5.0 research]: Installer never touches %AppData%\focus\config.json -- config owned by daemon runtime
+
+### Pending Todos
+
+None yet.
+
+### Blockers/Concerns
+
+- Phase 17 (Task Scheduler): /SC ONLOGON with /RL LIMITED may require admin -- validate before finalizing approach
+- Phase 17: 72-hour default task timeout needs override for long-running daemon
+- Inno Setup 6.7.1 must be available as build-time dependency
 
 ## Session Continuity
 
 Last session: 2026-03-05
-Stopped at: Milestone v5.0 initialization
+Stopped at: v5.0 roadmap created, ready to plan Phase 16
 Resume file: None
 
 ### Quick Tasks Completed

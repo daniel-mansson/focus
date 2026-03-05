@@ -59,23 +59,23 @@ Requirements for installer milestone. Each maps to roadmap phases.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PKG-01 | — | Pending |
-| INST-01 | — | Pending |
-| INST-02 | — | Pending |
-| INST-03 | — | Pending |
-| INST-04 | — | Pending |
-| INST-05 | — | Pending |
-| SCHED-01 | — | Pending |
-| SCHED-02 | — | Pending |
-| SCHED-03 | — | Pending |
-| SETS-01 | — | Pending |
-| SETS-02 | — | Pending |
+| PKG-01 | Phase 16 | Pending |
+| INST-01 | Phase 16 | Pending |
+| INST-02 | Phase 16 | Pending |
+| INST-03 | Phase 16 | Pending |
+| INST-04 | Phase 16 | Pending |
+| INST-05 | Phase 16 | Pending |
+| SCHED-01 | Phase 17 | Pending |
+| SCHED-02 | Phase 17 | Pending |
+| SCHED-03 | Phase 17 | Pending |
+| SETS-01 | Phase 18 | Pending |
+| SETS-02 | Phase 18 | Pending |
 
 **Coverage:**
 - v5.0 requirements: 11 total
-- Mapped to phases: 0
-- Unmapped: 11 (pending roadmap creation)
+- Mapped to phases: 11
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-05*
-*Last updated: 2026-03-05 after initial definition*
+*Last updated: 2026-03-05 after roadmap creation*
