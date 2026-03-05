@@ -72,13 +72,26 @@ Given a direction, reliably switch focus to the most intuitive window in that di
 
 ### Active
 
-(No active requirements — planning next milestone)
+<!-- Current scope: v5.0 Installer -->
+
+- [ ] Inno Setup installer with install/uninstall
+- [ ] Task Scheduler startup registration (user-choice elevated or standard)
+- [ ] Install path selection (default: %LocalAppData%\Focus)
+- [ ] Clean uninstall (remove scheduled task, files, registry)
+
+## Current Milestone: v5.0 Installer
+
+**Goal:** Package Focus as a proper installable application with clean install/uninstall and optional startup registration via Task Scheduler.
+
+**Target features:**
+- Inno Setup installer producing a single .exe
+- Task Scheduler registration for daemon autostart at logon
+- User chooses install path (default: %LocalAppData%\Focus) and whether to run elevated
+- Clean uninstall removing all artifacts (files, scheduled task)
 
 ## Current State
 
-Shipped v4.0 (System Tray & Settings UI) on 2026-03-05. All 5 milestones complete (v1.0 through v4.0), 15 phases, 26 plans.
-
-Planning next milestone.
+Shipped v4.0 (System Tray & Settings UI) on 2026-03-05. All 5 milestones complete (v1.0 through v4.0), 15 phases, 26 plans. Starting v5.0 Installer.
 
 ### Out of Scope
 
@@ -147,4 +160,4 @@ AutoHotkey dependency eliminated for core navigation — daemon handles everythi
 | Atomic config save (File.Replace) | Temp-file swap prevents parse errors during mid-write | ✓ Good — daemon keypress during save never fails |
 
 ---
-*Last updated: 2026-03-05 after v4.0 milestone*
+*Last updated: 2026-03-05 after v5.0 milestone start*
