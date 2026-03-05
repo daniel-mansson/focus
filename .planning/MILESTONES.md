@@ -1,4 +1,27 @@
 # Milestones
+## v4.0 System Tray & Settings UI (Shipped: 2026-03-05)
+
+**Delivered:** Polished daemon system tray presence with custom icon, live status context menu, daemon restart, and a WinForms settings UI for all key configuration values.
+
+**Phases completed:** 13-15 (3 phases, 3 plans, 6 tasks)
+**Timeline:** 1 day (2026-03-04)
+**Git range:** `feat(13-01)` → `feat(15-01)`
+**LOC:** ~14,000 C# total (+3,900 lines net)
+
+**Key accomplishments:**
+1. Custom focus-bracket ICO icon (16/20/24/32px PNG frames) generated from drawing primitives and embedded as assembly resource
+2. DaemonStatus class with live hook status, uptime tracking, and last action recording through navigation pipeline
+3. Three-group tray context menu with live status labels, Settings, Restart Daemon, and Exit
+4. WinForms settings form with About, Navigation, Grid & Snapping, Overlays (color swatches + shared opacity), and Keybindings sections
+5. Atomic config save via File.Replace with temp-file swap pattern (File.Move fallback for fresh installs)
+6. Single-instance non-modal form pattern integrated into tray menu with Dispose cleanup
+
+**Requirements:** 19/19 satisfied (ICON-01 through ICON-03, MENU-01 through MENU-05, SETS-01 through SETS-08, LIFE-01 through LIFE-03)
+
+**What's next:** Planning next milestone
+
+---
+
 ## v3.1 Window Management (Shipped: 2026-03-03)
 
 **Phases:** 10-12 (3 phases, 8 plans, 1 quick task)

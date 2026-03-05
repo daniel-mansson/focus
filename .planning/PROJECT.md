@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A lightweight C# tool enabling keyboard-driven directional window focus navigation and grid-snapped window management on Windows, inspired by Hyprland's spatial window switching. In daemon mode (`focus daemon`), holding CAPSLOCK shows colored border overlays on candidate windows, and pressing direction keys (arrows or WASD) instantly switches focus — with overlay chaining for sequential moves and number keys for direct window selection. CAPS+TAB+direction moves windows by grid steps, CAPS+LSHIFT grows edges, CAPS+LCTRL shrinks edges — all with per-monitor grid calculation and cross-monitor transitions. Also works as a stateless CLI (`focus left`) for scripting and external launchers.
+A lightweight C# tool enabling keyboard-driven directional window focus navigation and grid-snapped window management on Windows, inspired by Hyprland's spatial window switching. In daemon mode (`focus daemon`), holding CAPSLOCK shows colored border overlays on candidate windows, and pressing direction keys (arrows or WASD) instantly switches focus — with overlay chaining for sequential moves and number keys for direct window selection. CAPS+TAB+direction moves windows by grid steps, CAPS+LSHIFT grows edges, CAPS+LCTRL shrinks edges — all with per-monitor grid calculation and cross-monitor transitions. System tray icon with live status context menu, daemon restart, and a WinForms settings UI for all configuration values. Also works as a stateless CLI (`focus left`) for scripting and external launchers.
 
 ## Core Value
 
@@ -61,33 +61,30 @@ Given a direction, reliably switch focus to the most intuitive window in that di
 - ✓ Mode-specific overlay indicators (amber Move arrows, cyan Grow arrows) — v3.1
 - ✓ Normal TAB behavior preserved when CAPS not held — v3.1
 
+<!-- Shipped and confirmed valuable (v4.0). -->
+
+- ✓ Custom tray icon (generated .ico, multi-size, embedded as assembly resource) — v4.0
+- ✓ Enhanced right-click context menu (live status labels, settings, restart, exit) — v4.0
+- ✓ WinForms settings window (strategy, grid fractions, overlay colors/timing) — v4.0
+- ✓ About section in settings (name, version, attribution, GitHub link) — v4.0
+- ✓ Daemon status display (hook status, uptime, last action) — v4.0
+- ✓ Daemon restart from context menu — v4.0
+
 ### Active
 
-<!-- Current scope: v4.0 System Tray & Settings UI -->
+(No active requirements — planning next milestone)
 
-- [ ] Custom tray icon (generated .ico, replaceable)
-- [ ] Enhanced right-click context menu (status labels, settings, restart, exit)
-- [ ] WinForms settings window (strategy, grid fractions, overlay colors/timing)
-- [ ] About section in settings (name, attribution, GitHub link)
-- [ ] Daemon status display (hook status, uptime, last action)
-- [ ] Daemon restart from context menu
+## Current State
 
-## Current Milestone: v4.0 System Tray & Settings UI
+Shipped v4.0 (System Tray & Settings UI) on 2026-03-05. All 5 milestones complete (v1.0 through v4.0), 15 phases, 26 plans.
 
-**Goal:** Polish the daemon's system tray presence with a custom icon, informative context menu with daemon status, a WinForms settings UI for key configuration values, and daemon restart capability.
-
-**Target features:**
-- Custom tray icon (generated .ico, embeddable, replaceable later)
-- Right-click context menu with inline status (hook alive, uptime, last action), Settings, Restart Daemon, Exit
-- WinForms settings window for navigation strategy, grid fractions, overlay colors/timing
-- About section with project name, attribution, and link to GitHub repo
-- Daemon restart from tray menu
+Planning next milestone.
 
 ### Out of Scope
 
 - Window tiling or layout management — move/resize are primitives, not layouts
 - Linux/macOS support — Windows-specific by design (Win32 API)
-- GUI or system tray for daemon — daemon managed via CLI only (`focus daemon`); tray icon is minimal (exit only)
+- Full GUI application — daemon uses minimal WinForms (tray icon + settings form); no main window or dashboard
 - Animated overlay transitions (fade in/out) — tested and rejected; instant show/hide feels better
 - Window title/content preview in overlay — DwmRegisterThumbnail complexity; colored border at window position IS the preview
 - Interactive/clickable overlay elements — conflicts with WS_EX_TRANSPARENT click-through; navigation is keyboard-only
@@ -97,13 +94,14 @@ Given a direction, reliably switch focus to the most intuitive window in that di
 
 ## Context
 
-Shipped v3.1 with 11,400 LOC C# across ~30 source files.
-Tech stack: .NET 8 (net8.0-windows), CsWin32 0.3.269 for P/Invoke, WinForms (message pump + tray icon only), GDI for overlay rendering.
+Shipped v4.0 with ~14,000 LOC C# across ~35 source files.
+Tech stack: .NET 8 (net8.0-windows), CsWin32 0.3.269 for P/Invoke, WinForms (message pump + tray icon + settings form), GDI for overlay rendering.
 Two modes: stateless CLI (`focus <direction>`) for scripting, persistent daemon (`focus daemon`) for hotkey navigation + overlay previews + window management.
 Six weighting strategies: balanced, strong-axis-bias, closest-in-direction, edge-matching, edge-proximity, axis-only.
 Daemon handles full navigation flow: CAPSLOCK + direction keys, overlay chaining, CAPS+number window selection.
 Window management: CAPS+TAB+direction (move), CAPS+LSHIFT+direction (grow), CAPS+LCTRL+direction (shrink) — all grid-snapped with per-monitor calculation.
 Cross-monitor transitions with adjacent monitor detection and automatic grid recalculation.
+System tray with custom icon, live status context menu, WinForms settings UI, and daemon restart capability.
 AutoHotkey dependency eliminated for core navigation — daemon handles everything natively.
 
 ## Constraints
@@ -141,6 +139,12 @@ AutoHotkey dependency eliminated for core navigation — daemon handles everythi
 | rcMonitor vs rcWork separation | rcMonitor for adjacency detection, rcWork for placement math | ✓ Good — cross-monitor transitions avoid taskbar overlap |
 | DIB pixel-write arrow renderer | Bounding-box scan + cross-product sign test for filled triangles | ✓ Good — no GDI path dependency, consistent premultiplied alpha |
 | Mode-at-event-time pattern | WindowMode derived from snapshot of _tabHeld + modifiers at direction keydown | ✓ Good — eliminates race condition between modifier release and event processing |
+| Hand-written ICO encoder with PNG frames | 30-line BinaryWriter — zero new dependencies for icon generation | ✓ Good — produces valid multi-size ICO with full ARGB transparency |
+| EmbeddedResource with LogicalName | Eliminates namespace-prefix guessing for GetManifestResourceStream | ✓ Good — clean runtime icon load |
+| DaemonStatus as plain mutable STA-thread-only class | All reads/writes on STA thread — no locking needed | ✓ Good — simple, no concurrency bugs |
+| ContextMenuStrip.Opening for live status | Refresh labels on every menu open | ✓ Good — no stale data ever displayed |
+| FlowLayoutPanel for settings form | Better DPI scaling than absolute pixel positioning | ✓ Good — handles multi-DPI setups |
+| Atomic config save (File.Replace) | Temp-file swap prevents parse errors during mid-write | ✓ Good — daemon keypress during save never fails |
 
 ---
-*Last updated: 2026-03-03 after v4.0 milestone started*
+*Last updated: 2026-03-05 after v4.0 milestone*
