@@ -60,7 +60,7 @@
 
 **Milestone Goal:** Package Focus as an installable application with clean install/uninstall and Task Scheduler startup registration.
 
-- [ ] **Phase 16: Build Pipeline & Installer** - Self-contained publish, Inno Setup installer with install/upgrade/uninstall lifecycle
+- [x] **Phase 16: Build Pipeline & Installer** - Self-contained publish, Inno Setup installer with install/upgrade/uninstall lifecycle (completed 2026-03-05)
 - [ ] **Phase 17: Task Scheduler Integration** - Logon startup registration with elevation choice, clean removal on uninstall
 - [ ] **Phase 18: Settings UI Startup Controls** - Runtime toggles for startup and elevation in the existing settings form
 
@@ -75,7 +75,7 @@
   2. Running Focus-Setup.exe while Focus daemon is already running stops the daemon, upgrades files in-place, and preserves existing config.json
   3. Uninstalling via Add/Remove Programs removes all installed files and shortcuts
   4. After install completes, checking "Launch Focus now" starts the daemon
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 Plans:
 - [ ] 16-01-PLAN.md — Build pipeline (build.ps1) and Inno Setup installer (focus.iss)
 
@@ -120,7 +120,7 @@ Phases execute in numeric order: 16 → 17 → 18
 | 13. Tray Identity | v4.0 | 1/1 | Complete | 2026-03-04 |
 | 14. Context Menu and Daemon Lifecycle | v4.0 | 1/1 | Complete | 2026-03-04 |
 | 15. Settings Form | v4.0 | 1/1 | Complete | 2026-03-04 |
-| 16. Build Pipeline & Installer | v5.0 | 0/1 | In progress | - |
+| 16. Build Pipeline & Installer | 1/1 | Complete   | 2026-03-05 | - |
 | 17. Task Scheduler Integration | v5.0 | 0/0 | Not started | - |
 | 18. Settings UI Startup Controls | v5.0 | 0/0 | Not started | - |
 

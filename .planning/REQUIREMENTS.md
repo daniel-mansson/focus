@@ -9,15 +9,15 @@ Requirements for installer milestone. Each maps to roadmap phases.
 
 ### Build & Packaging
 
-- [ ] **PKG-01**: Installer produces a single setup.exe via Inno Setup with self-contained .NET publish
+- [x] **PKG-01**: Installer produces a single setup.exe via Inno Setup with self-contained .NET publish
 
 ### Installation
 
-- [ ] **INST-01**: User can install Focus to a chosen directory (default: %LocalAppData%\Focus)
-- [ ] **INST-02**: Installer stops running daemon before upgrading files (AppMutex detection)
-- [ ] **INST-03**: Installer upgrades in-place without breaking user config
-- [ ] **INST-04**: User can uninstall via Add/Remove Programs (removes files + scheduled task)
-- [ ] **INST-05**: Installer offers "Launch Focus now" checkbox after install
+- [x] **INST-01**: User can install Focus to a chosen directory (default: %LocalAppData%\Focus)
+- [x] **INST-02**: Installer stops running daemon before upgrading files (AppMutex detection)
+- [x] **INST-03**: Installer upgrades in-place without breaking user config
+- [x] **INST-04**: User can uninstall via Add/Remove Programs (removes files + scheduled task)
+- [x] **INST-05**: Installer offers "Launch Focus now" checkbox after install
 
 ### Startup Registration
 
@@ -59,12 +59,12 @@ Requirements for installer milestone. Each maps to roadmap phases.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PKG-01 | Phase 16 | Pending |
-| INST-01 | Phase 16 | Pending |
-| INST-02 | Phase 16 | Pending |
-| INST-03 | Phase 16 | Pending |
-| INST-04 | Phase 16 | Pending |
-| INST-05 | Phase 16 | Pending |
+| PKG-01 | Phase 16 | Complete |
+| INST-01 | Phase 16 | Complete |
+| INST-02 | Phase 16 | Complete |
+| INST-03 | Phase 16 | Complete |
+| INST-04 | Phase 16 | Complete |
+| INST-05 | Phase 16 | Complete |
 | SCHED-01 | Phase 17 | Pending |
 | SCHED-02 | Phase 17 | Pending |
 | SCHED-03 | Phase 17 | Pending |
