@@ -103,6 +103,18 @@ internal sealed class KeyboardHookHandler : IDisposable
     /// </summary>
     public bool IsInstalled => _hookHandle is { IsInvalid: false };
 
+    /// <summary>
+    /// Resets the CAPSLOCK and modifier held state tracked by the hook callback.
+    /// Called when navigating to an elevated window — UIPI prevents the hook from seeing
+    /// the CapsLock release, so the state must be cleared manually.
+    /// </summary>
+    public void ResetState()
+    {
+        _capsLockHeld = false;
+        _lAltHeld = false;
+        _lWinHeld = false;
+    }
+
     public void Dispose() => Uninstall();
 
     private static bool IsDirectionKey(uint vkCode) => vkCode switch

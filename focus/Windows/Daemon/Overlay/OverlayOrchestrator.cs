@@ -71,6 +71,10 @@ internal sealed class OverlayOrchestrator : IDisposable
     // Checked before Invoke to avoid ObjectDisposedException during shutdown.
     private volatile bool _shutdownRequested;
 
+    // Called when navigating to an elevated window to reset CapsLockMonitor state,
+    // since UIPI prevents the keyboard hook from capturing the CapsLock release.
+    private Action? _onForceRelease;
+
     /// <summary>
     /// Creates the orchestrator. Must be called on the STA thread.
     /// </summary>
@@ -97,6 +101,13 @@ internal sealed class OverlayOrchestrator : IDisposable
         _elevatedWarningTimer = new System.Windows.Forms.Timer { Interval = 2000 };
         _elevatedWarningTimer.Tick += OnElevatedWarningTimerTick;
     }
+
+    /// <summary>
+    /// Callback invoked on the STA thread when navigating to an elevated window.
+    /// Resets external state (e.g. CapsLockMonitor) since UIPI prevents the hook from
+    /// capturing the CapsLock release while an elevated window is focused.
+    /// </summary>
+    public Action? OnForceRelease { set => _onForceRelease = value; }
 
     // -----------------------------------------------------------------------------------------
     // Public API — called from CapsLockMonitor worker thread.
@@ -291,6 +302,13 @@ internal sealed class OverlayOrchestrator : IDisposable
             _status.LastAction = $"Focus {dirCapitalized} \u2192 {ranked[0].Window.ProcessName}";
         }
 
+        // Force-release CapsLock state when successfully activating an elevated window.
+        // UIPI prevents the keyboard hook from capturing the release while elevated window has focus.
+        if (targetIsElevated && result == 0)
+        {
+            ForceReleaseForElevatedWindow();
+        }
+
         // If we showed the warning but activation failed, hide it
         if (targetIsElevated && result != 0)
         {
@@ -333,6 +351,8 @@ internal sealed class OverlayOrchestrator : IDisposable
         if (ok)
         {
             _status.LastAction = $"Focus #{number} \u2192 {target.ProcessName}";
+            if (targetIsElevated)
+                ForceReleaseForElevatedWindow();
         }
         else if (targetIsElevated)
         {
@@ -452,6 +472,23 @@ internal sealed class OverlayOrchestrator : IDisposable
         _elevatedWarningTimer.Stop();
         _elevatedWarningActive = false;
         _overlayManager.HideAll();
+    }
+
+    /// <summary>
+    /// Releases CapsLock hold state without hiding the elevated warning overlay.
+    /// Called after successfully activating an elevated window so that the overlay
+    /// does not reactivate when the user manually navigates away.
+    /// </summary>
+    private void ForceReleaseForElevatedWindow()
+    {
+        _capsLockHeld = false;
+        _currentMode = WindowMode.Navigate;
+        _delayTimer.Stop();
+        // Do NOT stop _elevatedWarningTimer or set _elevatedWarningActive = false —
+        // the red border should remain visible for the full 2-second duration.
+
+        // Reset CapsLockMonitor state so the next CapsLock press is detected as a fresh hold.
+        _onForceRelease?.Invoke();
     }
 
     private void OnForegroundChanged(HWND hwnd)

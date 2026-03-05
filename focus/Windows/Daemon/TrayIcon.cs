@@ -55,6 +55,14 @@ internal sealed class DaemonApplicationContext : ApplicationContext
         // and call RequestShutdown/Dispose during the ordered teardown sequence.
         orchestrator = _orchestrator;
 
+        // Wire up force-release callback so navigating to elevated windows resets both
+        // the hook handler (stops intercepting keys) and the monitor (allows fresh CapsLock press).
+        _orchestrator.OnForceRelease = () =>
+        {
+            _hook.ResetState();
+            _monitor.ResetState();
+        };
+
         // Status labels (non-clickable, grayed out)
         var hookLabel    = new ToolStripLabel("Hook: Active")  { Enabled = false };
         var uptimeLabel  = new ToolStripLabel("Uptime: 0s")    { Enabled = false };
