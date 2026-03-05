@@ -1,195 +1,161 @@
 # Project Research Summary
 
-**Project:** Focus — Windows Focus Navigation Daemon
-**Domain:** Win32 window management — system tray polish, GUI settings, daemon UX (v4.0)
-**Researched:** 2026-03-03
+**Project:** Window Focus Navigation v5.0 -- Installer & Startup Registration
+**Domain:** Windows desktop application packaging (Inno Setup installer + Task Scheduler integration for .NET 8 WinForms daemon)
+**Researched:** 2026-03-05
 **Confidence:** HIGH
 
 ## Executive Summary
 
-Focus is a mature, already-shipped .NET 8 Windows daemon (v3.1) that manages keyboard-driven window navigation via a CAPSLOCK-activated overlay system. The v4.0 milestone is a tray polish pass: replacing the generic Windows system icon with a custom one, enriching the context menu with live daemon status, adding a WinForms settings window for config editing, and exposing a "Restart Daemon" action. This is not a net-new product — it is a finishing layer on a proven architecture that already handles the hard problems (WH_KEYBOARD_LL hook, layered window rendering, grid-based window move/resize).
+Focus v5.0 packages an existing .NET 8 WinForms daemon as a proper installable application. The research is unanimous on the core approach: an Inno Setup installer wrapping a self-contained `dotnet publish` output, with Task Scheduler handling logon startup (replacing Registry Run keys, which cannot support the existing elevated-startup feature). No new NuGet packages are needed. The only new external tool is Inno Setup 6.7.1, a build-time dependency. The existing codebase requires zero C# modifications -- the installer integrates entirely through external tooling (Inno Setup script, `schtasks.exe`, `dotnet publish` flags) and a build-time csproj property group.
 
-The recommended implementation approach requires zero new NuGet packages. Every capability needed for v4.0 — ICO encoding, tray status display, settings form controls, daemon self-restart — is covered by APIs already present in the BCL and the `System.Windows.Forms` assembly that ships with `UseWindowsForms=true`. The only csproj change is adding an `<EmbeddedResource>` entry for the generated ICO file. The settings form is a pure code-constructed `Form` subclass; no designer files, no RESX, no WPF. The existing config hot-reload pattern (re-reads JSON on every keypress) means settings changes are live immediately — no daemon restart is required after saving.
+The recommended approach is a two-step build pipeline: (1) `dotnet publish` with self-contained and ReadyToRun flags producing the deployable payload, then (2) Inno Setup compiling that payload into a single `Focus-Setup.exe`. The installer defaults to per-user install at `%LocalAppData%\Focus`, offers a checkbox for Task Scheduler logon startup with an optional elevation sub-choice, and handles clean uninstall including scheduled task deletion. The daemon's existing `AppMutex` (`Global\focus-daemon`) enables the installer to detect a running instance during upgrades.
 
-The primary risk in this milestone is UX correctness on two fronts: atomic JSON writes (partial-file writes during hot-reload will crash the keypress handler) and single-instance settings form management (opening a second window instead of focusing the existing one is a common tray app mistake). Both risks have clear, well-documented mitigations. The Win32 and WinForms APIs involved are stable, extensively documented, and verified against official sources — this is a LOW engineering risk milestone.
-
----
+The primary risks center on the elevation model: tension between per-user install (no UAC) and elevated Task Scheduler tasks (requires admin). The research identifies 15 specific pitfalls, with 5 rated critical. The most dangerous are (a) locked-file upgrades when the daemon is running, (b) Task Scheduler creating a non-interactive session that hides the tray icon, (c) elevation context causing path resolution to the wrong user profile, and (d) orphaned scheduled tasks surviving uninstall. All have well-documented mitigations. The overall milestone complexity is MEDIUM -- Inno Setup is mature tooling with 25+ years of documentation, and the integration surface with the existing daemon is narrow.
 
 ## Key Findings
 
 ### Recommended Stack
 
-The existing stack (`net8.0-windows`, `UseWindowsForms=true`, `CsWin32`, `System.Text.Json`) provides everything needed for v4.0 without additions. ICO generation is handled by a 30-line hand-written binary encoder using `System.IO.BinaryWriter` and `System.Drawing.Bitmap` — both already available. The ICO binary format (6-byte header, 16-byte directory per image, raw PNG blobs) is a public documented format; no third-party ICO library is warranted. For daemon self-restart, `Environment.ProcessPath` (the .NET 6+ preferred API) is used with `Process.Start`; `Application.Restart()` is explicitly ruled out because it throws `NotSupportedException` when WinForms is not the application entry point.
+No new runtime dependencies. The v5.0 additions are entirely build-time tooling.
 
-**Core technologies (v4.0 additions, all already in project):**
-- `System.IO.BinaryWriter` + `System.Drawing.Bitmap`: ICO binary encoding — 30-line encoder, no new dependency
-- `System.Windows.Forms.ContextMenuStrip.Opening` event: live status refresh in tray menu — fires on right-click, zero polling cost
-- `System.Windows.Forms.TabControl` + `TableLayoutPanel` + `NumericUpDown` + `ColorDialog`: settings form layout — all BCL WinForms, `net8.0-windows`
-- `System.Environment.ProcessPath` + `System.Diagnostics.Process.Start`: daemon self-restart — .NET 6+ preferred API, null-check required
-- `System.Reflection.Assembly.GetManifestResourceStream`: embedded ICO loading — requires exact manifest resource name; verify with `GetManifestResourceNames()` at startup if uncertain
+**Core technologies:**
+- **Inno Setup 6.7.1**: Installer authoring -- free, open-source, produces single `.exe`, Pascal scripting for Task Scheduler integration, supports per-user and admin install modes
+- **`dotnet publish` (self-contained)**: Deployment model -- bundles .NET 8 runtime so users need no prerequisites; ~60-80 MB uncompressed, ~25-35 MB after LZMA2 compression
+- **`PublishReadyToRun`**: Startup optimization -- pre-JIT compilation critical for <100ms hotkey response time
+- **`schtasks.exe`**: Task Scheduler CLI -- Windows built-in, no NuGet package needed, handles create/delete of logon tasks with elevation control
+- **Zero new NuGet packages**: All capabilities covered by existing stack + Windows built-ins + Inno Setup
 
-**Zero new NuGet packages. Zero new Win32 P/Invoke entries. Zero new CsWin32 requirements.**
+**Critical version note:** .NET 8 changed `RuntimeIdentifier` to no longer imply `SelfContained=true`. Must explicitly pass `--self-contained true`.
+
+**Resolved disagreement -- PublishSingleFile:** STACK.md recommends it; ARCHITECTURE.md recommends against it. **Recommendation: Use PublishSingleFile=true with IncludeNativeLibrariesForSelfExtract=true.** Rationale: a single `focus.exe` in the install directory is cleaner for users who browse their AppData, and Inno Setup's `[Files]` section becomes trivial. The "double compression" concern from ARCHITECTURE.md is minor -- disable `EnableCompressionInSingleFile` and let Inno Setup handle all compression. The virus scanner concern is speculative and not validated.
+
+**Resolved disagreement -- PrivilegesRequired:** STACK.md says `admin`; FEATURES.md and ARCHITECTURE.md say `lowest`. **Recommendation: Use `PrivilegesRequired=lowest` with `PrivilegesRequiredOverridesAllowed=dialog`.** Rationale: per-user install without UAC is the right default for a developer tool. If the user wants elevated Task Scheduler startup, the dialog override lets them elevate. For the standard (non-elevated) startup task, a `/RL LIMITED` task with `/SC ONLOGON` still requires admin -- so the targeted elevation via `ShellExec('runas', 'schtasks.exe', ...)` approach from Pitfalls research is the cleanest solution for that specific operation.
 
 ### Expected Features
 
-The v4.0 milestone has one goal: make the daemon feel like a polished, installed Windows tool with an identity, accessible configuration, and operational transparency. The reference pattern is production tools like Docker Desktop and Tailscale — both show status in the right-click menu, expose settings via a tray-accessible form, and provide a restart action.
-
 **Must have (table stakes):**
-- Custom tray icon — `SystemIcons.Application` signals "unfinished software"; distinct icon is required
-- Hover tooltip ("Focus — Navigation Daemon") — users hovering over an unidentified icon cannot tell which process owns it
-- Status labels in context menu (hook status, uptime, last action) — non-clickable `ToolStripMenuItem { Enabled = false }`, refreshed on `Opening` event
-- Settings menu item — opens single-instance WinForms form; `BringToFront()` if already open
-- Settings form: strategy ComboBox, grid NumericUpDown fields, overlay color pickers (ColorDialog), overlay delay NumericUpDown, Save button (atomic write), About section with GitHub LinkLabel
-- Restart Daemon menu item — `Environment.ProcessPath` + `Process.Start` + `Application.ExitThread()`
-- Atomic JSON config write — write to `.tmp`, then `File.Replace`; prevents corrupt reads during hot-reload
-- Single-instance settings form pattern — track `_settingsForm` reference, check `!IsDisposed`, call `BringToFront()`
+- Single setup.exe installer with install/uninstall via Add/Remove Programs
+- Install to user-chosen directory (default `%LocalAppData%\Focus`)
+- Stop running daemon before upgrade (`AppMutex=Global\focus-daemon`)
+- Task Scheduler logon startup with standard/elevated choice
+- Clean uninstall (files + scheduled task + shortcuts)
+- Start Menu shortcut launching `focus.exe daemon --background`
+- Post-install "Launch Focus now" checkbox
 
-**Should have (competitive advantage):**
-- Daemon status panel in settings form with 500ms refresh timer — hook alive, uptime, last action surfaced in the form
-- Dynamic tooltip text showing brief live status — add if users want at-a-glance status without opening the menu
-- Settings form Cancel / discard-changes behavior — add if users report accidental saves
+**Should have (differentiators):**
+- Optional desktop shortcut (unchecked by default)
+- Preserve user config across upgrades (config at `%AppData%\focus\` is untouched)
+- Add `{app}` to user PATH for CLI usage from any terminal
 
-**Defer (v5+):**
-- `excludeList` editor in settings form — list control UI for a low-frequency operation; direct JSON editing is sufficient for now
-- Settings window keyboard shortcuts (Enter = Save, Escape = Close)
-- Config file path displayed in settings for advanced users
-
-**Anti-features (explicitly rejected):**
-- Balloon tip notifications on navigation actions — at 10-50 navigations per minute, maximally disruptive
-- Animated tray icon — draws constant attention; violates Windows notification area guidelines
-- Settings window auto-apply on every keystroke — causes continuous JSON parse errors during editing
+**Defer to v6+:**
+- Code signing (cost, SmartScreen reputation building takes weeks)
+- Auto-update mechanism (server infrastructure, premature for GitHub-released dev tool)
+- MSIX/AppX packaging (sandbox conflicts with keyboard hooks)
+- Winget/Chocolatey packaging (can reuse the Inno Setup `.exe` later)
+- ARM64 build (separate publish target, no user demand yet)
 
 ### Architecture Approach
 
-The v4.0 architecture is entirely additive to the existing v3.1 system. The existing `DaemonApplicationContext` (TrayIcon.cs) gains a custom icon, enriched `ContextMenuStrip`, and references to a new `DaemonStatus` object for live status. A new `SettingsForm` class (pure code-constructed `Form` subclass, no designer) is introduced as a single-instance form managed by a `_settingsForm` reference field. The restart flow exits the current process after spawning a new one; the existing `DaemonMutex.AcquireOrReplace()` semantics handle the kill-and-replace cycle automatically.
+The installer is a pure build-time artifact with no runtime coupling to the daemon. The integration surface is minimal: the Inno Setup script references the `dotnet publish` output directory, uses the existing daemon mutex name for upgrade detection, and invokes `schtasks.exe` for startup registration. The daemon's existing `ElevateOnStartup` self-elevation mechanism coexists safely with Task Scheduler elevation -- when the task starts the daemon elevated, the self-elevation check detects "already elevated" and becomes a no-op.
 
 **Major components:**
-1. `DaemonApplicationContext` (TrayIcon.cs) — MODIFIED: embedded ICO, enriched context menu, `Opening` event handler, `_settingsForm` reference, restart handler
-2. `SettingsForm` (new file) — pure WinForms `Form`: `TabControl` with Navigation/Overlay/Grid/About tabs, `TableLayoutPanel` layout, `ColorDialog` for overlay colors, atomic `Save` to JSON
-3. `DaemonStatus` (new object or inline state on DaemonCommand.cs) — exposes hook alive bool, `_startTime`, `_lastActionDescription` for status display in both menu and settings form
-4. ICO generation (startup utility method, no separate file required) — `WriteIco()` static method produces embedded multi-size ICO using `BinaryWriter` + `Bitmap.Save(stream, ImageFormat.Png)`
+1. **csproj publish properties** -- Release-only PropertyGroup adding self-contained, single-file, and ReadyToRun flags
+2. **`installer/focus-setup.iss`** -- Inno Setup script defining install/uninstall flow, file packaging, shortcuts, Task Scheduler integration via Pascal `[Code]`
+3. **Build script** -- Two-step pipeline: `dotnet publish` then `ISCC.exe focus-setup.iss`
+4. **Task Scheduler integration** -- Pascal script `CurStepChanged`/`CurUninstallStepChanged` event handlers calling `schtasks.exe`
+
+**Key architectural decision:** The installer does NOT touch `%AppData%\focus\config.json`. Config is owned by the daemon runtime. This separation means upgrades never destroy user settings.
 
 ### Critical Pitfalls
 
-The PITFALLS.md document covers v3.1 window move/resize in detail (14 new pitfalls, 8 previously mitigated). For the v4.0 tray polish milestone, the most relevant risks are:
-
-1. **Atomic config write on Settings Save** — The existing hot-reload fires on every CAPSLOCK keypress. If the settings form truncates the JSON file mid-write, the next keypress gets a parse error. Mitigation: write to `config.json.tmp` then `File.Replace(tmp, config, null)`. This is a correctness requirement, not a nice-to-have.
-
-2. **ColorDialog ARGB vs RGB** — `System.Windows.Forms.ColorDialog` returns `System.Drawing.Color` (RGB only; no alpha channel in the dialog UI). The existing config stores colors as 8-digit ARGB hex (`#AARRGGBB`). Mitigation: extract the alpha from the existing config value, apply it to the dialog-chosen RGB, reconstruct with `$"#{alpha:X2}{r:X2}{g:X2}{b:X2}"`. Do NOT use `ColorTranslator.FromHtml` — it supports `#RRGGBB` only.
-
-3. **`Application.Restart()` throws `NotSupportedException`** — This daemon uses a hybrid STA/main-thread topology where `Application.Run()` is called on the STA thread but is not the program entry point. `Application.Restart()` detects this and throws. Mitigation: use `Environment.ProcessPath` + `Process.Start(new ProcessStartInfo(exePath, "daemon --background") { UseShellExecute = false })` then `Application.ExitThread()`.
-
-4. **`ProcessStartInfo.UseShellExecute` defaults to `false` in .NET Core/.NET 5+** — When opening the GitHub link in the About section via `Process.Start`, `UseShellExecute = true` is mandatory. The default `false` causes the URL to be treated as an executable path, throwing an error. Mitigation: always set `UseShellExecute = true` explicitly for URL opening.
-
-5. **Settings form multi-instance** — If `OnSettingsClicked` creates a new `SettingsForm` without checking whether one already exists, users can open multiple settings windows. Each holds its own in-memory copy of config values; the last one to save wins. Mitigation: check `_settingsForm is { IsDisposed: false }`, call `BringToFront()`, return early.
-
----
+1. **Locked files during upgrade** -- Daemon holds `.exe` lock; installer fails or corrupts. Prevention: `AppMutex=Global\focus-daemon` + `CloseApplications=yes` + `taskkill` fallback in `PrepareToInstall()`.
+2. **Non-interactive session from Task Scheduler** -- "Run whether logged on or not" pushes daemon to Session 0 with no tray icon or UI. Prevention: always use `/SC ONLOGON` trigger (interactive logon) and never use `/RU SYSTEM`.
+3. **Elevation context resolves wrong user paths** -- Admin installer resolves `{localappdata}` to admin profile, not actual user. Prevention: `PrivilegesRequired=lowest` as default; targeted elevation only for `schtasks.exe` call.
+4. **Orphaned scheduled task after uninstall** -- Task survives, launches deleted exe on every logon. Prevention: `schtasks /Delete /TN "Focus" /F` in `[UninstallRun]` + backup in `CurUninstallStepChanged`.
+5. **AppId mismatch between versions** -- Causes duplicate Add/Remove Programs entries, broken upgrade chain. Prevention: set permanent `AppId` with a GUID in the first `.iss` file, never change it.
 
 ## Implications for Roadmap
 
-The v4.0 milestone has clear internal dependencies that dictate phase order. The icon must exist before any tray UX is shipped. The context menu structure must be finalized before the status labels or Settings entry can be wired. The settings form is independent of the restart action. All phases are small and well-bounded — this is a polish milestone, not a feature milestone.
+Based on research, the milestone naturally decomposes into 4 phases ordered by dependency chain and risk.
 
-### Phase 1: Custom Icon and Tray Identity
+### Phase 1: Build Pipeline & Installer Scaffolding
+**Rationale:** Everything depends on a working publish output and a minimal `.iss` file. The foundational decisions (AppId, PrivilegesRequired, DefaultDirName, MinVersion) must be locked first because they cannot be changed later without breaking upgrade chains.
+**Delivers:** `dotnet publish` producing self-contained single-file output; minimal Inno Setup script that installs files to `%LocalAppData%\Focus` and registers in Add/Remove Programs; build script orchestrating both steps.
+**Addresses:** Table stakes -- single setup.exe, install to chosen directory, clean file install, Start Menu shortcut.
+**Avoids:** Pitfall 3 (elevation path mismatch -- set `PrivilegesRequired=lowest` from day one), Pitfall 5 (config destruction -- establish that installer never touches `%AppData%\focus\`), Pitfall 10 (AppId mismatch -- set permanent GUID), Pitfall 15 (MinVersion -- set `10.0` immediately).
 
-**Rationale:** The icon is the visual foundation. Every other tray feature assumes a distinct, identified icon is present. Shipping with `SystemIcons.Application` while adding a status menu makes the rest of the UX feel inconsistent. This is the lowest-complexity, highest-visibility change in the milestone.
+### Phase 2: Upgrade Handling & Daemon Lifecycle
+**Rationale:** Before adding Task Scheduler complexity, the upgrade path must work -- it is the most common real-world operation after initial install and touches locked files, running processes, and file versioning.
+**Delivers:** `AppMutex` detection of running daemon; `CloseApplications` integration; `taskkill` fallback; `ignoreversion` on all files; post-install daemon launch with `runasoriginaluser` flag.
+**Addresses:** Table stakes -- stop running daemon, upgrade in-place, launch after install.
+**Avoids:** Pitfall 1 (locked exe during upgrade), Pitfall 8 (post-install launch in wrong context), Pitfall 9 (Restart Manager failure with tray-only app), Pitfall 12 (uninstaller not stopping daemon).
 
-**Delivers:** Custom multi-size `.ico` embedded as assembly resource; `NotifyIcon.Icon` set from embedded resource; `NotifyIcon.Text` set to "Focus — Navigation Daemon"; csproj updated with `<EmbeddedResource>` and `<ApplicationIcon>`.
+### Phase 3: Task Scheduler Integration
+**Rationale:** This is the highest-complexity feature and the primary reason the installer exists. It depends on Phase 1 (install path must be known) and Phase 2 (daemon lifecycle must work for testing).
+**Delivers:** `[Tasks]` checkboxes for startup registration with elevation sub-option; `schtasks.exe` invocation in `CurStepChanged(ssPostInstall)` for task creation; `schtasks /Delete` in `[UninstallRun]` and `CurUninstallStepChanged` for cleanup; startup delay to avoid tray icon registration failure.
+**Addresses:** Core differentiator -- Task Scheduler with elevation choice; clean uninstall of scheduled task.
+**Avoids:** Pitfall 2 (non-interactive session -- use ONLOGON trigger, never "run whether logged on or not"), Pitfall 4 (orphaned task -- paired create/delete), Pitfall 7 (admin required for per-user task -- targeted elevation via ShellExec), Pitfall 11 (missing startup delay -- add `/DELAY` parameter), Pitfall 14 (double elevation -- coordinate with `elevateOnStartup` config).
 
-**Addresses:** Custom tray icon (P1), hover tooltip (P1).
-
-**Avoids:** Third-party ICO libraries (zero value over a 30-line hand-written encoder); `Icon.FromHandle(bitmap.GetHicon())` (produces a single-size HICON, cannot serialize a multi-size `.ico`).
-
-### Phase 2: Enriched Context Menu
-
-**Rationale:** Once the icon is settled, the context menu can be expanded. Status labels, Settings item, and Restart item are all tightly coupled to the `ContextMenuStrip` and the new `DaemonStatus` object. Implementing them together in one phase is more efficient than building each in isolation and avoids partial-state shipping.
-
-**Delivers:** `ToolStripMenuItem` status labels (Hook / Uptime / Last Action) refreshed on `Opening` event; "Settings" menu item (wired to placeholder initially); "Restart Daemon" menu item; correct separator structure matching Windows tray conventions; `DaemonStatus` object injected into `DaemonApplicationContext`.
-
-**Addresses:** Inline status in context menu (P1), Restart Daemon item (P1), Context menu rebuilds on Opening (P1).
-
-**Avoids:** Polling timer for status (use `Opening` event — zero cost); `ToolStripLabel` in `ContextMenuStrip` (unsupported — use `ToolStripMenuItem { Enabled = false }` instead); static menu text showing stale status.
-
-### Phase 3: WinForms Settings Form
-
-**Rationale:** The settings form is the most complex piece of this milestone. It depends on Phase 2's "Settings" menu item being in place as the entry point, and on `DaemonStatus` being available for the status panel. Building the form after the menu scaffolding reduces integration friction and allows the Settings entry point to be tested (opens placeholder) before the full form is ready.
-
-**Delivers:** `SettingsForm` with Navigation, Overlay, Grid, and About tabs; all config fields exposed (strategy ComboBox, grid NumericUpDown, overlay color pickers with ColorDialog, overlay delay NumericUpDown); daemon status panel; atomic JSON Save; GitHub LinkLabel in About; single-instance open/focus pattern wired to the Settings menu item.
-
-**Addresses:** Settings form (all P1 feature items), About section (P1), daemon status panel in form (P1), atomic JSON config write (P1 correctness requirement), single-instance settings form (P1 correctness requirement).
-
-**Avoids:** Settings auto-apply on keystroke (corrupt mid-edit JSON); `ColorTranslator.FromHtml` for ARGB parsing (RGB-only limitation); `Form.ShowDialog` blocking the STA pump (use `Form.Show()` instead); alpha loss when picking overlay colors via ColorDialog.
-
-### Phase 4: Integration and Polish
-
-**Rationale:** After the three core phases, a dedicated integration pass validates the full tray lifecycle, catches edge cases in DPI scaling, and addresses any HiDPI rendering issues in the settings form. Also the right moment to wire up Settings form Cancel behavior and dynamic tooltip text if user feedback calls for it.
-
-**Delivers:** End-to-end tray lifecycle validation (icon, menu, status, settings, save, restart, exit); HiDPI settings form validation on mixed-DPI setups; error handling for config file permission failures; any P2 items from the feature list (dynamic tooltip, Cancel button) that user testing confirms are needed.
-
-**Addresses:** Settings form DPI scaling (MEDIUM confidence gap); config file permission error handling; P2 items driven by real feedback.
-
-**Avoids:** Config file permission errors swallowed silently (catch `IOException`/`UnauthorizedAccessException` on Save, show `MessageBox`).
+### Phase 4: Polish & Distribution
+**Rationale:** Final touches that depend on all previous phases working end-to-end.
+**Delivers:** Optional desktop shortcut; PATH registration; version bump to 5.0.0; SmartScreen documentation in release notes; `.gitignore` updates for publish/dist output directories.
+**Addresses:** Differentiators -- desktop shortcut, PATH registration, professional release packaging.
+**Avoids:** Pitfall 6 (SmartScreen -- document bypass procedure rather than blocking on code signing).
 
 ### Phase Ordering Rationale
 
-- Phase 1 before Phase 2: the icon must be resolved before any other tray UX is shipped. Mixed `SystemIcons.Application` with an enriched menu would look inconsistent in intermediate states.
-- Phase 2 before Phase 3: the Settings menu item is the entry point for the settings form. Having the wiring point in place first means Phase 3 only needs to build the form and connect it — the menu scaffolding is already done.
-- Phase 3 is self-contained: it depends on `DaemonStatus` (from Phase 2) and the Settings menu item (from Phase 2), but its internal implementation does not block Phase 4.
-- Phase 4 is a quality gate, not a feature phase: its scope is determined by what integration testing reveals.
+- **Phase 1 before everything** because AppId, PrivilegesRequired, and install path are foundational decisions that cascade to all other phases. Changing them later breaks upgrade chains.
+- **Phase 2 before Phase 3** because Task Scheduler testing requires installing, starting the daemon, then upgrading -- all of which need the daemon lifecycle management to work.
+- **Phase 3 is the core delivery** and the most complex phase. Isolating it lets the developer focus on the elevation model, startup delay tuning, and create/delete pairing without worrying about file packaging.
+- **Phase 4 last** because polish items are low-risk additive changes that do not affect the core install/upgrade/uninstall/startup flow.
 
 ### Research Flags
 
-Phases with well-documented patterns (skip research-phase):
-- **Phase 1:** ICO binary format is a public documented format; `BinaryWriter` + `Bitmap.Save(stream, ImageFormat.Png)` is standard BCL. Approach verified against two independent implementations with HIGH confidence.
-- **Phase 2:** `ContextMenuStrip.Opening` event and `ToolStripMenuItem.Enabled` are documented BCL WinForms APIs, HIGH confidence. Pattern matches established real-world tools.
-- **Phase 3:** All WinForms controls (`TabControl`, `TableLayoutPanel`, `NumericUpDown`, `ColorDialog`, `LinkLabel`) are documented .NET 8 BCL APIs with HIGH confidence. Layout strategy is well-established for code-constructed forms.
+Phases likely needing deeper research during planning:
+- **Phase 3 (Task Scheduler):** The interaction between `/SC ONLOGON` admin requirements, per-user installer context, and targeted elevation via `ShellExec` needs careful implementation. The 72-hour default timeout on scheduled tasks may require XML task definition or PowerShell override. Recommend `/gsd:research-phase` before planning.
 
-Phases likely needing deeper investigation during planning:
-- **Phase 4:** HiDPI settings form rendering — code-constructed WinForms forms (no designer) on per-monitor DPI setups. The daemon is already PerMonitorV2, but `AutoScaleMode.Dpi` behavior for dynamically-constructed forms is MEDIUM confidence. Needs validation against the existing app manifest before shipping.
-
----
+Phases with standard patterns (skip research-phase):
+- **Phase 1 (Build Pipeline & Scaffolding):** Well-documented `dotnet publish` flags and cookie-cutter Inno Setup `[Setup]`/`[Files]`/`[Icons]` sections. Official docs are sufficient.
+- **Phase 2 (Upgrade & Lifecycle):** `AppMutex`, `CloseApplications`, and `ignoreversion` are standard Inno Setup patterns with extensive documentation.
+- **Phase 4 (Polish):** Trivial additions (shortcuts, PATH, version bump). No research needed.
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | Zero new packages. All APIs verified against official Microsoft Learn docs. ICO encoder verified against two independent implementations. `Application.Restart` exclusion confirmed by official docs and WinForms issue tracker. |
-| Features | HIGH | UX patterns verified against comparable production tools (Docker Desktop, Tailscale). Windows notification area guidelines explicitly documented. Anti-features reasoned from first principles with clear documented rationale. |
-| Architecture | HIGH | Additive changes only to a proven v3.1 codebase. Component boundaries are clear and precise. No new threading models or Win32 subsystems required. Restart flow leverages existing mutex replace semantics. |
-| Pitfalls | HIGH | All v4.0-specific pitfalls (atomic write, ARGB parsing, Application.Restart, UseShellExecute default, multi-instance form) verified against official docs and confirmed WinForms issues. v3.1 pitfalls retained in PITFALLS.md for regression reference. |
+| Stack | HIGH | All claims verified against Microsoft Learn and Inno Setup official docs. Zero ambiguity on publish flags or Inno Setup directives. |
+| Features | HIGH | Feature landscape is narrow and well-understood. Inno Setup has 25+ years of community patterns for exactly this type of installer. |
+| Architecture | HIGH | Integration surface is minimal (3 touch points: publish output, mutex name, schtasks CLI). No architectural risk. |
+| Pitfalls | HIGH | 15 pitfalls identified from official docs and verified community sources. Critical pitfalls have concrete prevention steps. |
 
 **Overall confidence:** HIGH
 
 ### Gaps to Address
 
-- **Settings form HiDPI rendering (MEDIUM confidence):** Code-constructed WinForms forms inherit DPI awareness from the application manifest. The daemon already runs as PerMonitorV2 on multi-monitor setups, but `AutoScaleMode.Dpi` behavior for code-constructed forms (no designer) needs validation during Phase 4 against actual mixed-DPI hardware or DPI simulator. If rendering is off, set `AutoScaleMode = AutoScaleMode.Dpi` explicitly on the form constructor.
-
-- **ICO visual design (product decision, not technical gap):** The ICO content is a programmatic GDI render of a simple geometric shape. The specific shape/design is not specified by research — this is a product decision. The generation pipeline is ready; the content needs a decision before Phase 1 implementation begins.
-
-- **Alpha transparency for overlay colors in settings form (design decision):** `ColorDialog` exposes RGB only. The existing config ARGB format requires a design decision: expose alpha as a separate `NumericUpDown` (0-255) per color, or silently preserve the existing alpha when the user picks a new color. Neither is wrong — make this decision during Phase 3 planning and document the choice in the settings form implementation.
-
----
+- **72-hour task timeout**: `schtasks.exe` creates tasks with a default "Stop task if running longer than 3 days" setting. The daemon runs indefinitely. FEATURES.md flags this but no research file provides a verified `schtasks` CLI flag to disable it. May need XML task definition (`schtasks /Create /XML`) or post-creation PowerShell `Set-ScheduledTask` call. Validate during Phase 3 planning.
+- **`/SC ONLOGON` admin requirement for `/RL LIMITED`**: STACK.md states that even `ONLOGON` with `LIMITED` requires admin. If true, the targeted-elevation approach in Phase 3 is required even for standard (non-elevated) startup tasks. Validate with a test on the target Windows version before finalizing the Phase 3 approach.
+- **Restart Manager interaction with tray-only daemon**: Pitfall 9 identifies that `WM_CLOSE` may not reach the daemon because it has no top-level window. The `AppMutex` + `taskkill` fallback should work, but the Restart Manager timeout (up to 30 seconds) could make upgrades feel slow. Consider adding a hidden message-only window to the daemon if this becomes a UX problem, but defer unless testing reveals it.
+- **PublishSingleFile disagreement resolution**: The recommendation to use single-file publish is based on install directory cleanliness. If virus scanner false positives become a real issue during testing, revisit this decision and switch to multi-file publish (ARCHITECTURE.md's recommendation). Inno Setup handles both transparently.
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- [Microsoft Learn — Generate ICO in .NET Core (Edi Wang)](https://edi.wang/post/2019/11/12/generate-a-true-ico-format-image-in-net-core) — ICO encoder approach, `ImageFormat.Icon` bug confirmation
-- [darkfall gist — Bitmap to ICO](https://gist.github.com/darkfall/1656050) — ICO binary format structure, BinaryWriter pattern
-- [Microsoft Learn — Application.Restart](https://learn.microsoft.com/en-us/dotnet/api/system.windows.forms.application.restart?view=windowsdesktop-8.0) — NotSupportedException for non-WinForms-entry-point apps
-- [dotnet/winforms Issue #2769](https://github.com/dotnet/winforms/issues/2769) — Application.Restart InvalidOperationException confirmed for non-ClickOnce deployments
-- [Microsoft Learn — ProcessStartInfo.UseShellExecute](https://learn.microsoft.com/en-us/dotnet/api/system.diagnostics.processstartinfo.useshellexecute?view=net-8.0) — defaults to false in .NET Core; must be true for URL opening
-- [Microsoft Learn — Environment.ProcessPath](https://learn.microsoft.com/en-us/dotnet/api/system.environment.processpath?view=net-6.0) — .NET 6+ preferred API for executable path
-- [Microsoft Learn — CA1839](https://learn.microsoft.com/en-us/dotnet/fundamentals/code-analysis/quality-rules/ca1839) — ProcessPath preferred over Process.GetCurrentProcess().MainModule.FileName
-- [Microsoft Learn — ContextMenuStrip](https://learn.microsoft.com/en-us/dotnet/api/system.windows.forms.contextmenustrip?view=windowsdesktop-8.0) — Opening event documentation
-- [Microsoft Learn — LinkLabel (WinForms)](https://learn.microsoft.com/en-us/dotnet/desktop/winforms/controls/link-to-an-object-or-web-page-with-wf-linklabel-control) — LinkClicked + Process.Start pattern
-- [Microsoft Learn — TableLayoutPanel Best Practices](https://learn.microsoft.com/en-us/dotnet/desktop/winforms/controls/best-practices-for-the-tablelayoutpanel-control) — settings form layout guidance
-- [Microsoft Learn — ColorDialog](https://learn.microsoft.com/en-us/dotnet/api/system.windows.forms.colordialog?view=windowsdesktop-8.0) — API reference, RGB-only limitation confirmed
-- [Microsoft Learn — NotifyIcon (WinForms)](https://learn.microsoft.com/en-us/dotnet/desktop/winforms/controls/app-icons-to-the-taskbar-with-wf-notifyicon) — tray icon API
-- [Microsoft Learn — Notifications and the Notification Area (Win32)](https://learn.microsoft.com/en-us/windows/win32/shell/notification-area) — Windows UX guidelines for tray apps
-- [Microsoft Learn — Application Settings Architecture](https://learn.microsoft.com/en-us/dotnet/desktop/winforms/advanced/application-settings-architecture) — WinForms settings patterns
+- [Inno Setup Official Documentation](https://jrsoftware.org/ishelp/) -- Setup directives, Pascal scripting, Tasks/Run/Files sections, constants, event functions
+- [Inno Setup 6.7.1 Release](https://jrsoftware.org/isdl.php) -- Current version, 64-bit loader support
+- [Microsoft Learn -- schtasks create](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/schtasks-create) -- /SC ONLOGON, /RL, /TN, /TR, /F parameters
+- [Microsoft Learn -- schtasks delete](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/schtasks-delete) -- Uninstall cleanup
+- [Microsoft Learn -- Single-file deployment](https://learn.microsoft.com/en-us/dotnet/core/deploying/single-file/overview) -- PublishSingleFile, IncludeNativeLibrariesForSelfExtract, API compatibility
+- [Microsoft Learn -- .NET application publishing](https://learn.microsoft.com/en-us/dotnet/core/deploying/) -- Self-contained vs framework-dependent
+- [Microsoft Learn -- .NET 8 RuntimeIdentifier breaking change](https://learn.microsoft.com/en-us/dotnet/core/compatibility/sdk/8.0/runtimespecific-app-default) -- Must explicitly set SelfContained
+- [Microsoft Learn -- IL trimming incompatibility](https://learn.microsoft.com/en-us/dotnet/core/deploying/trimming/trim-self-contained) -- WinForms cannot be trimmed
+- Existing codebase analysis: `DaemonCommand.cs`, `FocusConfig.cs`, `DaemonMutex.cs`, `focus.csproj` -- Integration points verified by direct code reading
 
 ### Secondary (MEDIUM confidence)
-- [Red Gate Simple Talk — Creating Tray Applications in .NET](https://www.red-gate.com/simple-talk/development/dotnet-development/creating-tray-applications-in-net-a-practical-guide/) — practitioner patterns for tray apps; cross-checked against official docs
+- [WinForms single-file publish issue (dotnet/winforms#11473)](https://github.com/dotnet/winforms/issues/11473) -- Use CLI publish, not VS dialog
+- [SmartScreen and code signing changes](https://www.advancedinstaller.com/prevent-smartscreen-from-appearing.html) -- EV certificates no longer provide instant bypass
+- Community tutorials on Inno Setup admin context, daemon detection, Task Scheduler interactive desktop -- Patterns verified against official docs
 
 ---
-*Research completed: 2026-03-03*
+*Research completed: 2026-03-05*
 *Ready for roadmap: yes*
