@@ -549,7 +549,11 @@ internal sealed class OverlayOrchestrator : IDisposable
         {
             _flashTimer.Stop();
             _elevatedWarningActive = false;
-            _overlayManager.HideAll();
+            // Restore navigation overlays if CapsLock is still held (first-attempt warning case).
+            if (_capsLockHeld)
+                ShowOverlaysForCurrentForeground();
+            else
+                _overlayManager.HideAll();
             return;
         }
 
