@@ -208,7 +208,7 @@ internal static class FocusActivator
         }
     }
 
-    private static bool IsCurrentProcessElevated()
+    internal static bool IsCurrentProcessElevated()
     {
         try
         {
