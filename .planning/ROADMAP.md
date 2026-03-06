@@ -60,7 +60,7 @@
 
 **Milestone Goal:** Package Focus as an installable application with clean install/uninstall and Task Scheduler startup registration.
 
-- [x] **Phase 16: Build Pipeline & Installer** - Self-contained publish, Inno Setup installer with install/upgrade/uninstall lifecycle (completed 2026-03-05)
+- [x] **Phase 16: Build Pipeline & Installer** - Self-contained publish, Inno Setup installer with install/upgrade/uninstall lifecycle (completed 2026-03-05)
 - [ ] **Phase 17: Task Scheduler Integration** - Logon startup registration with elevation choice, clean removal on uninstall
 - [ ] **Phase 18: Settings UI Startup Controls** - Runtime toggles for startup and elevation in the existing settings form
 
@@ -87,7 +87,9 @@ Plans:
   1. When user checks "Start at logon" during install, Focus daemon launches automatically after the next Windows logon
   2. When user checks "Run elevated" during install, the scheduled task runs the daemon with admin privileges
   3. Uninstalling Focus removes the scheduled task so no orphaned logon trigger remains
-**Plans**: TBD
+**Plans:** 1 plan
+Plans:
+- [ ] 17-01-PLAN.md — Task Scheduler wizard page, schtasks XML task creation, upgrade detection, uninstall cleanup, and C# elevation code removal
 
 ### Phase 18: Settings UI Startup Controls
 **Goal**: User can manage startup registration and elevation from within the running application
@@ -121,7 +123,7 @@ Phases execute in numeric order: 16 → 17 → 18
 | 14. Context Menu and Daemon Lifecycle | v4.0 | 1/1 | Complete | 2026-03-04 |
 | 15. Settings Form | v4.0 | 1/1 | Complete | 2026-03-04 |
 | 16. Build Pipeline & Installer | 1/1 | Complete    | 2026-03-05 | - |
-| 17. Task Scheduler Integration | v5.0 | 0/0 | Not started | - |
+| 17. Task Scheduler Integration | v5.0 | 0/1 | Not started | - |
 | 18. Settings UI Startup Controls | v5.0 | 0/0 | Not started | - |
 
 ---
