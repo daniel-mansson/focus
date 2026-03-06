@@ -30,7 +30,7 @@ CloseApplications=yes
 ArchitecturesInstallIn64BitMode=x64compatible
 
 [Files]
-Source: "..\focus\bin\Release\net8.0\win-x64\publish\focus.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\focus\bin\Release\net8.0-windows\win-x64\publish\focus.exe"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\Focus"; Filename: "{app}\{#MyAppExeName}"; Parameters: "daemon"; IconFilename: "{app}\{#MyAppExeName}"

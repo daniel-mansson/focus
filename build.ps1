@@ -24,7 +24,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # Verify single-file output
-$publishDir = "focus/bin/Release/net8.0/win-x64/publish"
+$publishDir = "focus/bin/Release/net8.0-windows/win-x64/publish"
 $publishedExe = Join-Path $publishDir "focus.exe"
 
 if (-not (Test-Path $publishedExe)) {
