@@ -3,29 +3,14 @@ gsd_state_version: 1.0
 milestone: v5.0
 milestone_name: Installer
 status: executing
-stopped_at: Phase 18 context gathered
-last_updated: "2026-03-07T08:54:43.634Z"
-last_activity: 2026-03-07 -- Phase 17 Plan 01 complete (Task Scheduler integration)
+stopped_at: Completed 18-01-PLAN.md
+last_updated: "2026-03-07T09:40:55.281Z"
+last_activity: 2026-03-07 -- Phase 18 Plan 01 complete (Settings UI startup controls)
 progress:
   total_phases: 3
-  completed_phases: 2
-  total_plans: 2
-  completed_plans: 2
----
-
----
-gsd_state_version: 1.0
-milestone: v5.0
-milestone_name: Installer
-status: executing
-stopped_at: Completed 17-01-PLAN.md
-last_updated: "2026-03-07T00:00:00Z"
-last_activity: 2026-03-07 -- Phase 17 Plan 01 complete (Task Scheduler integration)
-progress:
-  total_phases: 3
-  completed_phases: 2
-  total_plans: 2
-  completed_plans: 2
+  completed_phases: 3
+  total_plans: 3
+  completed_plans: 3
 ---
 
 # Project State
@@ -35,16 +20,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-05)
 
 **Core value:** Given a direction, reliably switch focus to the most intuitive window in that direction -- fast enough for hotkey use, accurate enough to feel natural.
-**Current focus:** Phase 18 - Settings UI Startup Controls
+**Current focus:** v5.0 Installer milestone complete
 
 ## Current Position
 
-Phase: 17 of 18 (Task Scheduler Integration) -- COMPLETE
+Phase: 18 of 18 (Settings UI Startup Controls) -- COMPLETE
 Plan: 1 of 1 in current phase (all plans complete)
-Status: Phase 17 complete, ready for Phase 18
-Last activity: 2026-03-07 -- Phase 17 Plan 01 complete (Task Scheduler integration)
+Status: Phase 18 complete, v5.0 Installer milestone complete
+Last activity: 2026-03-07 -- Phase 18 Plan 01 complete (Settings UI startup controls)
 
-Progress: [██████░░░░] 67% (2/3 v5.0 phases)
+Progress: [██████████] 100% (3/3 v5.0 phases)
 
 ## Accumulated Context
 
@@ -66,6 +51,9 @@ Recent decisions affecting current work:
 - [17-01]: LoadStringFromFile requires AnsiString parameter in Inno Setup 6 (String causes type mismatch at compile)
 - [17-01]: Added --background flag to task XML arguments to suppress console window on logon launch
 - [17-01]: ElevateOnStartup removed from C# codebase -- Task Scheduler RunLevel replaces in-app self-elevation
+- [Phase 18-01]: Used string concatenation for BuildTaskXml to match installer output exactly
+- [Phase 18-01]: CreateTask always deletes existing task before creating new one for clean elevation changes
+- [Phase 18-01]: DeleteTask tries non-elevated first, UAC fallback -- minimizes unnecessary UAC prompts
 
 ### Pending Todos
 
@@ -81,12 +69,13 @@ None.
 |-------|------|----------|-------|-------|
 | 16 | 01 | 8min | 3 | 3 |
 | 17 | 01 | ~45min | 3 | 6 |
+| 18 | 01 | ~2min | 2 | 1 |
 
 ## Session Continuity
 
-Last session: 2026-03-07T08:54:43.630Z
-Stopped at: Phase 18 context gathered
-Resume file: .planning/phases/18-settings-ui-startup-controls/18-CONTEXT.md
+Last session: 2026-03-07T09:40:55.277Z
+Stopped at: Completed 18-01-PLAN.md
+Resume file: None
 
 ### Quick Tasks Completed
 

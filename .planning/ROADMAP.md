@@ -62,7 +62,7 @@
 
 - [x] **Phase 16: Build Pipeline & Installer** - Self-contained publish, Inno Setup installer with install/upgrade/uninstall lifecycle (completed 2026-03-05)
 - [x] **Phase 17: Task Scheduler Integration** - Logon startup registration with elevation choice, clean removal on uninstall (completed 2026-03-07)
-- [ ] **Phase 18: Settings UI Startup Controls** - Runtime toggles for startup and elevation in the existing settings form
+- [x] **Phase 18: Settings UI Startup Controls** - Runtime toggles for startup and elevation in the existing settings form (completed 2026-03-07)
 
 ## Phase Details
 
@@ -98,7 +98,7 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. Settings form shows a "Run at startup" toggle that reflects whether a Focus scheduled task currently exists, and toggling it creates or removes the task
   2. Settings form shows a "Request elevated permissions" toggle that reflects the current task run level, and toggling it updates the scheduled task between standard and elevated
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 Plans:
 - [ ] 18-01-PLAN.md — Startup GroupBox with schtasks-backed checkboxes for task creation/deletion and RunLevel management
 
@@ -126,7 +126,7 @@ Phases execute in numeric order: 16 → 17 → 18
 | 15. Settings Form | v4.0 | 1/1 | Complete | 2026-03-04 |
 | 16. Build Pipeline & Installer | v5.0 | 1/1 | Complete | 2026-03-05 |
 | 17. Task Scheduler Integration | v5.0 | 1/1 | Complete | 2026-03-07 |
-| 18. Settings UI Startup Controls | v5.0 | 0/1 | Planned | - |
+| 18. Settings UI Startup Controls | 1/1 | Complete   | 2026-03-07 | - |
 
 ---
 *Full milestone details: See `.planning/milestones/` archives*
