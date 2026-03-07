@@ -2,43 +2,15 @@
 gsd_state_version: 1.0
 milestone: v5.0
 milestone_name: Installer
-status: unknown
-last_updated: "2026-03-07T07:50:13.688Z"
+status: executing
+stopped_at: Completed 17-01-PLAN.md
+last_updated: "2026-03-07T00:00:00Z"
+last_activity: 2026-03-07 -- Phase 17 Plan 01 complete (Task Scheduler integration)
 progress:
-  total_phases: 2
+  total_phases: 3
   completed_phases: 2
   total_plans: 2
   completed_plans: 2
----
-
----
-gsd_state_version: 1.0
-milestone: v5.0
-milestone_name: Installer
-status: executing
-stopped_at: Phase 17 context gathered
-last_updated: "2026-03-06T07:55:52.985Z"
-last_activity: 2026-03-05 -- Phase 16 Plan 01 complete (build pipeline & installer)
-progress:
-  total_phases: 3
-  completed_phases: 1
-  total_plans: 1
-  completed_plans: 1
----
-
----
-gsd_state_version: 1.0
-milestone: v5.0
-milestone_name: Installer
-status: executing
-stopped_at: Completed 16-01-PLAN.md
-last_updated: "2026-03-05T22:02:10Z"
-last_activity: 2026-03-05 -- Phase 16 Plan 01 complete (build pipeline & installer)
-progress:
-  total_phases: 3
-  completed_phases: 1
-  total_plans: 1
-  completed_plans: 1
 ---
 
 # Project State
@@ -48,16 +20,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-05)
 
 **Core value:** Given a direction, reliably switch focus to the most intuitive window in that direction -- fast enough for hotkey use, accurate enough to feel natural.
-**Current focus:** Phase 17 - Task Scheduler Integration
+**Current focus:** Phase 18 - Settings UI Startup Controls
 
 ## Current Position
 
-Phase: 16 of 18 (Build Pipeline & Installer) -- COMPLETE
+Phase: 17 of 18 (Task Scheduler Integration) -- COMPLETE
 Plan: 1 of 1 in current phase (all plans complete)
-Status: Phase 16 complete, ready for Phase 17
-Last activity: 2026-03-05 -- Phase 16 Plan 01 complete (build pipeline & installer)
+Status: Phase 17 complete, ready for Phase 18
+Last activity: 2026-03-07 -- Phase 17 Plan 01 complete (Task Scheduler integration)
 
-Progress: [███░░░░░░░] 33% (1/3 v5.0 phases)
+Progress: [██████░░░░] 67% (2/3 v5.0 phases)
 
 ## Accumulated Context
 
@@ -73,9 +45,12 @@ Recent decisions affecting current work:
 - [16-01]: ISCC.exe must be on PATH -- no hardcoded path or parameter override
 - [16-01]: AppMutex=Global\focus-daemon matches DaemonMutex.cs exactly for daemon stop on upgrade
 - [16-01]: Parameters: "daemon" on both shortcut and post-install launch (without it, shows CLI help)
-- [Phase 17-01]: Always use ShellExec runas for schtasks /Create -- ONLOGON tasks require admin even for LeastPrivilege RunLevel
-- [Phase 17-01]: Use XML import (not CLI flags) for schtasks task creation to set ExecutionTimeLimit=PT0S -- no CLI flag exists for this
-- [Phase 17-01]: ElevateOnStartup removed from C# codebase -- Task Scheduler RunLevel replaces in-app self-elevation
+- [17-01]: Always use ShellExec runas for schtasks /Create -- ONLOGON tasks require admin even for LeastPrivilege RunLevel
+- [17-01]: Use XML import (not CLI flags) for schtasks task creation to set ExecutionTimeLimit=PT0S -- no CLI flag exists for this
+- [17-01]: Post-install launch via schtasks /Run instead of direct exe -- respects HighestAvailable RunLevel for elevation
+- [17-01]: LoadStringFromFile requires AnsiString parameter in Inno Setup 6 (String causes type mismatch at compile)
+- [17-01]: Added --background flag to task XML arguments to suppress console window on logon launch
+- [17-01]: ElevateOnStartup removed from C# codebase -- Task Scheduler RunLevel replaces in-app self-elevation
 
 ### Pending Todos
 
@@ -83,21 +58,20 @@ None.
 
 ### Blockers/Concerns
 
-- Phase 17 (Task Scheduler): /SC ONLOGON with /RL LIMITED may require admin -- validate before finalizing approach
-- Phase 17: 72-hour default task timeout needs override for long-running daemon
+None.
 
 ## Performance Metrics
 
 | Phase | Plan | Duration | Tasks | Files |
 |-------|------|----------|-------|-------|
 | 16 | 01 | 8min | 3 | 3 |
-| Phase 17 P01 | 3min | 2 tasks | 5 files |
+| 17 | 01 | ~45min | 3 | 6 |
 
 ## Session Continuity
 
-Last session: 2026-03-06T07:55:52.982Z
-Stopped at: Phase 17 context gathered
-Resume file: .planning/phases/17-task-scheduler-integration/17-CONTEXT.md
+Last session: 2026-03-07
+Stopped at: Completed 17-01-PLAN.md
+Resume file: .planning/phases/17-task-scheduler-integration/17-01-SUMMARY.md
 
 ### Quick Tasks Completed
 
