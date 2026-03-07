@@ -27,8 +27,8 @@ Requirements for installer milestone. Each maps to roadmap phases.
 
 ### Settings UI
 
-- [ ] **SETS-01**: Settings form includes "Run at startup" toggle that creates/removes the scheduled task
-- [ ] **SETS-02**: Settings form includes "Request elevated permissions" toggle that updates the scheduled task run level
+- [x] **SETS-01**: Settings form includes "Run at startup" toggle that creates/removes the scheduled task
+- [x] **SETS-02**: Settings form includes "Request elevated permissions" toggle that updates the scheduled task run level
 
 ## Future Requirements
 
@@ -68,8 +68,8 @@ Requirements for installer milestone. Each maps to roadmap phases.
 | SCHED-01 | Phase 17 | Complete |
 | SCHED-02 | Phase 17 | Complete |
 | SCHED-03 | Phase 17 | Complete |
-| SETS-01 | Phase 18 | Pending |
-| SETS-02 | Phase 18 | Pending |
+| SETS-01 | Phase 18 | Complete |
+| SETS-02 | Phase 18 | Complete |
 
 **Coverage:**
 - v5.0 requirements: 11 total
