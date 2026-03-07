@@ -33,7 +33,7 @@ ArchitecturesInstallIn64BitMode=x64compatible
 Source: "..\focus\bin\Release\net8.0-windows\win-x64\publish\focus.exe"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\Focus"; Filename: "{app}\{#MyAppExeName}"; Parameters: "daemon"; IconFilename: "{app}\{#MyAppExeName}"
+Name: "{group}\Focus"; Filename: "{app}\{#MyAppExeName}"; Parameters: "daemon --background"; IconFilename: "{app}\{#MyAppExeName}"
 
 [UninstallRun]
 Filename: "schtasks.exe"; Parameters: "/Delete /TN ""FocusDaemon"" /F"; Flags: runhidden; RunOnceId: "DeleteFocusDaemonTask"

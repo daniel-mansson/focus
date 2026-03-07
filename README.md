@@ -22,9 +22,24 @@ Download **Focus-Setup.exe** from the [latest release](https://github.com/daniel
 - Optionally registers for startup via Task Scheduler (configurable during install)
 - Upgrade by re-running the installer with a newer version
 
+> **Windows SmartScreen / Smart App Control:** The installer is not code-signed, so Windows may show a warning or block it.
+>
+> - **SmartScreen warning** -- Click "More info" then "Run anyway" to proceed.
+> - **Smart App Control (Enforcement mode)** -- Unsigned apps are fully blocked. You'll need to build from source (see below) or temporarily [switch Smart App Control to off](https://support.microsoft.com/en-us/topic/285ea03d-fa88-4d56-882e-6698afdb7003).
+
 ### Build from source
 
-See [SETUP.md](SETUP.md) for build instructions. Requires .NET 8 SDK and Inno Setup.
+If Windows blocks the installer, or you prefer to build yourself:
+
+1. Install [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
+2. Clone this repo and run:
+   ```bash
+   dotnet publish focus/focus.csproj -c Release -r win-x64 --self-contained
+   ```
+3. The built executable is at `focus/bin/Release/net8.0-windows/win-x64/publish/focus.exe`
+4. Run `focus.exe daemon --background` to start
+
+See [SETUP.md](SETUP.md) for full build instructions including the installer.
 
 ## Quick start
 
