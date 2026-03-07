@@ -33,6 +33,10 @@ internal sealed class SettingsForm : Form
     private OverlayWindow? _gridOverlay;
     private CheckBox _gridPreviewCheck = null!;
 
+    // Startup controls
+    private CheckBox _startupCheck = null!;
+    private CheckBox _elevationCheck = null!;
+
     public SettingsForm()
     {
         _config = FocusConfig.Load();
@@ -90,7 +94,7 @@ internal sealed class SettingsForm : Form
         AutoScaleMode       = AutoScaleMode.Dpi;
         StartPosition       = FormStartPosition.CenterScreen;
         Padding             = new Padding(12);
-        ClientSize          = new Size(500, 700);
+        ClientSize          = new Size(500, 780);
 
         // Root panel stacks sections vertically with auto-scroll as safety net
         var root = new FlowLayoutPanel
@@ -117,6 +121,9 @@ internal sealed class SettingsForm : Form
 
         // ---- Keybindings GroupBox ----
         root.Controls.Add(BuildKeybindingsGroup());
+
+        // ---- Startup GroupBox ----
+        root.Controls.Add(BuildStartupGroup());
     }
 
     // ---- Section helpers ----
@@ -327,6 +334,280 @@ internal sealed class SettingsForm : Form
         };
         group.Controls.Add(label);
         return group;
+    }
+
+    // ---- Startup controls ----
+
+    private GroupBox BuildStartupGroup()
+    {
+        var group = MakeGroup("Startup", 456, 100);
+
+        _startupCheck = new CheckBox
+        {
+            Text     = "Run at startup",
+            AutoSize = true,
+            Location = new Point(12, 24),
+        };
+
+        _elevationCheck = new CheckBox
+        {
+            Text     = "Request elevated permissions",
+            AutoSize = true,
+            Location = new Point(12, 48),
+        };
+
+        var note = new Label
+        {
+            Text      = "Required to navigate between admin windows",
+            AutoSize  = true,
+            Location  = new Point(30, 70),
+            Font      = new Font("Segoe UI", 8f),
+            ForeColor = SystemColors.GrayText,
+        };
+
+        // Detect current task state BEFORE wiring handlers to avoid triggering schtasks
+        var (exists, isElevated) = DetectTaskState();
+        _startupCheck.Checked    = exists;
+        _elevationCheck.Checked  = isElevated;
+        _elevationCheck.Enabled  = exists;
+
+        // Wire handlers AFTER setting initial state
+        _startupCheck.CheckedChanged   += OnStartupToggled;
+        _elevationCheck.CheckedChanged += OnElevationToggled;
+
+        group.Controls.Add(_startupCheck);
+        group.Controls.Add(_elevationCheck);
+        group.Controls.Add(note);
+        return group;
+    }
+
+    private static (bool exists, bool isElevated) DetectTaskState()
+    {
+        try
+        {
+            using var process = new Process();
+            process.StartInfo = new ProcessStartInfo
+            {
+                FileName               = "schtasks.exe",
+                Arguments              = "/Query /TN \"FocusDaemon\" /XML",
+                UseShellExecute        = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError  = true,
+                CreateNoWindow         = true,
+            };
+            process.Start();
+            string output = process.StandardOutput.ReadToEnd();
+            process.WaitForExit();
+
+            if (process.ExitCode != 0)
+                return (false, false);
+
+            bool isElevated = output.Contains("HighestAvailable", StringComparison.Ordinal);
+            return (true, isElevated);
+        }
+        catch
+        {
+            return (false, false);
+        }
+    }
+
+    private static bool RunSchtasksElevated(string arguments)
+    {
+        try
+        {
+            using var process = new Process();
+            process.StartInfo = new ProcessStartInfo
+            {
+                FileName        = "schtasks.exe",
+                Arguments       = arguments,
+                UseShellExecute = true,
+                Verb            = "runas",
+                WindowStyle     = ProcessWindowStyle.Hidden,
+            };
+            process.Start();
+            process.WaitForExit();
+            return process.ExitCode == 0;
+        }
+        catch (System.ComponentModel.Win32Exception ex) when (ex.NativeErrorCode == 1223)
+        {
+            // User cancelled UAC prompt
+            return false;
+        }
+    }
+
+    private static string BuildTaskXml(string appPath, bool runElevated)
+    {
+        string runLevel = runElevated ? "HighestAvailable" : "LeastPrivilege";
+        return
+            "<?xml version=\"1.0\" encoding=\"UTF-16\"?>\r\n" +
+            "<Task version=\"1.2\" xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\">\r\n" +
+            "  <RegistrationInfo>\r\n" +
+            "    <Description>Focus daemon - window navigation</Description>\r\n" +
+            "  </RegistrationInfo>\r\n" +
+            "  <Triggers>\r\n" +
+            "    <LogonTrigger>\r\n" +
+            "      <Enabled>true</Enabled>\r\n" +
+            "    </LogonTrigger>\r\n" +
+            "  </Triggers>\r\n" +
+            "  <Principals>\r\n" +
+            "    <Principal id=\"Author\">\r\n" +
+            "      <LogonType>InteractiveToken</LogonType>\r\n" +
+            "      <RunLevel>" + runLevel + "</RunLevel>\r\n" +
+            "    </Principal>\r\n" +
+            "  </Principals>\r\n" +
+            "  <Settings>\r\n" +
+            "    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>\r\n" +
+            "    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>\r\n" +
+            "    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>\r\n" +
+            "    <AllowHardTerminate>true</AllowHardTerminate>\r\n" +
+            "    <StartWhenAvailable>false</StartWhenAvailable>\r\n" +
+            "    <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>\r\n" +
+            "    <AllowStartOnDemand>true</AllowStartOnDemand>\r\n" +
+            "    <Enabled>true</Enabled>\r\n" +
+            "    <Hidden>false</Hidden>\r\n" +
+            "    <RunOnlyIfIdle>false</RunOnlyIfIdle>\r\n" +
+            "    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>\r\n" +
+            "    <Priority>7</Priority>\r\n" +
+            "  </Settings>\r\n" +
+            "  <Actions Context=\"Author\">\r\n" +
+            "    <Exec>\r\n" +
+            "      <Command>" + appPath + "</Command>\r\n" +
+            "      <Arguments>daemon --background</Arguments>\r\n" +
+            "    </Exec>\r\n" +
+            "  </Actions>\r\n" +
+            "</Task>";
+    }
+
+    private bool CreateTask(bool elevated)
+    {
+        string exePath = Environment.ProcessPath!;
+        string xml = BuildTaskXml(exePath, elevated);
+        string xmlPath = Path.Combine(Path.GetTempPath(), "FocusDaemon.xml");
+
+        File.WriteAllText(xmlPath, xml, System.Text.Encoding.Unicode);
+
+        try
+        {
+            // Delete existing task first (ignore failure)
+            RunSchtasksElevated("/Delete /TN \"FocusDaemon\" /F");
+
+            // Create task from XML -- ONLOGON always requires admin
+            return RunSchtasksElevated($"/Create /XML \"{xmlPath}\" /TN \"FocusDaemon\" /F");
+        }
+        finally
+        {
+            try { File.Delete(xmlPath); } catch { }
+        }
+    }
+
+    private static bool DeleteTask()
+    {
+        // Try non-elevated first
+        try
+        {
+            using var process = new Process();
+            process.StartInfo = new ProcessStartInfo
+            {
+                FileName        = "schtasks.exe",
+                Arguments       = "/Delete /TN \"FocusDaemon\" /F",
+                UseShellExecute = false,
+                CreateNoWindow  = true,
+            };
+            process.Start();
+            process.WaitForExit();
+            if (process.ExitCode == 0) return true;
+        }
+        catch { }
+
+        // Fallback to elevated
+        return RunSchtasksElevated("/Delete /TN \"FocusDaemon\" /F");
+    }
+
+    private async void OnStartupToggled(object? sender, EventArgs e)
+    {
+        bool wantStartup = _startupCheck.Checked;
+
+        // Disable both checkboxes during operation
+        _startupCheck.Enabled   = false;
+        _elevationCheck.Enabled = false;
+
+        bool success;
+        try
+        {
+            success = await Task.Run(() =>
+            {
+                if (wantStartup)
+                    return CreateTask(elevated: _elevationCheck.Checked);
+                else
+                    return DeleteTask();
+            });
+        }
+        catch (Exception ex)
+        {
+            success = false;
+            MessageBox.Show(
+                this,
+                $"Failed to update startup task:\n{ex.Message}",
+                "Focus",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+        }
+
+        if (!success)
+        {
+            // Silently revert toggle (unhook to prevent recursion)
+            _startupCheck.CheckedChanged -= OnStartupToggled;
+            _startupCheck.Checked = !wantStartup;
+            _startupCheck.CheckedChanged += OnStartupToggled;
+        }
+
+        // Update dependent controls
+        _elevationCheck.Enabled = _startupCheck.Checked;
+        if (!_startupCheck.Checked)
+        {
+            _elevationCheck.CheckedChanged -= OnElevationToggled;
+            _elevationCheck.Checked = false;
+            _elevationCheck.CheckedChanged += OnElevationToggled;
+        }
+
+        _startupCheck.Enabled = true;
+    }
+
+    private async void OnElevationToggled(object? sender, EventArgs e)
+    {
+        bool wantElevated = _elevationCheck.Checked;
+
+        // Disable both checkboxes during operation
+        _startupCheck.Enabled   = false;
+        _elevationCheck.Enabled = false;
+
+        bool success;
+        try
+        {
+            success = await Task.Run(() => CreateTask(elevated: wantElevated));
+        }
+        catch (Exception ex)
+        {
+            success = false;
+            MessageBox.Show(
+                this,
+                $"Failed to update startup task:\n{ex.Message}",
+                "Focus",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+        }
+
+        if (!success)
+        {
+            // Silently revert toggle (unhook to prevent recursion)
+            _elevationCheck.CheckedChanged -= OnElevationToggled;
+            _elevationCheck.Checked = !wantElevated;
+            _elevationCheck.CheckedChanged += OnElevationToggled;
+        }
+
+        // Re-enable both checkboxes
+        _startupCheck.Enabled   = true;
+        _elevationCheck.Enabled = true;
     }
 
     // ---- Grid preview ----
