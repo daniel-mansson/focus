@@ -23,8 +23,6 @@ internal class FocusConfig
     public int GridFractionX { get; set; } = 16;
     public int GridFractionY { get; set; } = 12;
     public int SnapTolerancePercent { get; set; } = 10;
-    public bool ElevateOnStartup { get; set; } = false;
-
     public static string GetConfigPath()
     {
         var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);

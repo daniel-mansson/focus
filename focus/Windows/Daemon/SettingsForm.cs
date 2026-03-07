@@ -32,7 +32,6 @@ internal sealed class SettingsForm : Form
     // Grid preview overlay
     private OverlayWindow? _gridOverlay;
     private CheckBox _gridPreviewCheck = null!;
-    private CheckBox _elevateCheck = null!;
 
     public SettingsForm()
     {
@@ -91,7 +90,7 @@ internal sealed class SettingsForm : Form
         AutoScaleMode       = AutoScaleMode.Dpi;
         StartPosition       = FormStartPosition.CenterScreen;
         Padding             = new Padding(12);
-        ClientSize          = new Size(500, 780);
+        ClientSize          = new Size(500, 700);
 
         // Root panel stacks sections vertically with auto-scroll as safety net
         var root = new FlowLayoutPanel
@@ -115,9 +114,6 @@ internal sealed class SettingsForm : Form
 
         // ---- Overlays GroupBox ----
         root.Controls.Add(BuildOverlaysGroup());
-
-        // ---- Advanced GroupBox ----
-        root.Controls.Add(BuildAdvancedGroup());
 
         // ---- Keybindings GroupBox ----
         root.Controls.Add(BuildKeybindingsGroup());
@@ -311,35 +307,6 @@ internal sealed class SettingsForm : Form
         }
     }
 
-    private GroupBox BuildAdvancedGroup()
-    {
-        var group = MakeGroup("Advanced", 456, 80);
-
-        _elevateCheck = new CheckBox
-        {
-            Text     = "Run elevated (admin) on startup",
-            AutoSize = true,
-            Location = new Point(12, 26),
-            Checked  = _config.ElevateOnStartup,
-        };
-        _elevateCheck.CheckedChanged += (_, _) => SaveConfig();
-
-        var hint = new Label
-        {
-            Text      = "Required to navigate to and from admin windows.",
-            ForeColor = SystemColors.GrayText,
-            AutoSize  = true,
-            MaximumSize = new Size(420, 0),
-            Location  = new Point(30, 48),
-            Font      = new Font("Segoe UI", 8f),
-            Margin    = new Padding(0, 0, 0, 8),
-        };
-
-        group.Controls.Add(_elevateCheck);
-        group.Controls.Add(hint);
-        return group;
-    }
-
     private GroupBox BuildKeybindingsGroup()
     {
         var group = MakeGroup("Keybindings", 456, 125);
@@ -414,8 +381,6 @@ internal sealed class SettingsForm : Form
         _config.GridFractionX        = (int)_gridXNumeric.Value;
         _config.GridFractionY        = (int)_gridYNumeric.Value;
         _config.SnapTolerancePercent = (int)_snapNumeric.Value;
-
-        _config.ElevateOnStartup    = _elevateCheck.Checked;
 
         _config.OverlayColors.Left  = ToHexColor(_opacityAlpha, _swatchColors[Direction.Left]);
         _config.OverlayColors.Right = ToHexColor(_opacityAlpha, _swatchColors[Direction.Right]);
