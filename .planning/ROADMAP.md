@@ -126,7 +126,7 @@ Phases execute in numeric order: 16 → 17 → 18
 | 15. Settings Form | v4.0 | 1/1 | Complete | 2026-03-04 |
 | 16. Build Pipeline & Installer | v5.0 | 1/1 | Complete | 2026-03-05 |
 | 17. Task Scheduler Integration | v5.0 | 1/1 | Complete | 2026-03-07 |
-| 18. Settings UI Startup Controls | 1/1 | Complete   | 2026-03-07 | - |
+| 18. Settings UI Startup Controls | 1/1 | Complete    | 2026-03-07 | - |
 
 ---
 *Full milestone details: See `.planning/milestones/` archives*
