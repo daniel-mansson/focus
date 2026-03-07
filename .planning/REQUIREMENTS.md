@@ -21,9 +21,9 @@ Requirements for installer milestone. Each maps to roadmap phases.
 
 ### Startup Registration
 
-- [ ] **SCHED-01**: Installer registers daemon to start at logon via Task Scheduler
-- [ ] **SCHED-02**: User can choose to run the scheduled task elevated (admin) during install
-- [ ] **SCHED-03**: Uninstall removes the scheduled task cleanly
+- [x] **SCHED-01**: Installer registers daemon to start at logon via Task Scheduler
+- [x] **SCHED-02**: User can choose to run the scheduled task elevated (admin) during install
+- [x] **SCHED-03**: Uninstall removes the scheduled task cleanly
 
 ### Settings UI
 
@@ -65,9 +65,9 @@ Requirements for installer milestone. Each maps to roadmap phases.
 | INST-03 | Phase 16 | Complete |
 | INST-04 | Phase 16 | Complete |
 | INST-05 | Phase 16 | Complete |
-| SCHED-01 | Phase 17 | Pending |
-| SCHED-02 | Phase 17 | Pending |
-| SCHED-03 | Phase 17 | Pending |
+| SCHED-01 | Phase 17 | Complete |
+| SCHED-02 | Phase 17 | Complete |
+| SCHED-03 | Phase 17 | Complete |
 | SETS-01 | Phase 18 | Pending |
 | SETS-02 | Phase 18 | Pending |
 

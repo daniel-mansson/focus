@@ -2,6 +2,19 @@
 gsd_state_version: 1.0
 milestone: v5.0
 milestone_name: Installer
+status: unknown
+last_updated: "2026-03-07T07:50:13.688Z"
+progress:
+  total_phases: 2
+  completed_phases: 2
+  total_plans: 2
+  completed_plans: 2
+---
+
+---
+gsd_state_version: 1.0
+milestone: v5.0
+milestone_name: Installer
 status: executing
 stopped_at: Phase 17 context gathered
 last_updated: "2026-03-06T07:55:52.985Z"
@@ -60,6 +73,9 @@ Recent decisions affecting current work:
 - [16-01]: ISCC.exe must be on PATH -- no hardcoded path or parameter override
 - [16-01]: AppMutex=Global\focus-daemon matches DaemonMutex.cs exactly for daemon stop on upgrade
 - [16-01]: Parameters: "daemon" on both shortcut and post-install launch (without it, shows CLI help)
+- [Phase 17-01]: Always use ShellExec runas for schtasks /Create -- ONLOGON tasks require admin even for LeastPrivilege RunLevel
+- [Phase 17-01]: Use XML import (not CLI flags) for schtasks task creation to set ExecutionTimeLimit=PT0S -- no CLI flag exists for this
+- [Phase 17-01]: ElevateOnStartup removed from C# codebase -- Task Scheduler RunLevel replaces in-app self-elevation
 
 ### Pending Todos
 
@@ -75,6 +91,7 @@ None.
 | Phase | Plan | Duration | Tasks | Files |
 |-------|------|----------|-------|-------|
 | 16 | 01 | 8min | 3 | 3 |
+| Phase 17 P01 | 3min | 2 tasks | 5 files |
 
 ## Session Continuity
 
