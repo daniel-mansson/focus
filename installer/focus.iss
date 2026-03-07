@@ -35,11 +35,8 @@ Source: "..\focus\bin\Release\net8.0-windows\win-x64\publish\focus.exe"; DestDir
 [Icons]
 Name: "{group}\Focus"; Filename: "{app}\{#MyAppExeName}"; Parameters: "daemon"; IconFilename: "{app}\{#MyAppExeName}"
 
-[Run]
-Filename: "{app}\{#MyAppExeName}"; Parameters: "daemon"; Description: "Launch Focus now"; Flags: postinstall nowait skipifsilent
-
 [UninstallRun]
-Filename: "schtasks.exe"; Parameters: "/Delete /TN ""FocusDaemon"" /F"; Flags: runhidden
+Filename: "schtasks.exe"; Parameters: "/Delete /TN ""FocusDaemon"" /F"; Flags: runhidden; RunOnceId: "DeleteFocusDaemonTask"
 
 [Code]
 
@@ -92,7 +89,7 @@ begin
     '  <Actions Context="Author">' + #13#10 +
     '    <Exec>' + #13#10 +
     '      <Command>' + AppPath + '</Command>' + #13#10 +
-    '      <Arguments>daemon</Arguments>' + #13#10 +
+    '      <Arguments>daemon --background</Arguments>' + #13#10 +
     '    </Exec>' + #13#10 +
     '  </Actions>' + #13#10 +
     '</Task>';
@@ -105,7 +102,8 @@ end;
 function DetectExistingTask(var IsElevated: Boolean): Boolean;
 var
   ResultCode: Integer;
-  TmpFile, Output: String;
+  TmpFile: String;
+  Output: AnsiString;
 begin
   Result := False;
   IsElevated := False;
@@ -195,6 +193,10 @@ begin
       ShellExec('runas', 'schtasks.exe', CreateParams, '',
         SW_HIDE, ewWaitUntilTerminated, ResultCode);
     end;
+
+    // Launch daemon now via the scheduled task (runs elevated if configured)
+    Exec('schtasks.exe', '/Run /TN "FocusDaemon"', '',
+      SW_HIDE, ewWaitUntilTerminated, ResultCode);
   end
   else
   begin

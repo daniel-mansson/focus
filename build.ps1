@@ -40,6 +40,20 @@ Write-Host "Published: $publishedExe"
 
 # Compile installer with ISCC
 Write-Host "`nCompiling installer..."
+if (-not (Get-Command "ISCC.exe" -ErrorAction SilentlyContinue)) {
+    Write-Host ""
+    Write-Host "ERROR: ISCC.exe not found." -ForegroundColor Red
+    Write-Host ""
+    Write-Host "Inno Setup is required to compile the installer." -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  1. Download from: https://jrsoftware.org/isdl.php"
+    Write-Host "  2. Install it (default path: C:\Program Files (x86)\Inno Setup 6)"
+    Write-Host '  3. Add to PATH:  $p = [Environment]::GetEnvironmentVariable("Path", "User"); [Environment]::SetEnvironmentVariable("Path", "$p;C:\Program Files (x86)\Inno Setup 6", "User")'
+    Write-Host "  4. Restart your terminal, or refresh in-place:"
+    Write-Host '     $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User")'
+    Write-Host ""
+    exit 1
+}
 ISCC.exe /DMyAppVersion="$version" installer/focus.iss
 
 if ($LASTEXITCODE -ne 0) {
