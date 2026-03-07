@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A lightweight C# tool enabling keyboard-driven directional window focus navigation and grid-snapped window management on Windows, inspired by Hyprland's spatial window switching. In daemon mode (`focus daemon`), holding CAPSLOCK shows colored border overlays on candidate windows, and pressing direction keys (arrows or WASD) instantly switches focus — with overlay chaining for sequential moves and number keys for direct window selection. CAPS+TAB+direction moves windows by grid steps, CAPS+LSHIFT grows edges, CAPS+LCTRL shrinks edges — all with per-monitor grid calculation and cross-monitor transitions. System tray icon with live status context menu, daemon restart, and a WinForms settings UI for all configuration values. Also works as a stateless CLI (`focus left`) for scripting and external launchers.
+A lightweight C# tool enabling keyboard-driven directional window focus navigation and grid-snapped window management on Windows, inspired by Hyprland's spatial window switching. Packaged as an installable application with Inno Setup installer, Task Scheduler startup registration, and runtime startup management from Settings UI. In daemon mode (`focus daemon`), holding CAPSLOCK shows colored border overlays on candidate windows, and pressing direction keys (arrows or WASD) instantly switches focus — with overlay chaining for sequential moves and number keys for direct window selection. CAPS+TAB+direction moves windows by grid steps, CAPS+LSHIFT grows edges, CAPS+LCTRL shrinks edges — all with per-monitor grid calculation and cross-monitor transitions. System tray icon with live status context menu, daemon restart, and a WinForms settings UI for all configuration values including startup registration. Also works as a stateless CLI (`focus left`) for scripting and external launchers.
 
 ## Core Value
 
@@ -70,28 +70,18 @@ Given a direction, reliably switch focus to the most intuitive window in that di
 - ✓ Daemon status display (hook status, uptime, last action) — v4.0
 - ✓ Daemon restart from context menu — v4.0
 
+<!-- Shipped and confirmed valuable (v5.0). -->
+
+- ✓ Inno Setup installer with install/upgrade/uninstall lifecycle — v5.0
+- ✓ Task Scheduler startup registration with user-chosen elevation level — v5.0
+- ✓ Settings UI toggles for startup registration and elevation management — v5.0
+- ✓ Clean uninstall removing scheduled task, files, and shortcuts — v5.0
+
 ### Active
 
-<!-- Current scope: v5.0 Installer -->
+<!-- Next milestone scope TBD -->
 
-- [ ] Inno Setup installer with install/uninstall
-- [ ] Task Scheduler startup registration (user-choice elevated or standard)
-- [ ] Install path selection (default: %LocalAppData%\Focus)
-- [ ] Clean uninstall (remove scheduled task, files, registry)
-
-## Current Milestone: v5.0 Installer
-
-**Goal:** Package Focus as a proper installable application with clean install/uninstall and optional startup registration via Task Scheduler.
-
-**Target features:**
-- Inno Setup installer producing a single .exe
-- Task Scheduler registration for daemon autostart at logon
-- User chooses install path (default: %LocalAppData%\Focus) and whether to run elevated
-- Clean uninstall removing all artifacts (files, scheduled task)
-
-## Current State
-
-Shipped v4.0 (System Tray & Settings UI) on 2026-03-05. All 5 milestones complete (v1.0 through v4.0), 15 phases, 26 plans. Starting v5.0 Installer.
+(No active requirements — run `/gsd:new-milestone` to define next scope)
 
 ### Out of Scope
 
@@ -104,17 +94,26 @@ Shipped v4.0 (System Tray & Settings UI) on 2026-03-05. All 5 milestones complet
 - Diagonal resize (both axes simultaneously) — breaks one-edge-per-direction model; chain two operations instead
 - Pixel-exact move (no grid) — defeats grid discipline; mouse exists for pixel control
 - Automatic grid enforcement on focus change — hostile to manually positioned windows; snap is always user-initiated
+- Code signing — cost ($200+/yr EV certificate), SmartScreen acceptable for dev tools on GitHub
+- Auto-update mechanism — server infrastructure premature; users re-run installer to upgrade
+- MSIX/AppX packaging — sandbox conflicts with WH_KEYBOARD_LL hooks and SetForegroundWindow
+
+## Current State
+
+Shipped v5.0 (Installer) on 2026-03-07. All 6 milestones complete (v1.0 through v5.0), 18 phases, 29 plans. Focus is now a fully installable Windows application with Task Scheduler startup registration.
 
 ## Context
 
-Shipped v4.0 with ~14,000 LOC C# across ~35 source files.
-Tech stack: .NET 8 (net8.0-windows), CsWin32 0.3.269 for P/Invoke, WinForms (message pump + tray icon + settings form), GDI for overlay rendering.
+Shipped v5.0 with ~18,900 LOC C# across ~40 source files + 428 LOC installer scripts.
+Tech stack: .NET 8 (net8.0-windows), CsWin32 0.3.269 for P/Invoke, WinForms (message pump + tray icon + settings form), GDI for overlay rendering, Inno Setup 6.7.1 for installer.
 Two modes: stateless CLI (`focus <direction>`) for scripting, persistent daemon (`focus daemon`) for hotkey navigation + overlay previews + window management.
 Six weighting strategies: balanced, strong-axis-bias, closest-in-direction, edge-matching, edge-proximity, axis-only.
 Daemon handles full navigation flow: CAPSLOCK + direction keys, overlay chaining, CAPS+number window selection.
 Window management: CAPS+TAB+direction (move), CAPS+LSHIFT+direction (grow), CAPS+LCTRL+direction (shrink) — all grid-snapped with per-monitor calculation.
 Cross-monitor transitions with adjacent monitor detection and automatic grid recalculation.
 System tray with custom icon, live status context menu, WinForms settings UI, and daemon restart capability.
+Installer: Inno Setup producing Focus-Setup.exe with install/upgrade/uninstall lifecycle, AppMutex daemon stop, Task Scheduler ONLOGON registration with configurable RunLevel.
+Settings UI startup controls: runtime toggle for "Run at startup" and "Request elevated permissions" with UAC elevation and silent cancel revert.
 AutoHotkey dependency eliminated for core navigation — daemon handles everything natively.
 
 ## Constraints
@@ -123,6 +122,7 @@ AutoHotkey dependency eliminated for core navigation — daemon handles everythi
 - **Performance**: Must complete in <100ms for hotkey responsiveness
 - **Dependencies**: Minimal — Win32 API via CsWin32 P/Invoke, System.CommandLine, FileSystemGlobbing
 - **Invocation**: CLI tool + optional persistent daemon for overlay preview
+- **Build**: Inno Setup 6.7.1 (ISCC.exe on PATH) + .NET 8 SDK for installer builds
 
 ## Key Decisions
 
@@ -158,6 +158,12 @@ AutoHotkey dependency eliminated for core navigation — daemon handles everythi
 | ContextMenuStrip.Opening for live status | Refresh labels on every menu open | ✓ Good — no stale data ever displayed |
 | FlowLayoutPanel for settings form | Better DPI scaling than absolute pixel positioning | ✓ Good — handles multi-DPI setups |
 | Atomic config save (File.Replace) | Temp-file swap prevents parse errors during mid-write | ✓ Good — daemon keypress during save never fails |
+| Inno Setup with PrivilegesRequired=lowest | Per-user install without UAC by default; admin via PrivilegesRequiredOverridesAllowed | ✓ Good — frictionless install, UAC only for Task Scheduler operations |
+| PublishSingleFile + self-contained | No .NET runtime dependency; single focus.exe in install directory | ✓ Good — eliminates runtime version issues |
+| Task Scheduler via schtasks XML import | Only way to set ExecutionTimeLimit=PT0S (no CLI flag exists) | ✓ Good — full control over task properties |
+| ShellExec runas for schtasks operations | ONLOGON tasks require admin even for LeastPrivilege RunLevel | ✓ Good — clean UAC elevation for individual operations |
+| ElevateOnStartup replaced by Task Scheduler RunLevel | Task Scheduler handles elevation natively, no in-app self-elevation needed | ✓ Good — eliminated error-prone self-elevation code, cleaner architecture |
+| Settings UI schtasks with unhook-set-rehook pattern | Prevent CheckedChanged recursion during programmatic toggle revert | ✓ Good — clean UAC cancel handling |
 
 ---
-*Last updated: 2026-03-05 after v5.0 milestone start*
+*Last updated: 2026-03-07 after v5.0 milestone*

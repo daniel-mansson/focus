@@ -7,7 +7,7 @@
 - ✅ **v3.0 Integrated Navigation** — Phases 7-9 (shipped 2026-03-02)
 - ✅ **v3.1 Window Management** — Phases 10-12 (shipped 2026-03-03)
 - ✅ **v4.0 System Tray & Settings UI** — Phases 13-15 (shipped 2026-03-05)
-- 🚧 **v5.0 Installer** — Phases 16-18 (in progress)
+- ✅ **v5.0 Installer** — Phases 16-18 (shipped 2026-03-07)
 
 ## Phases
 
@@ -56,56 +56,16 @@
 
 </details>
 
-### 🚧 v5.0 Installer (In Progress)
+<details>
+<summary>✅ v5.0 Installer (Phases 16-18) — SHIPPED 2026-03-07</summary>
 
-**Milestone Goal:** Package Focus as an installable application with clean install/uninstall and Task Scheduler startup registration.
+- [x] Phase 16: Build Pipeline & Installer (1/1 plan) — completed 2026-03-05
+- [x] Phase 17: Task Scheduler Integration (1/1 plan) — completed 2026-03-07
+- [x] Phase 18: Settings UI Startup Controls (1/1 plan) — completed 2026-03-07
 
-- [x] **Phase 16: Build Pipeline & Installer** - Self-contained publish, Inno Setup installer with install/upgrade/uninstall lifecycle (completed 2026-03-05)
-- [x] **Phase 17: Task Scheduler Integration** - Logon startup registration with elevation choice, clean removal on uninstall (completed 2026-03-07)
-- [x] **Phase 18: Settings UI Startup Controls** - Runtime toggles for startup and elevation in the existing settings form (completed 2026-03-07)
-
-## Phase Details
-
-### Phase 16: Build Pipeline & Installer
-**Goal**: User can install, upgrade, and uninstall Focus via a single setup.exe
-**Depends on**: Phase 15 (v4.0 complete)
-**Requirements**: PKG-01, INST-01, INST-02, INST-03, INST-04, INST-05
-**Success Criteria** (what must be TRUE):
-  1. Running Focus-Setup.exe installs Focus to the user-chosen directory (defaulting to %LocalAppData%\Focus) and registers in Add/Remove Programs
-  2. Running Focus-Setup.exe while Focus daemon is already running stops the daemon, upgrades files in-place, and preserves existing config.json
-  3. Uninstalling via Add/Remove Programs removes all installed files and shortcuts
-  4. After install completes, checking "Launch Focus now" starts the daemon
-**Plans:** 1/1 plans complete
-Plans:
-- [x] 16-01-PLAN.md — Build pipeline (build.ps1) and Inno Setup installer (focus.iss)
-
-### Phase 17: Task Scheduler Integration
-**Goal**: Daemon starts automatically at logon with user-chosen elevation level
-**Depends on**: Phase 16
-**Requirements**: SCHED-01, SCHED-02, SCHED-03
-**Success Criteria** (what must be TRUE):
-  1. When user checks "Start at logon" during install, Focus daemon launches automatically after the next Windows logon
-  2. When user checks "Run elevated" during install, the scheduled task runs the daemon with admin privileges
-  3. Uninstalling Focus removes the scheduled task so no orphaned logon trigger remains
-**Plans:** 1/1 plans complete
-Plans:
-- [x] 17-01-PLAN.md — Task Scheduler wizard page, schtasks XML task creation, upgrade detection, uninstall cleanup, and C# elevation code removal
-
-### Phase 18: Settings UI Startup Controls
-**Goal**: User can manage startup registration and elevation from within the running application
-**Depends on**: Phase 17
-**Requirements**: SETS-01, SETS-02
-**Success Criteria** (what must be TRUE):
-  1. Settings form shows a "Run at startup" toggle that reflects whether a Focus scheduled task currently exists, and toggling it creates or removes the task
-  2. Settings form shows a "Request elevated permissions" toggle that reflects the current task run level, and toggling it updates the scheduled task between standard and elevated
-**Plans:** 1/1 plans complete
-Plans:
-- [ ] 18-01-PLAN.md — Startup GroupBox with schtasks-backed checkboxes for task creation/deletion and RunLevel management
+</details>
 
 ## Progress
-
-**Execution Order:**
-Phases execute in numeric order: 16 → 17 → 18
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -126,7 +86,7 @@ Phases execute in numeric order: 16 → 17 → 18
 | 15. Settings Form | v4.0 | 1/1 | Complete | 2026-03-04 |
 | 16. Build Pipeline & Installer | v5.0 | 1/1 | Complete | 2026-03-05 |
 | 17. Task Scheduler Integration | v5.0 | 1/1 | Complete | 2026-03-07 |
-| 18. Settings UI Startup Controls | 1/1 | Complete    | 2026-03-07 | - |
+| 18. Settings UI Startup Controls | v5.0 | 1/1 | Complete | 2026-03-07 |
 
 ---
 *Full milestone details: See `.planning/milestones/` archives*
