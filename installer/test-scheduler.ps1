@@ -81,11 +81,11 @@ if ($xml -match 'focus\.exe') {
     Fail "Command does not reference focus.exe"
 }
 
-# --- Test 6: Arguments contain 'daemon' ---
-if ($xml -match '<Arguments>daemon</Arguments>') {
-    Pass "Arguments are 'daemon'"
+# --- Test 6: Arguments contain 'daemon --background' ---
+if ($xml -match '<Arguments>daemon --background</Arguments>') {
+    Pass "Arguments are 'daemon --background'"
 } else {
-    Fail "Arguments do not contain 'daemon'"
+    Fail "Arguments do not contain 'daemon --background'"
 }
 
 # --- Test 7: InteractiveToken LogonType ---
