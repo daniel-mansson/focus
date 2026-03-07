@@ -1,0 +1,47 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Install Inno Setup
+        run: |
+          choco install innosetup --yes --no-progress
+          echo "C:\Program Files (x86)\Inno Setup 6" >> $env:GITHUB_PATH
+        shell: pwsh
+
+      - name: Build installer
+        run: .\build.ps1
+        shell: pwsh
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Focus ${{ github.ref_name }}
+          body: |
+            ## Download
+
+            Download **Focus-Setup.exe** below and run to install.
+
+            ## What's Changed
+          generate_release_notes: true
+          files: installer/output/Focus-Setup.exe
+          draft: false
+          prerelease: false
