@@ -20,36 +20,6 @@ internal static class DaemonCommand
     /// <returns>Exit code: 0 = clean exit, 2 = error.</returns>
     public static int Run(bool background, bool verbose)
     {
-        // 0. If configured, try to re-launch elevated before anything else.
-        var earlyConfig = FocusConfig.Load();
-        if (earlyConfig.ElevateOnStartup && !FocusActivator.IsCurrentProcessElevated())
-        {
-            try
-            {
-                var exePath = Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule?.FileName;
-                if (exePath is not null)
-                {
-                    var args = "daemon";
-                    if (background) args += " --background";
-                    if (verbose)    args += " --verbose";
-
-                    var psi = new ProcessStartInfo
-                    {
-                        FileName = exePath,
-                        Arguments = args,
-                        Verb = "runas",
-                        UseShellExecute = true
-                    };
-                    Process.Start(psi);
-                    return 0; // Exit this non-elevated instance
-                }
-            }
-            catch (System.ComponentModel.Win32Exception)
-            {
-                // UAC prompt was cancelled — fall through and run non-elevated
-            }
-        }
-
         // 1. Acquire single-instance mutex (replace any existing daemon instance)
         Mutex? mutex = null;
         try
@@ -96,8 +66,6 @@ internal static class DaemonCommand
             Console.Error.WriteLine($"[{ts}]   gridFractionX: {config.GridFractionX}");
             Console.Error.WriteLine($"[{ts}]   gridFractionY: {config.GridFractionY}");
             Console.Error.WriteLine($"[{ts}]   snapTolerancePercent: {config.SnapTolerancePercent}");
-            Console.Error.WriteLine($"[{ts}]   elevateOnStartup: {config.ElevateOnStartup}");
-            Console.Error.WriteLine($"[{ts}]   isElevated: {FocusActivator.IsCurrentProcessElevated()}");
         }
 
         // 6. Create unbounded event channel (producer: hook callback, consumer: monitor task)
