@@ -123,7 +123,7 @@ Phases execute in numeric order: 16 → 17 → 18
 | 14. Context Menu and Daemon Lifecycle | v4.0 | 1/1 | Complete | 2026-03-04 |
 | 15. Settings Form | v4.0 | 1/1 | Complete | 2026-03-04 |
 | 16. Build Pipeline & Installer | 1/1 | Complete    | 2026-03-05 | - |
-| 17. Task Scheduler Integration | 1/1 | Complete   | 2026-03-07 | - |
+| 17. Task Scheduler Integration | 1/1 | Complete    | 2026-03-07 | - |
 | 18. Settings UI Startup Controls | v5.0 | 0/0 | Not started | - |
 
 ---
