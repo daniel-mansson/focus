@@ -435,6 +435,29 @@ internal sealed class SettingsForm : Form
         }
     }
 
+    private static bool RunElevatedCmd(string command)
+    {
+        try
+        {
+            using var process = new Process();
+            process.StartInfo = new ProcessStartInfo
+            {
+                FileName        = "cmd.exe",
+                Arguments       = $"/c {command}",
+                UseShellExecute = true,
+                Verb            = "runas",
+                WindowStyle     = ProcessWindowStyle.Hidden,
+            };
+            process.Start();
+            process.WaitForExit();
+            return process.ExitCode == 0;
+        }
+        catch (System.ComponentModel.Win32Exception ex) when (ex.NativeErrorCode == 1223)
+        {
+            return false;
+        }
+    }
+
     private static string BuildTaskXml(string appPath, bool runElevated)
     {
         string runLevel = runElevated ? "HighestAvailable" : "LeastPrivilege";
@@ -488,11 +511,9 @@ internal sealed class SettingsForm : Form
 
         try
         {
-            // Delete existing task first (ignore failure)
-            RunSchtasksElevated("/Delete /TN \"FocusDaemon\" /F");
-
-            // Create task from XML -- ONLOGON always requires admin
-            return RunSchtasksElevated($"/Create /XML \"{xmlPath}\" /TN \"FocusDaemon\" /F");
+            // Delete + create in a single elevated process to avoid double UAC prompt
+            return RunElevatedCmd(
+                $"schtasks.exe /Delete /TN \"FocusDaemon\" /F 2>nul & schtasks.exe /Create /XML \"{xmlPath}\" /TN \"FocusDaemon\" /F");
         }
         finally
         {
