@@ -63,3 +63,4 @@ Resume file: None
 | 1 | Add number overlay position setting to settings form | 2026-03-04 | 0933f27 | [1-add-number-overlay-position-setting](./quick/1-add-number-overlay-position-setting/) |
 | 2 | Add elevate-on-startup config to launch daemon as admin | 2026-03-05 | 73d4a4d | [2-add-elevate-on-startup-config](./quick/2-add-elevate-on-startup-config/) |
 | 3 | Change admin window navigation: flash red border once without navigating on first attempt, navigate on second attempt within 2s with flashing border for 3s | 2026-03-05 | f472c7e | [3-change-admin-window-navigation-flash-red](./quick/3-change-admin-window-navigation-flash-red/) |
+| 4 | Prepare GitHub for public release: README.md, LICENSE, GitHub Actions release workflow | 2026-03-07 | 33a68c1 | [4-prepare-github-for-public-release](./quick/4-prepare-github-for-public-release/) |
