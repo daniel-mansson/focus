@@ -216,6 +216,49 @@
 
 ---
 
+## Milestone: v5.0 — Installer
+
+**Shipped:** 2026-03-07
+**Phases:** 3 | **Plans:** 3
+
+### What Was Built
+- Inno Setup installer with build.ps1 orchestrator producing Focus-Setup.exe from dotnet self-contained publish, supporting install/upgrade/uninstall lifecycle with AppMutex daemon stop
+- Task Scheduler integration with custom Startup Options wizard page, schtasks XML import for ONLOGON task creation with configurable RunLevel, upgrade detection via XML query, and uninstall cleanup
+- Settings UI Startup GroupBox with "Run at startup" and "Request elevated permissions" checkboxes managing the FocusDaemon scheduled task via schtasks.exe with UAC elevation
+- Complete removal of ElevateOnStartup from C# codebase — startup elevation now handled entirely by Task Scheduler RunLevel
+
+### What Worked
+- Inno Setup Pascal Script was sufficient for all installer logic — no external DLL or custom action needed
+- schtasks XML import approach gave full control over task properties (ExecutionTimeLimit=PT0S) that CLI flags cannot set
+- Identical BuildTaskXml implementations in Pascal Script (installer) and C# (Settings) ensured consistent task behavior across both entry points
+- Phase 18 executed in ~2 minutes with zero deviations — thorough research and single-plan phases continue to work well for tightly-scoped features
+- Verification with human_needed status was honest about what code analysis can and cannot verify (UAC prompts, GUI wizard behavior)
+
+### What Was Inefficient
+- test-scheduler.ps1 Test 6 was written to the original plan spec (`daemon`) but the execution added `--background` — test was not updated, leaving a false-fail test case
+- Installer SaveStringToFile writes ANSI encoding but XML header declares UTF-16 — works because ASCII, but is a cosmetic inconsistency that could confuse future maintainers
+
+### Patterns Established
+- schtasks XML import via temp file: SaveStringToFile/File.WriteAllText → schtasks /Create /XML — the only way to set ExecutionTimeLimit and other advanced properties
+- ShellExec runas for individual schtasks commands: per-operation UAC elevation without requiring the entire installer or app to run as admin
+- Unhook-set-rehook pattern for WinForms CheckedChanged: prevents handler recursion when programmatically reverting a checkbox after UAC cancel
+- Dual-path task deletion: try non-elevated first, fallback to UAC elevation — minimizes unnecessary prompts
+- Async void event handlers with Task.Run: keeps UI responsive during blocking schtasks process operations
+
+### Key Lessons
+1. schtasks CLI flags are limited — XML import is the only way to set ExecutionTimeLimit, Priority, and MultipleInstancesPolicy
+2. ONLOGON tasks require admin even for LeastPrivilege RunLevel — always use ShellExec runas for schtasks /Create with LogonTrigger
+3. Inno Setup LoadStringFromFile requires AnsiString (not String) in version 6 — documentation lags behind the compiler
+4. Post-install launch via `schtasks /Run` instead of direct exe execution respects the task's configured RunLevel — critical for HighestAvailable
+5. Test scripts must be updated when execution deviates from plan — the `--background` deviation was documented in SUMMARY.md but not propagated to the verification script
+
+### Cost Observations
+- Model mix: ~50% sonnet, ~40% opus, ~10% haiku (estimated)
+- Sessions: ~3
+- Notable: Phase 18 completed in ~2 minutes — the fastest plan execution in the project. Total milestone was 2 days but actual execution time was <1 hour across all 3 plans. Research and planning time was the bulk.
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
@@ -227,6 +270,7 @@
 | v3.0 | 3 | 3 | Quick task workflow for UX polish, milestone audit caught pre-satisfied requirements |
 | v3.1 | 3 | 8 | Gap closure plans as first-class workflow, dual-rect coordinate pattern, DIB pixel-write rendering |
 | v4.0 | 3 | 3 | Single-plan phases, code-only WinForms, fastest milestone (<15 min total execution) |
+| v5.0 | 3 | 3 | Installer + Task Scheduler + Settings UI startup controls; schtasks XML import pattern; test script must track deviations |
 
 ### Top Lessons (Verified Across Milestones)
 
@@ -236,5 +280,6 @@
 4. Milestone audit before completion saves wasted effort — Phase 9 was already working from v2.0 architecture (verified in v3.0)
 5. Quick tasks (`/gsd:quick`) are the right tool for UX polish between formal phases (verified in v3.0, v3.1)
 6. Gap closure plans are a natural part of execution, not a sign of poor planning — UAT-driven corrections catch real bugs systematically (verified in v3.1 — 3 gap closure plans)
-7. Single-plan phases work when scope is tight — v4.0 proved that 1 plan per phase with thorough research can execute cleanly without gap closure (verified in v4.0 — 0 deviations in Phase 15)
-8. Code-only WinForms with layout panels is viable for settings UIs — avoids designer files and handles DPI scaling (verified in v4.0 Phase 15)
+7. Single-plan phases work when scope is tight — v4.0 and v5.0 proved that 1 plan per phase with thorough research can execute cleanly (verified in v4.0, v5.0)
+8. Code-only WinForms with layout panels is viable for settings UIs — avoids designer files and handles DPI scaling (verified in v4.0 Phase 15, v5.0 Phase 18)
+9. Test/verification scripts must be updated when execution deviates from plan — documented deviations that aren't propagated to test assertions create persistent false failures (verified in v5.0 Phase 17)

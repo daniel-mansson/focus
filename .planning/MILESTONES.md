@@ -1,4 +1,27 @@
 # Milestones
+## v5.0 Installer (Shipped: 2026-03-07)
+
+**Delivered:** Packaged Focus as an installable Windows application with Inno Setup installer, Task Scheduler startup registration with elevation choice, and runtime startup management from the Settings UI.
+
+**Phases completed:** 16-18 (3 phases, 3 plans, 8 tasks)
+**Timeline:** 2 days (2026-03-05 → 2026-03-07)
+**Git range:** `feat(16-01)` → `feat(18-01)`
+**LOC:** ~18,900 C# + 428 installer scripts (+3,400 lines net)
+
+**Key accomplishments:**
+1. Inno Setup installer with build.ps1 orchestrator producing Focus-Setup.exe from dotnet self-contained publish, supporting install/upgrade/uninstall lifecycle with AppMutex daemon stop
+2. Task Scheduler integration with custom Startup Options wizard page, schtasks XML import for ONLOGON task creation with configurable RunLevel, upgrade detection, and uninstall cleanup
+3. Settings UI Startup GroupBox with "Run at startup" and "Request elevated permissions" checkboxes managing the FocusDaemon scheduled task via schtasks.exe with UAC elevation
+4. Complete removal of ElevateOnStartup from C# codebase — startup elevation now handled entirely by Task Scheduler RunLevel
+
+**Requirements:** 11/11 satisfied (PKG-01, INST-01 through INST-05, SCHED-01 through SCHED-03, SETS-01, SETS-02)
+
+**Tech debt:** 1 item (test-scheduler.ps1 Test 6 argument mismatch). See `milestones/v5.0-MILESTONE-AUDIT.md`.
+
+**What's next:** Planning next milestone
+
+---
+
 ## v4.0 System Tray & Settings UI (Shipped: 2026-03-05)
 
 **Delivered:** Polished daemon system tray presence with custom icon, live status context menu, daemon restart, and a WinForms settings UI for all key configuration values.
