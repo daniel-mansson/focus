@@ -1,6 +1,6 @@
 # Focus
 
-Keyboard-driven directional window navigation for Windows, inspired by Hyprland's spatial switching.
+Keyboard-driven directional window navigation for Windows.
 
 ## What it does
 
