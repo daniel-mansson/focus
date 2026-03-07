@@ -77,7 +77,7 @@
   4. After install completes, checking "Launch Focus now" starts the daemon
 **Plans:** 1/1 plans complete
 Plans:
-- [ ] 16-01-PLAN.md — Build pipeline (build.ps1) and Inno Setup installer (focus.iss)
+- [x] 16-01-PLAN.md — Build pipeline (build.ps1) and Inno Setup installer (focus.iss)
 
 ### Phase 17: Task Scheduler Integration
 **Goal**: Daemon starts automatically at logon with user-chosen elevation level
@@ -89,7 +89,7 @@ Plans:
   3. Uninstalling Focus removes the scheduled task so no orphaned logon trigger remains
 **Plans:** 1/1 plans complete
 Plans:
-- [ ] 17-01-PLAN.md — Task Scheduler wizard page, schtasks XML task creation, upgrade detection, uninstall cleanup, and C# elevation code removal
+- [x] 17-01-PLAN.md — Task Scheduler wizard page, schtasks XML task creation, upgrade detection, uninstall cleanup, and C# elevation code removal
 
 ### Phase 18: Settings UI Startup Controls
 **Goal**: User can manage startup registration and elevation from within the running application
