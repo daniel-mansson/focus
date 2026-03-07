@@ -5,7 +5,7 @@ milestone_name: Installer
 status: milestone_complete
 stopped_at: v5.0 milestone archived
 last_updated: "2026-03-07T11:00:00.000Z"
-last_activity: 2026-03-07 -- v5.0 Installer milestone completed and archived
+last_activity: 2026-03-07 - Completed quick task 4: prepare github for public release
 progress:
   total_phases: 3
   completed_phases: 3
