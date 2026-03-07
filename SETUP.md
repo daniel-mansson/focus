@@ -1,13 +1,14 @@
-# Window Focus Navigation — Setup Guide
+# Focus — Developer Setup Guide
 
-A lightweight CLI tool for Hyprland-style directional window focus navigation on Windows. Invoke it via AutoHotkey hotkeys (`focus left`, `focus right`, etc.) and it finds the best candidate window in the given direction and switches focus to it — spatial navigation without a tiling window manager.
+For end-user installation, see [README.md](README.md). This guide covers building from source and contributing.
 
 ## Table of Contents
 
 - [Prerequisites](#prerequisites)
 - [Build](#build)
-- [Add to PATH](#add-to-path)
-- [AutoHotkey Integration](#autohotkey-integration)
+- [Building the Installer](#building-the-installer)
+- [Running](#running)
+- [AutoHotkey Integration (optional)](#autohotkey-integration-optional)
 - [Configuration](#configuration)
 - [CLI Reference](#cli-reference)
 - [Scoring Strategies](#scoring-strategies)
@@ -17,10 +18,10 @@ A lightweight CLI tool for Hyprland-style directional window focus navigation on
 
 ## Prerequisites
 
-- **Windows 10 or later** (Windows 11 fully supported; Windows Vista/7/8 also work)
-- **.NET 8 SDK or later** — [download from Microsoft](https://dotnet.microsoft.com/download)
-- **AutoHotkey v2** — [download from autohotkey.com](https://www.autohotkey.com/) — note: v2, not v1; the script examples below use v2 syntax
+- **Windows 10 or later**
+- **.NET 8 SDK or later** — [download from Microsoft](https://dotnet.microsoft.com/download/dotnet/8.0)
 - **Git** — to clone the repository
+- **Inno Setup 6** (optional) — only needed to build the installer. [Download from jrsoftware.org](https://jrsoftware.org/isdl.php)
 
 Verify your .NET installation before building:
 
@@ -37,75 +38,78 @@ Any version 8.0 or higher is fine.
 Clone the repository and build in Release configuration:
 
 ```
-git clone <repo-url>
-cd windowfocusnavigation/focus
-dotnet build -c Release
+git clone https://github.com/daniel-mansson/focus.git
+cd focus
+dotnet build focus/focus.csproj -c Release
 ```
 
 The compiled executable is at:
 
 ```
-focus/bin/Release/net8.0/focus.exe
+focus/bin/Release/net8.0-windows/focus.exe
 ```
 
-**Optional: self-contained publish**
-
-If you want to run focus.exe on a machine that does not have the .NET runtime installed, publish a self-contained single-file executable:
+**Self-contained publish (no .NET runtime needed on target machine):**
 
 ```
-dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
+dotnet publish focus/focus.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
 ```
 
 Output location:
 
 ```
-focus/bin/Release/net8.0/win-x64/publish/focus.exe
+focus/bin/Release/net8.0-windows/win-x64/publish/focus.exe
 ```
 
-This bundles the .NET runtime into a single executable (~15 MB). No runtime installation required on the target machine.
+This bundles the .NET runtime into a single executable. No runtime installation required on the target machine.
 
 ---
 
-## Add to PATH
+## Building the Installer
 
-You need focus.exe to be callable from anywhere so AutoHotkey can invoke it without an absolute path.
-
-**Option A — Add the build output directory to your system PATH**
-
-1. Open Start, search for "Edit the system environment variables"
-2. Click "Environment Variables..."
-3. Under "System variables" (or "User variables"), select "Path" and click "Edit"
-4. Click "New" and paste the full path to the build output directory, for example:
-   ```
-   C:\Work\windowfocusnavigation\focus\bin\Release\net8.0
-   ```
-5. Click OK on all dialogs
-6. Open a new terminal and verify:
-   ```
-   focus --help
-   ```
-
-**Option B — Copy focus.exe to a directory already in PATH**
-
-If you have a utilities folder (e.g., `C:\Tools\`) already in your PATH, copy the executable there:
+The `build.ps1` script handles the full build pipeline — publish + Inno Setup installer:
 
 ```powershell
-Copy-Item "focus\bin\Release\net8.0\focus.exe" "C:\Tools\focus.exe"
+.\build.ps1
 ```
 
-Verify from any terminal:
+This produces `installer/output/Focus-Setup.exe`. Requires Inno Setup 6 with `ISCC.exe` in your PATH.
 
-```
-focus --help
+To add Inno Setup to PATH after installing:
+
+```powershell
+$p = [Environment]::GetEnvironmentVariable("Path", "User")
+[Environment]::SetEnvironmentVariable("Path", "$p;C:\Program Files (x86)\Inno Setup 6", "User")
 ```
 
-Either option works. Option A avoids copying when you rebuild. Option B is simpler if you already have a tools directory.
+Restart your terminal after updating PATH.
 
 ---
 
-## AutoHotkey Integration
+## Running
 
-AutoHotkey v2 is the recommended way to bind focus to keyboard shortcuts. Create a script file (e.g., `focus-nav.ahk`) with the following content.
+**Daemon mode (primary):**
+
+```
+focus daemon --background
+```
+
+This starts Focus in the background with a system tray icon. Hold CAPSLOCK to see overlays, press direction keys to navigate. Right-click the tray icon for settings.
+
+**CLI mode (single invocation):**
+
+```
+focus left
+focus right --strategy strong-axis-bias
+```
+
+Useful for scripting or external launchers.
+
+---
+
+## AutoHotkey Integration (optional)
+
+If you prefer custom hotkey bindings instead of the built-in CAPSLOCK daemon, you can use AutoHotkey v2. [Download from autohotkey.com](https://www.autohotkey.com/) (v2, not v1).
 
 ### Basic script — Win+Arrow keys
 
@@ -119,16 +123,14 @@ AutoHotkey v2 is the recommended way to bind focus to keyboard shortcuts. Create
 #Down::Run("focus down", , "Hide")
 ```
 
-The `"Hide"` parameter suppresses the console window flash that would otherwise appear briefly each time focus.exe runs. Without it, you will see a black window flicker on every keypress.
+The `"Hide"` parameter suppresses the console window flash that would otherwise appear briefly each time focus.exe runs.
 
 ### Using an absolute path (if focus.exe is not in PATH)
-
-If you prefer not to modify your PATH, specify the full path to focus.exe in the Run call:
 
 ```ahk
 #Requires AutoHotkey v2.0
 
-focusExe := "C:\Work\windowfocusnavigation\focus\bin\Release\net8.0\focus.exe"
+focusExe := "C:\Work\focus\focus\bin\Release\net8.0-windows\focus.exe"
 
 #Left::Run(focusExe . " left", , "Hide")
 #Right::Run(focusExe . " right", , "Hide")
@@ -137,8 +139,6 @@ focusExe := "C:\Work\windowfocusnavigation\focus\bin\Release\net8.0\focus.exe"
 ```
 
 ### Advanced example — per-binding strategy override
-
-You can pass any CLI flag in the Run command. For example, add Win+Shift+Arrow bindings that use the strong-axis-bias strategy for grid-like navigation:
 
 ```ahk
 #Requires AutoHotkey v2.0
@@ -164,13 +164,11 @@ To have the script start automatically when you log in:
 2. The Startup folder opens in Explorer
 3. Create a shortcut to your `.ahk` file and place it in that folder
 
-Alternatively, you can right-click the `.ahk` file, select "Create shortcut", and move the shortcut into the Startup folder.
-
 ---
 
 ## Configuration
 
-focus reads a JSON config file for its default settings. The config is optional — if it does not exist, focus uses built-in defaults (balanced strategy, no-op wrap, no exclusions).
+Focus reads settings from `%APPDATA%\focus\config.json`. The config is optional — if it does not exist, Focus uses built-in defaults (balanced strategy, no-op wrap, no exclusions).
 
 **Create the default config:**
 
@@ -178,13 +176,7 @@ focus reads a JSON config file for its default settings. The config is optional 
 focus --init-config
 ```
 
-This writes the config file to:
-
-```
-%APPDATA%\focus\config.json
-```
-
-For most users that expands to something like `C:\Users\YourName\AppData\Roaming\focus\config.json`.
+You can also configure everything through the **Settings UI** — right-click the tray icon and select Settings.
 
 **Default config.json:**
 
@@ -245,19 +237,22 @@ focus left --exclude "notepad" "calc"
 ## CLI Reference
 
 ```
-focus <direction> [options]
+focus <command> [options]
 ```
 
-**Direction argument:**
+**Commands:**
 
-| Value | Effect |
+| Command | Description |
 |---|---|
-| `left` | Navigate focus to the left |
-| `right` | Navigate focus to the right |
-| `up` | Navigate focus upward |
-| `down` | Navigate focus downward |
+| `<direction>` | Navigate focus in that direction (`left`, `right`, `up`, `down`) |
+| `daemon` | Start the daemon with CAPSLOCK hotkeys and system tray |
+| `daemon --background` | Start the daemon in background mode (no console window) |
+| `--init-config` | Write a default config.json to `%APPDATA%\focus\config.json` |
+| `--debug enumerate` | List all detected navigable windows with bounds and process info |
+| `--debug score <dir>` | Show scoring comparison across all strategies for a direction |
+| `--debug config` | Show the resolved configuration |
 
-**Options:**
+**Navigation options:**
 
 | Flag | Values / Syntax | Description |
 |---|---|---|
@@ -265,10 +260,6 @@ focus <direction> [options]
 | `--wrap <behavior>` | `no-op`, `wrap`, `beep` | Override wrap-around behavior for this invocation |
 | `--exclude <patterns>` | One or more glob patterns | Replace the exclude list for this invocation (does not merge with config) |
 | `--verbose`, `-v` | — | Print navigation details (origin window, candidates, scores) to stderr |
-| `--debug enumerate` | — | List all detected navigable windows with bounds and process info |
-| `--debug score <dir>` | `left`, `right`, `up`, `down` | Show scoring comparison across all six strategies for the given direction |
-| `--debug config` | — | Show the resolved configuration (config file path, strategy, wrap, exclude list) |
-| `--init-config` | — | Write a default config.json to `%APPDATA%\focus\config.json` |
 
 **Exit codes:**
 
@@ -278,30 +269,31 @@ focus <direction> [options]
 | `1` | No candidate found in the requested direction |
 | `2` | Error (invalid argument, platform not supported, unexpected exception) |
 
-Exit codes are useful if you want to chain behavior in scripts or AHK. For example, exit code 1 means no window was found in that direction.
-
 **Examples:**
 
-```
-; Navigate focus right (uses config defaults)
+```bash
+# Start the daemon in background mode
+focus daemon --background
+
+# Navigate focus right (uses config defaults)
 focus right
 
-; Navigate focus up using closest-in-direction strategy
+# Navigate with a specific strategy
 focus up --strategy closest-in-direction
 
-; Navigate focus left with wrap-around enabled
+# Navigate with wrap-around
 focus left --wrap wrap
 
-; Show all navigable windows
+# Show all navigable windows
 focus --debug enumerate
 
-; Compare strategy scores for windows to the right
+# Compare strategy scores for windows to the right
 focus --debug score right
 
-; Show resolved config
+# Show resolved config
 focus --debug config
 
-; Navigate with verbose output (useful for diagnosing unexpected behavior)
+# Navigate with verbose output (useful for diagnosing unexpected behavior)
 focus down --verbose
 ```
 
@@ -339,17 +331,13 @@ Use this when: you want navigation based on how much a candidate window "extends
 
 Uses the near edge of both source and candidate — the edge facing the direction of movement. For a rightward move, compares source's right edge to each candidate's right edge; the candidate whose right edge extends least beyond the source's right edge wins. Pure 1D comparison, ignoring the perpendicular axis entirely.
 
-This differs from edge-matching, which uses the far edge of the source (for a leftward move, edge-matching compares source's right edge to candidate's right edge; edge-proximity compares source's left edge to candidate's left edge).
-
-Use this when: you want navigation that feels like "which window is closest to where I am, on this side" rather than "which window is closest to the far side of my window."
+Use this when: you want navigation that feels like "which window is closest to where I am, on this side."
 
 **axis-only**
 
-Uses pure center-to-center 1D distance along the movement axis. For a leftward move, compares the source center X to each candidate's center X and picks the one closest to the left. The perpendicular axis (Y for left/right, X for up/down) is completely ignored — no secondary weighting, no alignment scoring, just raw 1D distance.
+Uses pure center-to-center 1D distance along the movement axis. The perpendicular axis is completely ignored — no secondary weighting, no alignment scoring, just raw 1D distance.
 
-This is the simplest strategy: whichever window's center is nearest along the movement axis wins. It does not consider window edges, sizes, or perpendicular offset.
-
-Use this when: you want the most predictable, geometry-minimal navigation — the window whose center is closest along the movement axis always wins, regardless of vertical or horizontal offset.
+Use this when: you want the most predictable, geometry-minimal navigation — the window whose center is closest along the movement axis always wins.
 
 **Comparing strategies on your current layout:**
 
@@ -357,7 +345,7 @@ Use this when: you want the most predictable, geometry-minimal navigation — th
 focus --debug score right
 ```
 
-This command shows a table of all candidate windows to the right of the current window, with scores from all six strategies side by side. The active strategy is marked with an asterisk. Use this to pick the strategy that matches your intuition for a given layout.
+This shows a table of all candidate windows to the right, with scores from all strategies side by side.
 
 ---
 
@@ -365,15 +353,9 @@ This command shows a table of all candidate windows to the right of the current 
 
 **"focus is not recognized as an internal or external command"**
 
-focus.exe is not in your PATH. Verify with:
+focus.exe is not in your PATH. If you built from source, either add the build output directory to PATH or use the full path to the executable.
 
-```
-where focus
-```
-
-If that returns nothing, follow the [Add to PATH](#add-to-path) section. After updating PATH, open a new terminal — existing terminals do not pick up PATH changes.
-
-**Console window flashes briefly on each keypress**
+**Console window flashes briefly on each keypress (AutoHotkey)**
 
 You are missing the `"Hide"` parameter in your AHK Run call. Change:
 
@@ -387,15 +369,11 @@ to:
 #Right::Run("focus right", , "Hide")
 ```
 
-The third parameter `"Hide"` tells AutoHotkey to suppress the console window.
-
 **Focus does not switch when triggered from AutoHotkey**
 
-This is the foreground lock issue. Windows restricts which processes can steal foreground focus. focus.exe uses a SendInput ALT bypass (simulating a brief Alt keypress before calling SetForegroundWindow) to work around this.
+This is the foreground lock issue. Windows restricts which processes can steal foreground focus. focus.exe uses a SendInput ALT bypass to work around this.
 
-If it still fails, check elevation mismatch: focus.exe and AutoHotkey must run at the same privilege level. If AutoHotkey is running as a standard user and focus.exe is running as administrator (or vice versa), the activation will be silently blocked by Windows.
-
-To check: right-click focus.exe and ensure "Run as administrator" is not checked in Properties. AutoHotkey should also be running as a standard user unless you explicitly need elevated access.
+If it still fails, check elevation mismatch: focus.exe and AutoHotkey must run at the same privilege level. If one is elevated and the other isn't, Windows silently blocks the activation.
 
 **The wrong window gets focus**
 
@@ -405,30 +383,16 @@ Try a different strategy. Run the score debug command to see how windows are ran
 focus --debug score <direction>
 ```
 
-The output shows scores for all five strategies. If a different strategy would have chosen the window you wanted, switch to it either in config.json or via `--strategy` on the relevant AHK binding.
-
 **UWP apps (Calculator, Settings, etc.) are not detected**
 
-UWP apps are supported and should appear in the window list. To verify:
-
-```
-focus --debug enumerate
-```
-
-If Calculator or Settings are missing, check that they are not minimized. Minimized windows are intentionally excluded from navigation.
+UWP apps are supported and should appear in the window list. Verify with `focus --debug enumerate`. Minimized windows are intentionally excluded from navigation.
 
 **Windows on a secondary monitor are not reachable**
 
-focus uses virtual screen coordinates and is DPI-aware (PerMonitorV2 manifest). Mixed DPI setups with multiple monitors at different scaling levels are handled correctly.
+Focus uses virtual screen coordinates and is DPI-aware (PerMonitorV2). Mixed DPI setups with multiple monitors at different scaling levels are handled correctly.
 
-If windows on a secondary monitor seem unreachable, run:
-
-```
-focus --debug enumerate
-```
-
-Check that the windows appear in the list and that their bounds are in the expected screen region. If bounds look wrong (e.g., all zeros), the window may be cloaked or in a state that causes DwmGetWindowAttribute to return empty bounds.
+If windows on a secondary monitor seem unreachable, run `focus --debug enumerate` and check that their bounds are in the expected screen region.
 
 **Config file is not being read**
 
-Run `focus --debug config` to see the resolved configuration and the path focus is reading from. If the file does not exist at that path, run `focus --init-config` to create it.
+Run `focus --debug config` to see the resolved configuration and the path Focus is reading from. If the file does not exist at that path, run `focus --init-config` to create it.
